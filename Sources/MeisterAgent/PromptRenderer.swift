@@ -12,7 +12,8 @@ public struct PromptRenderer: Sendable {
         workspace: Workspace,
         job: Job,
         files: [JobFile],
-        rules: [Rule]
+        rules: [Rule],
+        parentFindings: [Finding] = []
     ) throws {
         let fm = FileManager.default
         let meister = workspace.root.appendingPathComponent(".meister", isDirectory: true)
@@ -22,7 +23,7 @@ public struct PromptRenderer: Sendable {
         try writeJSON(meister.appendingPathComponent("rules.json"), object: rules.map(Self.ruleJSON))
         try writeJSON(meister.appendingPathComponent("files.json"), object: files.map(Self.fileJSON))
         try writeIfAbsent(meister.appendingPathComponent("context.md"), contents: "")
-        try writeIfAbsent(meister.appendingPathComponent("parent-findings.json"), contents: "[]\n")
+        try writeJSON(meister.appendingPathComponent("parent-findings.json"), object: parentFindings.map(Self.parentFindingJSON))
 
         try writeSchema(
             dest: meister.appendingPathComponent("findings.schema.json"),
@@ -142,6 +143,21 @@ public struct PromptRenderer: Sendable {
             "severity": rule.severity.rawValue,
             "kind": rule.kind.rawValue,
             "payload": payload,
+        ]
+    }
+
+    private static func parentFindingJSON(_ finding: Finding) -> [String: Any] {
+        [
+            "id": finding.id.rawValue,
+            "rule_id": finding.ruleID?.rawValue ?? NSNull(),
+            "severity": finding.severity.rawValue,
+            "title": finding.title,
+            "message": finding.message,
+            "file_path": finding.filePath ?? NSNull(),
+            "start_line": finding.startLine ?? NSNull(),
+            "end_line": finding.endLine ?? NSNull(),
+            "snippet": finding.snippet ?? NSNull(),
+            "lifecycle": finding.lifecycle.rawValue,
         ]
     }
 

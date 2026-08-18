@@ -58,7 +58,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 workspace: request.workspace,
                 job: request.job,
                 files: request.files,
-                rules: request.rules
+                rules: request.rules,
+                parentFindings: request.parentFindings
             )
         } catch {
             return AgentReviewResult(

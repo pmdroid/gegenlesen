@@ -87,6 +87,52 @@ struct JobsRouteTests {
     }
 
     @Test
+    func incrementalSucceededParentIsAccepted() async throws {
+        try await withMeisterApp { app in
+            let now = Date()
+            let parent = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                finishedAt: now,
+                status: .succeeded,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j",
+                baseSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                headSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            )
+            try await app.meisterStore.insertJob(parent)
+            try await app.meisterStore.replaceJobFiles([
+                JobFile(jobID: parent.id, path: "Sources/A.swift", sha256: "ab", status: .added),
+            ])
+            try await app.meisterStore.insertParsedFindings([
+                Finding(
+                    id: FindingID.generate(),
+                    jobID: parent.id,
+                    phase: .agent,
+                    severity: .info,
+                    title: "note",
+                    message: "from parent",
+                    filePath: "Sources/A.swift",
+                    startLine: 1,
+                    endLine: 1,
+                    snippet: "print(2)",
+                    createdAt: now
+                ),
+            ])
+            let res = try await postJob(
+                app,
+                archive: try tinyTarGz(),
+                filename: "change.tar.gz",
+                meta: #"{"scope":"incremental","parent_job_id":"11111111-1111-4111-8111-111111111111"}"#
+            )
+            #expect(res.status == .accepted)
+        }
+    }
+
+    @Test
     func incrementalMissingParentIsUnprocessable() async throws {
         try await withMeisterApp { app in
             let res = try await postJob(

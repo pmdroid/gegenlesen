@@ -18,6 +18,12 @@ function statusClass(status: JobStatus): string {
   return "st run";
 }
 
+function summaryLine(job: JobListItem): string | null {
+  const summary = job.summary;
+  if (!summary) return null;
+  return `${summary.new} new · ${summary.still_open} still_open · ${summary.resolved} resolved · ${summary.relocated} relocated · ${summary.dropped} dropped`;
+}
+
 function pipelineLine(job: JobListItem): string {
   switch (job.status) {
     case "queued":
@@ -117,11 +123,22 @@ export function JobDetailPage() {
           <span className={statusClass(detail.status)}>{detail.status}</span>
         </div>
         <div className="pipe">{pipelineLine(detail)}</div>
-        <div className="pipe" style={{ borderBottom: 0 }}>
+        <div className="pipe" style={{ borderBottom: summaryLine(detail) ? undefined : 0 }}>
           posted by CLI · scope: {detail.scope}
+          {detail.parent_job_id ? (
+            <>
+              {" · "}
+              <Link to={`/jobs/${detail.parent_job_id}`}>parent {detail.parent_job_id.slice(0, 8)}</Link>
+            </>
+          ) : null}
           {detail.reviewer_a_model_id ? ` · A ${detail.reviewer_a_model_id}` : ""}
           {detail.reviewer_b_model_id ? ` · B ${detail.reviewer_b_model_id}` : ""}
         </div>
+        {summaryLine(detail) ? (
+          <div className="pipe" style={{ borderBottom: 0 }}>
+            {summaryLine(detail)}
+          </div>
+        ) : null}
       </div>
 
       <div className="pagehead">

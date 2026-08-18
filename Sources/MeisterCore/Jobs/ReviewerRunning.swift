@@ -5,6 +5,7 @@ public struct AgentReviewRequest: Sendable {
     public var workspace: Workspace
     public var files: [JobFile]
     public var rules: [Rule]
+    public var parentFindings: [Finding]
     public var newWork: Bool
     public var isCancelled: (@Sendable () async -> Bool)?
 
@@ -13,6 +14,7 @@ public struct AgentReviewRequest: Sendable {
         workspace: Workspace,
         files: [JobFile],
         rules: [Rule],
+        parentFindings: [Finding] = [],
         newWork: Bool,
         isCancelled: (@Sendable () async -> Bool)? = nil
     ) {
@@ -20,6 +22,7 @@ public struct AgentReviewRequest: Sendable {
         self.workspace = workspace
         self.files = files
         self.rules = rules
+        self.parentFindings = parentFindings
         self.newWork = newWork
         self.isCancelled = isCancelled
     }

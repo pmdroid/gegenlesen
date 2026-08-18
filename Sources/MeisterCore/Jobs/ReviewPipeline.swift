@@ -68,6 +68,10 @@ public struct ReviewPipeline: Sendable {
         }
         if try await stopped(jobID) { return }
 
+        var parentFiles: [JobFile] = []
+        var parentFindings: [Finding] = []
+        var interdiffEmpty = false
+        var incrementalScope = false
         do {
             let meta = loadIdentifyMeta(jobID: jobID)
             let patch = loadMultipartPatch(jobID: jobID)
@@ -79,9 +83,27 @@ public struct ReviewPipeline: Sendable {
                 multipartPatch: patch,
                 timeout: identifyTimeout
             )
-            let changeSet = try identifier.identify()
+            var changeSet = try identifier.identify()
+            let job = try await store.job(id: jobID)
+            if job?.scope == .incremental {
+                incrementalScope = true
+                let incremental = try await resolveIncremental(
+                    job: job,
+                    identified: changeSet,
+                    workspaceURL: workspaceURL,
+                    jobID: jobID
+                )
+                changeSet = incremental.changeSet
+                parentFiles = incremental.parentFiles
+                parentFindings = incremental.parentFindings
+                interdiffEmpty = changeSet.files.isEmpty
+            }
             try await store.replaceJobFiles(changeSet.files)
-            try await store.appendEvent(jobID: jobID, level: .info, message: "identified")
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .info,
+                message: interdiffEmpty ? "interdiff_empty" : "identified"
+            )
             _ = try await store.apply(
                 jobID: jobID,
                 event: .identifyOK,
@@ -131,13 +153,34 @@ public struct ReviewPipeline: Sendable {
         }
         if try await stopped(jobID) { return }
 
-        let newWork = !files.isEmpty
+        let workspace = Workspace(root: workspaceURL)
+        let matcher = FindingMatcher(jobID: jobID)
+        let carried = incrementalScope
+            ? matcher.carryForward(
+                parent: parentFindings,
+                parentFiles: parentFiles,
+                child: ChangeSet(
+                    baseSHA: "",
+                    headSHA: "",
+                    patchRelativePath: "",
+                    files: files,
+                    source: .hashInterdiff
+                ),
+                workspace: workspace
+            )
+            : []
+        let remaining = remainingFiles(
+            interdiff: files,
+            parentFiles: parentFiles,
+            jobID: jobID,
+            workspace: workspace
+        )
         try await store.appendEvent(jobID: jobID, level: .info, message: "deterministic")
         let result: DeterministicRunResult
         if let deterministic {
             result = await deterministic.run(
-                files: files,
-                workspace: Workspace(root: workspaceURL),
+                files: remaining,
+                workspace: workspace,
                 rules: rules,
                 timeout: deterministicTimeout,
                 isCancelled: { [store, jobID] in
@@ -161,19 +204,50 @@ public struct ReviewPipeline: Sendable {
                 payloadJSON: warning.payloadJSON
             )
         }
-        if !result.drafts.isEmpty {
-            _ = try await store.insertFindings(result.drafts, jobID: jobID)
+
+        let carriedParents = Set(carried.compactMap(\.parentFindingID))
+        var unmatchedDet = 0
+        var detFindings: [Finding] = []
+        let now = Date()
+        for draft in result.drafts {
+            var finding = finding(from: draft, jobID: jobID, now: now)
+            if let collapsed = matcher.collapse(
+                child: finding,
+                parents: parentFindings,
+                childFiles: files,
+                parentFiles: parentFiles
+            ), let parentID = collapsed.parentFindingID, carriedParents.contains(parentID) {
+                continue
+            } else if let collapsed = matcher.collapse(
+                child: finding,
+                parents: parentFindings,
+                childFiles: files,
+                parentFiles: parentFiles
+            ) {
+                finding = collapsed
+            } else {
+                unmatchedDet += 1
+            }
+            detFindings.append(finding)
         }
+
+        let persist = carried + detFindings
+        if !persist.isEmpty {
+            try await store.insertParsedFindings(persist)
+        }
+
+        let newWork = !files.isEmpty || unmatchedDet > 0
+        let skipReviewer = skipAgent || !newWork
         _ = try await store.apply(
             jobID: jobID,
-            event: .deterministicDone(newWork: newWork, skipAgent: skipAgent)
+            event: .deterministicDone(newWork: newWork, skipAgent: skipReviewer)
         )
         try await store.appendEvent(
             jobID: jobID,
             level: .info,
-            message: skipAgent ? "succeeded" : "reviewing"
+            message: skipReviewer ? "succeeded" : "reviewing"
         )
-        if skipAgent { return }
+        if skipReviewer { return }
         if try await stopped(jobID) { return }
 
         guard let job = try await store.job(id: jobID) else { return }
@@ -200,9 +274,10 @@ public struct ReviewPipeline: Sendable {
         let review = await reviewer.run(
             AgentReviewRequest(
                 job: job,
-                workspace: Workspace(root: workspaceURL),
+                workspace: workspace,
                 files: files,
                 rules: rules,
+                parentFindings: parentFindings,
                 newWork: newWork,
                 isCancelled: {
                     (try? await store.job(id: jobID))?.status.isTerminal ?? true
@@ -210,8 +285,16 @@ public struct ReviewPipeline: Sendable {
             )
         )
         if try await stopped(jobID) { return }
-        if !review.findings.isEmpty {
-            try await store.insertParsedFindings(review.findings)
+        let reviewFindings = review.findings.map { finding in
+            matcher.collapse(
+                child: finding,
+                parents: parentFindings,
+                childFiles: files,
+                parentFiles: parentFiles
+            ) ?? finding
+        }
+        if !reviewFindings.isEmpty {
+            try await store.insertParsedFindings(reviewFindings)
         }
         if review.failed {
             _ = try await store.apply(
@@ -289,6 +372,88 @@ public struct ReviewPipeline: Sendable {
         JudgeHandoff.persistPostJudge(persisted, blobs: store.blobs, jobID: jobID)
         _ = try await store.apply(jobID: jobID, event: .judgeFinished)
         try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
+    }
+
+    private func resolveIncremental(
+        job: Job?,
+        identified: ChangeSet,
+        workspaceURL: URL,
+        jobID: JobID
+    ) async throws -> (changeSet: ChangeSet, parentFiles: [JobFile], parentFindings: [Finding]) {
+        guard let job, let parentID = job.parentJobID else {
+            throw IdentifyError(errorMessage: "incremental requires parent_job_id")
+        }
+        guard let parent = try await store.job(id: parentID),
+              parent.status == .succeeded,
+              let parentHead = nonempty(parent.headSHA),
+              nonempty(parent.baseSHA) != nil
+        else {
+            throw IdentifyError(errorMessage: "parent_job_id must reference a succeeded job with base_sha, head_sha, and job_files")
+        }
+        let parentFiles = try await store.jobFiles(id: parentID)
+        guard !parentFiles.isEmpty else {
+            throw IdentifyError(errorMessage: "parent_job_id must reference a succeeded job with base_sha, head_sha, and job_files")
+        }
+        let parentFindings = try await store.findings(jobID: parentID)
+        let parentWS = store.blobs.workspaceURL(jobID: parentID.rawValue)
+        let parentWorkspace = FileManager.default.fileExists(atPath: parentWS.path) ? parentWS : nil
+        let changeSet = try IncrementalDiff.compute(
+            identified: identified,
+            workspace: workspaceURL,
+            blobs: store.blobs,
+            jobID: jobID,
+            parentHeadSHA: parentHead,
+            parentFiles: parentFiles,
+            parentWorkspace: parentWorkspace,
+            timeout: identifyTimeout
+        )
+        return (changeSet, parentFiles, parentFindings)
+    }
+
+    private func remainingFiles(
+        interdiff: [JobFile],
+        parentFiles: [JobFile],
+        jobID: JobID,
+        workspace: Workspace
+    ) -> [JobFile] {
+        if !interdiff.isEmpty {
+            return interdiff.filter { $0.status != .deleted }
+        }
+        return parentFiles.compactMap { file in
+            guard file.status != .deleted else { return nil }
+            guard workspace.resolveForRead(file.path) != nil else { return nil }
+            var copy = file
+            copy.jobID = jobID
+            return copy
+        }
+    }
+
+    private func finding(from draft: FindingDraft, jobID: JobID, now: Date) -> Finding {
+        Finding(
+            id: FindingID.generate(at: now),
+            jobID: jobID,
+            ruleID: draft.ruleID,
+            phase: draft.phase,
+            severity: draft.severity,
+            title: draft.title,
+            message: draft.message,
+            filePath: draft.filePath,
+            startLine: draft.startLine,
+            endLine: draft.endLine,
+            snippet: draft.snippet,
+            agentRationale: draft.rationale,
+            confidence: draft.confidence,
+            lifecycle: .new,
+            suggestedPatch: draft.suggestedPatch,
+            fingerprint: Fingerprint.sha256(ruleID: draft.ruleID, path: draft.filePath, snippet: draft.snippet),
+            createdAt: now
+        )
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func stopped(_ jobID: JobID) async throws -> Bool {

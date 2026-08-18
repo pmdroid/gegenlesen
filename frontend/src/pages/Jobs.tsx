@@ -39,6 +39,12 @@ function InboxRail() {
   );
 }
 
+function summaryLine(job: JobListItem): string | null {
+  const summary = job.summary;
+  if (!summary) return null;
+  return `${summary.new} new · ${summary.still_open} still_open · ${summary.resolved} resolved · ${summary.relocated} relocated · ${summary.dropped} dropped`;
+}
+
 function pipelineLine(job: JobListItem): string {
   switch (job.status) {
     case "queued":
@@ -106,10 +112,21 @@ export function JobsPage() {
                 <span className={statusClass(job.status)}>{job.status}</span>
               </div>
               <div className="pipe">{pipelineLine(job)}</div>
-              <div className="pipe" style={{ borderBottom: 0 }}>
-                posted by CLI · scope: {job.scope} · the browser cannot start, retry, or cancel this
-                job
+              <div className="pipe" style={{ borderBottom: summaryLine(job) ? undefined : 0 }}>
+                posted by CLI · scope: {job.scope}
+                {job.parent_job_id ? (
+                  <>
+                    {" · "}
+                    <Link to={`/jobs/${job.parent_job_id}`}>parent {job.parent_job_id.slice(0, 8)}</Link>
+                  </>
+                ) : null}{" "}
+                · the browser cannot start, retry, or cancel this job
               </div>
+              {summaryLine(job) ? (
+                <div className="pipe" style={{ borderBottom: 0 }}>
+                  {summaryLine(job)}
+                </div>
+              ) : null}
             </div>
           ))
         )}
