@@ -107,6 +107,51 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
+    func minerFilePathsOmitMissingJobFiles() throws {
+        try withTempDir("miner-files") { root in
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(".meister", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try "prompt".write(
+                to: root.appendingPathComponent(".meister/prompt.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let corpusOnly = OpenCodeInvocation.minerFilePaths(workspace: Workspace(root: root))
+            #expect(corpusOnly == ["/workspace/.meister/prompt.md"])
+
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("job", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try "{}".write(
+                to: root.appendingPathComponent(".meister/findings.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try "{}".write(
+                to: root.appendingPathComponent("job/findings.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try "diff".write(
+                to: root.appendingPathComponent("job/change.patch"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let jobSourced = OpenCodeInvocation.minerFilePaths(workspace: Workspace(root: root))
+            #expect(jobSourced == [
+                "/workspace/.meister/prompt.md",
+                "/workspace/.meister/findings.json",
+                "/workspace/job/findings.json",
+                "/workspace/job/change.patch",
+            ])
+            #expect(!jobSourced.contains("/workspace/job/feedback.json"))
+        }
+    }
+
+    @Test
     func parallelSlotsAndEmptyFindingsSucceed() async throws {
         try await withTempDir("invoke-empty") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)

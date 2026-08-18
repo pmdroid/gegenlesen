@@ -104,6 +104,22 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
         ReviewContainers.slot(jobID, slot)
     }
 
+    /// Attach only files that exist. Job learn stages `job/` + findings; corpus mines do not.
+    public static func minerFilePaths(workspace: Workspace) -> [String] {
+        let candidates = [
+            ".meister/prompt.md",
+            ".meister/findings.json",
+            "job/findings.json",
+            "job/feedback.json",
+            "job/change.patch",
+        ]
+        return candidates.compactMap { relative in
+            let url = workspace.root.appendingPathComponent(relative)
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return "/workspace/" + relative
+        }
+    }
+
     public func reviewDockerRequest(
         jobID: JobID,
         slot: ReviewerSlot,
@@ -330,13 +346,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
                     agent: "miner",
                     model: model,
                     prompt: prompt,
-                    filePaths: [
-                        "/workspace/.meister/prompt.md",
-                        "/workspace/.meister/findings.json",
-                        "/workspace/job/findings.json",
-                        "/workspace/job/feedback.json",
-                        "/workspace/job/change.patch",
-                    ],
+                    filePaths: Self.minerFilePaths(workspace: workspace),
                     timeout: agentTimeout
                 )
                 await http.abort(baseURL: baseURL, password: password, sessionID: session)
