@@ -4,16 +4,18 @@ import PackageDescription
 let package = Package(
     name: "meister",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v15),
     ],
     products: [
         .executable(name: "MeisterAPI", targets: ["MeisterAPI"]),
+        .executable(name: "meister", targets: ["MeisterCLI"]),
         .library(name: "MeisterCore", targets: ["MeisterCore"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/hummingbird-project/swift-jobs.git", from: "1.4.0"),
     ],
     targets: [
         .target(
@@ -41,8 +43,19 @@ let package = Package(
                 .target(name: "MeisterCore"),
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "Jobs", package: "swift-jobs"),
             ],
             path: "Sources/MeisterAPI",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .executableTarget(
+            name: "MeisterCLI",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/MeisterCLI",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]

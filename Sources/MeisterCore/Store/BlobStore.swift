@@ -24,6 +24,10 @@ public struct BlobStore: Sendable {
         archives.appendingPathComponent("\(jobID).tar.gz", isDirectory: false)
     }
 
+    public func identifyMetaURL(jobID: String) -> URL {
+        archives.appendingPathComponent("\(jobID).identify.json", isDirectory: false)
+    }
+
     public func patchURL(jobID: String) -> URL {
         patches.appendingPathComponent("\(jobID).patch", isDirectory: false)
     }

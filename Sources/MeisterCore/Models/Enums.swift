@@ -8,3 +8,78 @@ public enum Language: String, Codable, Sendable, Equatable {
     case swift, typescript, javascript, python, go, rust, jvm
     case c, ruby, csharp, shell, yaml, json, markdown, other
 }
+
+public enum JobStatus: String, Codable, CaseIterable, Sendable, Equatable {
+    case queued
+    case unpacking
+    case identifying
+    case selectingRules = "selecting_rules"
+    case deterministic
+    case reviewing
+    case judging
+    case succeeded
+    case failed
+    case cancelled
+
+    public var isTerminal: Bool {
+        switch self {
+        case .succeeded, .failed, .cancelled: true
+        default: false
+        }
+    }
+
+    public var isActive: Bool { !isTerminal }
+}
+
+public enum JobScope: String, Codable, Sendable, Equatable {
+    case full
+    case incremental
+}
+
+public enum ReviewerSlot: String, Codable, Sendable, Equatable {
+    case modelA = "model_a"
+    case modelB = "model_b"
+}
+
+public enum Severity: String, Codable, Sendable, Equatable {
+    case info, warning, error
+
+    public var rank: Int {
+        switch self {
+        case .info: 0
+        case .warning: 1
+        case .error: 2
+        }
+    }
+}
+
+public enum FindingPhase: String, Codable, Sendable, Equatable {
+    case deterministic
+    case agent
+}
+
+public enum JudgeVerdict: String, Codable, Sendable, Equatable {
+    case keep, drop, downgrade, unavailable
+}
+
+public enum FindingLifecycle: String, Codable, Sendable, Equatable {
+    case new
+    case stillOpen = "still_open"
+    case resolved
+    case relocated
+}
+
+public enum EventLevel: String, Codable, Sendable, Equatable {
+    case debug, info, warning, error
+}
+
+public enum ErrorCode: String, Codable, Sendable, Equatable {
+    case badRequest = "bad_request"
+    case notFound = "not_found"
+    case conflict
+    case payloadTooLarge = "payload_too_large"
+    case unsupportedMediaType = "unsupported_media_type"
+    case unprocessable
+    case insufficientStorage = "insufficient_storage"
+    case `internal` = "internal"
+}

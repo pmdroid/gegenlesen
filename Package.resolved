@@ -1,5 +1,5 @@
 {
-  "originHash" : "b9a60b3d0865790ac8abcf268fb39e68ee8d9c9d7ddce2da952cda266bcd75a8",
+  "originHash" : "1dd604fad184112fefb251556588d3211eb9fb966ab6a54fd14f4e1b3fe4afe9",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -146,6 +146,15 @@
       }
     },
     {
+      "identity" : "swift-extras-base64",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swift-extras/swift-extras-base64.git",
+      "state" : {
+        "revision" : "dc8121fdd2b444c97d6b0534e8ad4ddecbe0d5f4",
+        "version" : "1.0.0"
+      }
+    },
+    {
       "identity" : "swift-http-structured-headers",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-http-structured-headers.git",
@@ -161,6 +170,15 @@
       "state" : {
         "revision" : "db774a277f60063a32d854f2980299caf06da041",
         "version" : "1.6.0"
+      }
+    },
+    {
+      "identity" : "swift-jobs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/hummingbird-project/swift-jobs.git",
+      "state" : {
+        "revision" : "329b54d39f461c6dc17f36adb8f0af615c4edee4",
+        "version" : "1.4.0"
       }
     },
     {

@@ -1,4 +1,4 @@
-import type { HealthDTO, SettingsDTO } from "./api";
+import type { HealthDTO, JobListResponse, SettingsDTO } from "./api";
 
 async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -14,4 +14,8 @@ export function getHealth(): Promise<HealthDTO> {
 
 export function getSettings(): Promise<SettingsDTO> {
   return getJSON("/api/settings");
+}
+
+export function listJobs(): Promise<JobListResponse> {
+  return getJSON("/api/jobs");
 }

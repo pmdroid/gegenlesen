@@ -1,0 +1,256 @@
+import Foundation
+import MeisterCore
+import Vapor
+
+enum JobsRoute {
+    static func register(_ app: Application) {
+        app.post("api", "jobs", use: create)
+        app.get("api", "jobs", use: list)
+        app.get("api", "jobs", ":id", use: detail)
+        app.get("api", "jobs", ":id", "events", use: events)
+        app.post("api", "jobs", ":id", "cancel", use: cancel)
+    }
+
+    static func create(_ req: Request) async throws -> Response {
+        let limits = req.application.meisterConfig.limits
+        let parsed = try parseMultipart(req, archiveLimit: limits.archiveBytes)
+        let meta = try decodeMeta(parsed.meta)
+
+        if meta.scope == .incremental {
+            guard let parentID = meta.parentJobID, !parentID.rawValue.isEmpty else {
+                throw APIError.badRequest("incremental requires parent_job_id")
+            }
+            let parent = try await req.application.meisterStore.parentState(id: parentID)
+            if !parent.exists {
+                throw APIError.unprocessable(
+                    "parent_job_id must reference a succeeded job",
+                    details: ["parent_job_id": parentID.rawValue]
+                )
+            }
+            if !parent.succeeded || !parent.hasSHAs || !parent.hasFiles {
+                throw APIError.unprocessable(
+                    "parent_job_id must reference a succeeded job with base_sha, head_sha, and job_files",
+                    details: ["parent_job_id": parentID.rawValue]
+                )
+            }
+        }
+
+        let active = try await req.application.meisterStore.activeArchiveBytes()
+        if active + parsed.archive.count > limits.queuedArchiveBytes {
+            throw APIError.insufficientStorage("queued archive bytes would exceed limit")
+        }
+
+        let id = JobID.generate()
+        let now = Date()
+        let config = req.application.meisterConfig
+        let title = nonempty(meta.title) ?? parsed.filename
+        let job = Job(
+            id: id,
+            createdAt: now,
+            updatedAt: now,
+            status: .queued,
+            scope: meta.scope,
+            parentJobID: meta.parentJobID,
+            title: title,
+            reviewerAModelID: config.models.modelA,
+            reviewerBModelID: config.models.modelB,
+            judgeModelID: config.judgeModel,
+            baseSHA: nonempty(meta.baseSHA),
+            headSHA: nonempty(meta.headSHA),
+            archiveSHA256: ContentHash.sha256(parsed.archive),
+            archiveBytes: parsed.archive.count
+        )
+
+        let blobs = req.application.meisterStore.blobs
+        try blobs.ensureLayout()
+        try parsed.archive.write(to: blobs.archiveURL(jobID: id.rawValue))
+        if let patch = parsed.patch, !patch.isEmpty {
+            try patch.write(to: blobs.patchURL(jobID: id.rawValue))
+        }
+        let identify = IdentifyMetaFile(
+            baseSHA: nonempty(meta.baseSHA),
+            headSHA: nonempty(meta.headSHA),
+            baseRef: nonempty(meta.baseRef),
+            headRef: nonempty(meta.headRef)
+        )
+        try JSONEncoder().encode(identify).write(to: blobs.identifyMetaURL(jobID: id.rawValue))
+
+        try await req.application.meisterStore.insertJob(job)
+        try await req.application.meisterStore.appendEvent(jobID: id, level: .info, message: "queued")
+        try await req.application.meisterJobs.pushReview(id)
+
+        let position = try await req.application.meisterStore.queuePosition(createdAt: now)
+        let body = JobAccepted(id: id, status: .queued, queuePosition: max(position, 1))
+        return try encoded(body, status: .accepted, on: req)
+    }
+
+    static func list(_ req: Request) async throws -> JobListResponse {
+        var limit = req.query[Int.self, at: "limit"] ?? 50
+        if limit < 1 { limit = 1 }
+        if limit > 200 { limit = 200 }
+        let offset = max(req.query[Int.self, at: "offset"] ?? 0, 0)
+        let status: JobStatus?
+        if let raw = req.query[String.self, at: "status"] {
+            guard let parsed = JobStatus(rawValue: raw) else {
+                throw APIError.badRequest("invalid status")
+            }
+            status = parsed
+        } else {
+            status = nil
+        }
+        let page = try await req.application.meisterStore.listJobs(
+            limit: limit,
+            offset: offset,
+            status: status
+        )
+        var items: [JobListItem] = []
+        items.reserveCapacity(page.jobs.count)
+        for job in page.jobs {
+            let position = try await req.application.meisterStore.queuePosition(for: job)
+            let summary = try await req.application.meisterStore.summary(jobID: job.id)
+            items.append(JobListItem.from(job, queuePosition: position, summary: summary))
+        }
+        return JobListResponse(jobs: items, total: page.total)
+    }
+
+    static func detail(_ req: Request) async throws -> JobDetail {
+        let job = try await requireJob(req)
+        return try await jobDetail(job, store: req.application.meisterStore)
+    }
+
+    static func events(_ req: Request) async throws -> JobEventsResponse {
+        let job = try await requireJob(req)
+        let events = try await req.application.meisterStore.events(jobID: job.id)
+        return JobEventsResponse(events: events.map(JobEventDTO.init(event:)))
+    }
+
+    static func cancel(_ req: Request) async throws -> JobDetail {
+        let job = try await requireJob(req)
+        if job.status.isTerminal {
+            throw APIError.conflict("job is already \(job.status.rawValue)")
+        }
+        _ = try await req.application.meisterStore.apply(jobID: job.id, event: .cancel)
+        await req.application.meisterJobs.cancel(job.id)
+        let docker = req.application.meisterDocker
+        if let name = job.containerName { await docker.kill(containerName: name) }
+        if let name = job.containerNameA { await docker.kill(containerName: name) }
+        if let name = job.containerNameB { await docker.kill(containerName: name) }
+        try await req.application.meisterStore.appendEvent(jobID: job.id, level: .info, message: "cancelled")
+        guard let updated = try await req.application.meisterStore.job(id: job.id) else {
+            throw APIError.notFound()
+        }
+        return try await jobDetail(updated, store: req.application.meisterStore)
+    }
+
+    private static func requireJob(_ req: Request) async throws -> Job {
+        guard let raw = req.parameters.get("id") else {
+            throw APIError.notFound()
+        }
+        guard let job = try await req.application.meisterStore.job(id: JobID(raw)) else {
+            throw APIError.notFound()
+        }
+        return job
+    }
+
+    private static func jobDetail(_ job: Job, store: Store) async throws -> JobDetail {
+        let position = try await store.queuePosition(for: job)
+        let summary = try await store.summary(jobID: job.id)
+        let findings = try await store.findings(jobID: job.id)
+        let events = try await store.events(jobID: job.id)
+        return JobDetail.from(
+            job,
+            queuePosition: position,
+            summary: summary,
+            findings: findings,
+            events: events
+        )
+    }
+
+    private static func decodeMeta(_ data: Data) throws -> CreateJobMeta {
+        do {
+            return try JSONDecoder().decode(CreateJobMeta.self, from: data)
+        } catch {
+            throw APIError.badRequest("meta is not valid JSON")
+        }
+    }
+
+    private static func parseMultipart(
+        _ req: Request,
+        archiveLimit: Int
+    ) throws -> (archive: Data, filename: String, meta: Data, patch: Data?) {
+        struct Parts: Content {
+            var archive: File?
+            var meta: File?
+            var patch: File?
+            var metaText: String?
+
+            enum CodingKeys: String, CodingKey {
+                case archive, meta, patch
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                archive = try container.decodeIfPresent(File.self, forKey: .archive)
+                patch = try container.decodeIfPresent(File.self, forKey: .patch)
+                if let file = try? container.decode(File.self, forKey: .meta) {
+                    meta = file
+                    metaText = nil
+                } else {
+                    meta = nil
+                    metaText = try container.decodeIfPresent(String.self, forKey: .meta)
+                }
+            }
+        }
+
+        let parts: Parts
+        do {
+            parts = try req.content.decode(Parts.self)
+        } catch {
+            throw APIError.badRequest("missing archive/meta")
+        }
+        guard let archiveFile = parts.archive else {
+            throw APIError.badRequest("missing archive")
+        }
+        let metaData: Data
+        if let text = parts.metaText {
+            guard let data = text.data(using: .utf8) else {
+                throw APIError.badRequest("meta is not valid JSON")
+            }
+            metaData = data
+        } else if let file = parts.meta {
+            metaData = Data(buffer: file.data)
+        } else {
+            throw APIError.badRequest("missing meta")
+        }
+
+        let filename = archiveFile.filename
+        let contentType = archiveFile.contentType?.serialize() ?? ""
+        if filename.lowercased().hasSuffix(".zip") || contentType.contains("zip") {
+            throw APIError.unsupportedMediaType("zip archives are not accepted")
+        }
+
+        let archive = Data(buffer: archiveFile.data)
+        if archive.count > archiveLimit {
+            throw APIError.payloadTooLarge("archive exceeds archive_bytes")
+        }
+        if archive.count >= 2, archive[0] == 0x50, archive[1] == 0x4B {
+            throw APIError.unsupportedMediaType("zip archives are not accepted")
+        }
+
+        let patch = parts.patch.map { Data(buffer: $0.data) }
+        return (archive, filename, metaData, patch)
+    }
+
+    private static func encoded<T: Content>(_ body: T, status: HTTPResponseStatus, on req: Request) throws -> Response {
+        var headers = HTTPHeaders()
+        headers.contentType = .json
+        let data = try JSONCoding.encoder.encode(body)
+        return Response(status: status, headers: headers, body: .init(data: data))
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}

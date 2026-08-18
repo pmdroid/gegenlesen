@@ -23,6 +23,19 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 .stream { padding: 16px 20px; font-size: 12.5px; line-height: 1.6; }
 .logline { color: #557a58; white-space: pre-wrap; }
 .logline b { color: #a5d6a7; font-weight: 400; }
+.jobblock { border: 1px solid #1e2b1a; border-radius: 6px; margin: 14px 0; background: #0e120b; }
+.jobhead {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid #1e2b1a;
+}
+.jobhead .t { color: #e8f5e9; font-weight: 700; }
+.jobhead .sha { color: #557a58; }
+.st { padding: 1px 7px; border-radius: 3px; font-size: 11px; }
+.st.ok { background: #14301a; color: #81c784; }
+.st.run { background: #2b2a10; color: #d4c95a; }
+.st.fail { background: #331414; color: #e57373; }
+.pipe { padding: 6px 14px; color: #557a58; font-size: 11.5px; border-bottom: 1px solid #1e2b1a; }
+.pipe b { color: #a5d6a7; font-weight: 400; }
 
 .empty {
   border: 1px dashed #2e4a26; border-radius: 6px; padding: 26px 18px;

@@ -10,19 +10,45 @@ func configure(_ app: Application) async throws {
 func configure(
     _ app: Application,
     config: MeisterConfig,
-    allowRemote: Bool? = nil
+    allowRemote: Bool? = nil,
+    docker: (any DockerExecuting)? = nil,
+    startQueue: Bool = true
 ) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
         allowRemote: allowRemote ?? BindPolicy.allowRemoteFromEnvironment()
     )
 
+    JSONCoding.install()
+
     app.meisterConfig = config
     app.http.server.configuration.hostname = config.bind
     app.http.server.configuration.port = config.port
 
+    let maxBody = config.limits.archiveBytes + 1_048_576
+    app.routes.defaultMaxBodySize = ByteCount(value: maxBody)
+
+    app.middleware = .init()
+    app.middleware.use(APIErrorMiddleware())
+
     let dataDir = URL(fileURLWithPath: config.dataDir, isDirectory: true)
     app.meisterStore = try Store.open(dataDir: dataDir)
+
+    let runtime = JobRuntime(store: app.meisterStore, config: config, logger: app.logger)
+    app.meisterJobs = runtime
+    app.meisterDocker = docker ?? DockerCLI()
+    app.lifecycle.use(JobRuntimeLifecycle())
+    if startQueue {
+        runtime.start()
+    }
+
+    await BootReconcile { message, metadata in
+        var md = Logger.Metadata()
+        for (key, value) in metadata {
+            md[key] = .string(value)
+        }
+        app.logger.info(.init(stringLiteral: message), metadata: md)
+    }.run(store: app.meisterStore, docker: app.meisterDocker, jobs: runtime)
 
     let publicDirectory = spaPublicDirectory(workingDirectory: app.directory.workingDirectory)
     if FileManager.default.fileExists(atPath: publicDirectory) {
@@ -38,6 +64,8 @@ func configure(
     app.get("api", "settings") { req in
         req.application.meisterConfig.settingsDTO
     }
+
+    JobsRoute.register(app)
 
     // RoutingKit does not match `/` against a lone `**`, so register the empty path too.
     let spa: @Sendable (Request) async throws -> Response = { req in
