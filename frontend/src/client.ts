@@ -11,10 +11,24 @@ import type {
   TranscriptPhase,
 } from "./api";
 
+export class HTTPError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number) {
+    super(`${path} ${status}`);
+    this.name = "HTTPError";
+    this.status = status;
+  }
+}
+
+export function isNotFound(error: unknown): boolean {
+  return error instanceof HTTPError && error.status === 404;
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(path);
   if (!res.ok) {
-    throw new Error(`${path} ${res.status}`);
+    throw new HTTPError(path, res.status);
   }
   return res.json() as Promise<T>;
 }
@@ -22,7 +36,7 @@ async function getJSON<T>(path: string): Promise<T> {
 async function getText(path: string): Promise<string> {
   const res = await fetch(path);
   if (!res.ok) {
-    throw new Error(`${path} ${res.status}`);
+    throw new HTTPError(path, res.status);
   }
   return res.text();
 }
@@ -34,7 +48,10 @@ async function sendJSON<T>(path: string, method: string, body?: unknown): Promis
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(`${path} ${res.status}`);
+    throw new HTTPError(path, res.status);
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json() as Promise<T>;
 }
@@ -66,7 +83,7 @@ export function getJobTranscript(id: string, phase: TranscriptPhase): Promise<st
 export function postFindingFeedback(
   id: string,
   body: FindingFeedbackRequest,
-): Promise<FindingFeedback> {
+): Promise<FindingFeedback | undefined> {
   return sendJSON(`/api/findings/${id}/feedback`, "POST", body);
 }
 

@@ -145,7 +145,12 @@ function FindingRow({
           type="button"
           className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
           disabled={pending}
-          onClick={() => onFeedback(finding.id, { verdict: "should_be_rule", comment: comment.trim() || undefined })}
+          onClick={() =>
+            onFeedback(finding.id, {
+              verdict: "should_be_rule",
+              comment: commentOpen ? comment.trim() || undefined : undefined,
+            })
+          }
         >
           → should be a rule
         </button>

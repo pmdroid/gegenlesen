@@ -137,7 +137,7 @@ enum EventLevel: String, Codable { case debug, info, warning, error }
 
 enum AgentPhase: String, Codable { case review, judge, command, openapiBreak = "openapi_break", miner }
 
-enum TranscriptPhase: String, Codable { case review, judge } // query param only
+enum TranscriptPhase: String, Codable { case review, reviewA = "review_a", reviewB = "review_b", judge } // query param only
 
 enum Language: String, Codable {
     case swift, typescript, javascript, python, go, rust, jvm
@@ -639,8 +639,10 @@ Multipart parser abort size = `archive_bytes + 1 MiB`. Do not buffer then reject
 | `GET` | `/api/jobs` | `limit` `offset` `status` | `200 { "jobs": [JobListItem], "total": n }` |
 | `GET` | `/api/jobs/:id` | — | `200 JobDetail` |
 | `GET` | `/api/jobs/:id/events` | — | `200 { "events": [JobEvent] }` |
-| `GET` | `/api/jobs/:id/transcript` | `phase=review\|judge` | `200` NDJSON (redacted) |
+| `GET` | `/api/jobs/:id/transcript` | `phase=review\|review_a\|review_b\|judge` | `200` NDJSON (redacted) |
 | `POST` | `/api/jobs/:id/cancel` | — | `200 JobDetail` |
+| `GET` | `/api/jobs/:id/feedback` | — | `200 { "feedback": [FindingFeedback] }` |
+| `POST` | `/api/findings/:id/feedback` | `{ verdict, comment? }` or `{ reaction }` | `201` row, `200` reused `should_be_rule`, `204` reaction cleared |
 | `GET` | `/api/rules` | `enabled` `kind` `provenance` | `200 { "rules": [Rule] }` |
 | `GET` | `/api/rules/:id` | — | `200 Rule` |
 | `POST` | `/api/rules` | `RuleUpsert` | `201 Rule` |

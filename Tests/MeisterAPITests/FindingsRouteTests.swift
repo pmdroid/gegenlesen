@@ -29,7 +29,8 @@ struct FindingsRouteTests {
                 }
 
                 let cleared = try await postFeedback(app, finding.id.rawValue, json: #"{"reaction":"\#(alias)"}"#)
-                #expect(cleared.status == .created)
+                #expect(cleared.status == .noContent)
+                #expect(cleared.body.readableBytes == 0)
                 try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/feedback") {
                     res async throws in
                     let listed = try jsonObject(res)
@@ -87,6 +88,43 @@ struct FindingsRouteTests {
                 #expect(instruction.contains(finding.title))
                 #expect(instruction.contains(finding.message))
                 #expect(instruction.contains("ban print in Auth"))
+            }
+
+            let again = try await postFeedback(
+                app,
+                finding.id.rawValue,
+                json: #"{"verdict":"should_be_rule","comment":"still ban print"}"#
+            )
+            #expect(again.status == .ok)
+            #expect(try jsonObject(again)["suggested_rule_id"] as? String == ruleID)
+            try await app.testing().test(.GET, "/api/rules?provenance=suggested") { res async throws in
+                let body = try jsonObject(res)
+                let rules = try #require(body["rules"] as? [[String: Any]])
+                #expect(rules.filter { $0["id"] as? String == ruleID }.count == 1)
+                #expect(rules.filter { ($0["provenance"] as? String) == "suggested" }.count == 1)
+                let instruction = try #require(
+                    (rules.first?["payload"] as? [String: Any])?["instruction"] as? String
+                )
+                #expect(instruction.contains("still ban print"))
+            }
+        }
+    }
+
+    @Test
+    func shouldBeRuleWithoutPathUsesStarLanguage() async throws {
+        try await withMeisterApp { app in
+            let finding = try await seedFinding(app, filePath: nil)
+            let res = try await postFeedback(
+                app,
+                finding.id.rawValue,
+                json: #"{"verdict":"should_be_rule"}"#
+            )
+            #expect(res.status == .created)
+            let ruleID = try #require(try jsonObject(res)["suggested_rule_id"] as? String)
+            try await app.testing().test(.GET, "/api/rules/\(ruleID)") { res async throws in
+                let rule = try jsonObject(res)
+                #expect(rule["languages"] as? [String] == ["*"])
+                #expect(rule["path_globs"] as? [String] == ["**/*"])
             }
         }
     }
@@ -169,7 +207,7 @@ private let feedbackKeys: Set<String> = [
     "id", "finding_id", "job_id", "ts", "verdict", "reaction", "comment", "suggested_rule_id",
 ]
 
-private func seedFinding(_ app: Application, filePath: String = "Sources/Auth/Session.swift") async throws -> Finding {
+private func seedFinding(_ app: Application, filePath: String? = "Sources/Auth/Session.swift") async throws -> Finding {
     let now = Date()
     let job = Job(
         id: JobID.generate(),

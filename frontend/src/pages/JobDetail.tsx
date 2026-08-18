@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest, type JobListItem, type JobStatus } from "../api";
-import { getJob, getJobFeedback, postFindingFeedback } from "../client";
+import { getJob, getJobFeedback, isNotFound, postFindingFeedback } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -125,6 +125,9 @@ export function JobDetailPage() {
         pending={send.isPending}
         onFeedback={(findingId, body) => send.mutate({ findingId, body })}
       />
+      {feedback.isError && !isNotFound(feedback.error) ? (
+        <div className="formerr">could not load feedback</div>
+      ) : null}
       {send.isError ? <div className="formerr">could not save feedback</div> : null}
 
       <h1>log tail</h1>

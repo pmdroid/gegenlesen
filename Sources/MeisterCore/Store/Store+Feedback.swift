@@ -29,24 +29,46 @@ extension Store {
         }
     }
 
-    public func deleteFeedback(id: Int) throws {
-        try write { db in
-            try db.execute(sql: "DELETE FROM finding_feedback WHERE id = ?", arguments: [id])
-        }
-    }
-
-    public func recordFindingFeedback(
+    public func applyFindingFeedback(
         finding: Finding,
         verdict: FeedbackVerdict,
         reaction: FeedbackReaction?,
         comment: String?,
         now: Date = Date()
-    ) throws -> FindingFeedback {
+    ) throws -> FeedbackWriteResult {
         try write { db in
+            let existing = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM finding_feedback WHERE finding_id = ? ORDER BY id",
+                arguments: [finding.id.rawValue]
+            ).map(FindingFeedback.init(row:))
+
+            if let reaction,
+               let current = existing.reversed().first(where: { $0.verdict == .agree || $0.verdict == .disagree }),
+               current.reaction == reaction {
+                try db.execute(sql: "DELETE FROM finding_feedback WHERE id = ?", arguments: [current.id])
+                return .cleared
+            }
+
             var suggestedRuleID: RuleID?
             if verdict == .shouldBeRule {
+                if let current = existing.reversed().first(where: { $0.verdict.isCurrentVerdict }),
+                   current.verdict == .shouldBeRule,
+                   let existingID = current.suggestedRuleID {
+                    if let comment {
+                        try updateSuggestedRule(
+                            id: existingID,
+                            finding: finding,
+                            comment: comment,
+                            now: now,
+                            db: db
+                        )
+                    }
+                    return .reused(current)
+                }
                 suggestedRuleID = try insertSuggestedRule(from: finding, comment: comment, now: now, db: db)
             }
+
             try db.execute(
                 sql: """
                     INSERT INTO finding_feedback (
@@ -71,9 +93,15 @@ extension Store {
             ) else {
                 throw StoreJobError.notFound
             }
-            return FindingFeedback(row: row)
+            return .created(FindingFeedback(row: row))
         }
     }
+}
+
+public enum FeedbackWriteResult: Sendable, Equatable {
+    case created(FindingFeedback)
+    case reused(FindingFeedback)
+    case cleared
 }
 
 private func insertSuggestedRule(
@@ -91,8 +119,11 @@ private func insertSuggestedRule(
             parts.append(trimmed)
         }
     }
-    let language = finding.filePath.map(LanguageMap.language(forPath:))
-    let languages = language.map { [$0.rawValue] } ?? []
+    let language = finding.filePath.flatMap { path -> Language? in
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : LanguageMap.language(forPath: trimmed)
+    }
+    let languages = language.map { [$0.rawValue] } ?? ["*"]
     let pathGlobs = [LanguageMap.pathGlob(for: language ?? .other)]
     let rule = Rule(
         id: id,
@@ -111,6 +142,29 @@ private func insertSuggestedRule(
     try insertRuleRow(rule, db: db)
     try refreshRuleFTS(id: rule.id, db: db)
     return id
+}
+
+private func updateSuggestedRule(
+    id: RuleID,
+    finding: Finding,
+    comment: String,
+    now: Date,
+    db: Database
+) throws {
+    guard var rule = try Row.fetchOne(
+        db,
+        sql: "SELECT * FROM rules WHERE id = ?",
+        arguments: [id.rawValue]
+    ).map(Rule.init(row:)) else { return }
+    var parts = [finding.title, finding.message]
+    let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty {
+        parts.append(trimmed)
+    }
+    rule.payload = .semantic(instruction: parts.joined(separator: "\n\n"), fewShots: [])
+    rule.body = comment
+    rule.updatedAt = now
+    try updateRuleRow(rule, db: db)
 }
 
 private func allocateRuleID(_ base: RuleID, db: Database) throws -> RuleID {

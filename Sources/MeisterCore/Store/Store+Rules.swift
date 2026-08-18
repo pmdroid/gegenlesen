@@ -79,34 +79,7 @@ extension Store {
 
     public func updateRule(_ rule: Rule) throws {
         try write { db in
-            try db.execute(
-                sql: """
-                    UPDATE rules SET
-                      title = ?, severity = ?, kind = ?, enabled = ?, deleted_at = ?,
-                      provenance = ?, languages_json = ?, path_globs_json = ?,
-                      payload_json = ?, examples_json = ?, source_pr_refs_json = ?,
-                      promoted_from_rule_id = ?, body_md = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                arguments: [
-                    rule.title,
-                    rule.severity.rawValue,
-                    rule.kind.rawValue,
-                    rule.enabled ? 1 : 0,
-                    rule.deletedAt.map(ISO8601Dates.string(from:)),
-                    rule.provenance.rawValue,
-                    encodeJSON(rule.languages),
-                    encodeJSON(rule.pathGlobs),
-                    encodeJSON(rule.payload),
-                    encodeJSON(rule.examples),
-                    encodeJSON(rule.sourcePRRefs),
-                    rule.promotedFromRuleID?.rawValue,
-                    rule.body,
-                    ISO8601Dates.string(from: rule.updatedAt),
-                    rule.id.rawValue,
-                ]
-            )
-            try refreshRuleFTS(id: rule.id, db: db)
+            try updateRuleRow(rule, db: db)
         }
     }
 
@@ -189,6 +162,37 @@ extension Store {
 
 }
 
+func updateRuleRow(_ rule: Rule, db: Database) throws {
+    try db.execute(
+        sql: """
+            UPDATE rules SET
+              title = ?, severity = ?, kind = ?, enabled = ?, deleted_at = ?,
+              provenance = ?, languages_json = ?, path_globs_json = ?,
+              payload_json = ?, examples_json = ?, source_pr_refs_json = ?,
+              promoted_from_rule_id = ?, body_md = ?, updated_at = ?
+            WHERE id = ?
+            """,
+        arguments: [
+            rule.title,
+            rule.severity.rawValue,
+            rule.kind.rawValue,
+            rule.enabled ? 1 : 0,
+            rule.deletedAt.map(ISO8601Dates.string(from:)),
+            rule.provenance.rawValue,
+            encodeJSON(rule.languages),
+            encodeJSON(rule.pathGlobs),
+            encodeJSON(rule.payload),
+            encodeJSON(rule.examples),
+            encodeJSON(rule.sourcePRRefs),
+            rule.promotedFromRuleID?.rawValue,
+            rule.body,
+            ISO8601Dates.string(from: rule.updatedAt),
+            rule.id.rawValue,
+        ]
+    )
+    try refreshRuleFTS(id: rule.id, db: db)
+}
+
 func insertRuleRow(_ rule: Rule, db: Database) throws {
     try db.execute(
         sql: """
@@ -243,7 +247,7 @@ func refreshRuleFTS(id: RuleID, db: Database) throws {
 }
 
 extension Rule {
-    fileprivate init(row: Row) {
+    init(row: Row) {
         let languages = decodeJSON([String].self, row.optionalString("languages_json")) ?? []
         let globs = decodeJSON([String].self, row.optionalString("path_globs_json")) ?? []
         let payload = decodeJSON(RulePayload.self, row.optionalString("payload_json"))

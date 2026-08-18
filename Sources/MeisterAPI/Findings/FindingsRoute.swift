@@ -46,22 +46,20 @@ enum FindingsRoute {
             throw APIError.badRequest("comment is required")
         }
 
-        if let reaction {
-            let existing = try await store.feedback(findingID: finding.id)
-            if let current = existing.reversed().first(where: { $0.verdict == .agree || $0.verdict == .disagree }),
-               current.reaction == reaction {
-                try await store.deleteFeedback(id: current.id)
-                return try encoded(FindingFeedbackDTO(feedback: current), status: .created, on: req)
-            }
-        }
-
-        let row = try await store.recordFindingFeedback(
+        let result = try await store.applyFindingFeedback(
             finding: finding,
             verdict: verdict,
             reaction: reaction,
             comment: comment
         )
-        return try encoded(FindingFeedbackDTO(feedback: row), status: .created, on: req)
+        switch result {
+        case .created(let row):
+            return try encoded(FindingFeedbackDTO(feedback: row), status: .created, on: req)
+        case .reused(let row):
+            return try encoded(FindingFeedbackDTO(feedback: row), status: .ok, on: req)
+        case .cleared:
+            return Response(status: .noContent)
+        }
     }
 
     private static func nonempty(_ value: String?) -> String? {

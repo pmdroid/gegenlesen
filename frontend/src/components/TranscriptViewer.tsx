@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { TranscriptPhase } from "../api";
-import { getJobTranscript } from "../client";
+import { getJobTranscript, isNotFound } from "../client";
 
 const phases: TranscriptPhase[] = ["review_a", "review_b", "judge"];
 
@@ -37,10 +37,12 @@ export function TranscriptViewer({
           ))}
         </div>
       </div>
-      {transcript.isError ? (
+      {transcript.isError && isNotFound(transcript.error) ? (
         <div className="pipe" style={{ borderBottom: 0 }}>
           no redacted NDJSON for {phase} yet
         </div>
+      ) : transcript.isError ? (
+        <div className="formerr">could not load transcript for {phase}</div>
       ) : (
         <pre className="transcript">{transcript.data || "…"}</pre>
       )}

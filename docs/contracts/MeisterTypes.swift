@@ -151,7 +151,10 @@ enum AgentPhase: String, Codable, Sendable {
 }
 
 enum TranscriptPhase: String, Codable, Sendable {
-    case review, judge
+    case review
+    case reviewA = "review_a"
+    case reviewB = "review_b"
+    case judge
 }
 
 enum Language: String, Codable, Sendable {

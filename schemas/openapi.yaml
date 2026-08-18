@@ -131,7 +131,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [review, judge]
+            enum: [review, review_a, review_b, judge]
       responses:
         "200":
           description: redacted NDJSON
@@ -151,6 +151,42 @@ paths:
               schema: { $ref: "#/components/schemas/JobDetail" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/feedback:
+    get:
+      operationId: listJobFeedback
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FindingFeedbackListResponse" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/findings/{id}/feedback:
+    post:
+      operationId: createFindingFeedback
+      parameters:
+        - $ref: "#/components/parameters/FindingId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FindingFeedbackRequest" }
+      responses:
+        "201":
+          description: new feedback row
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FindingFeedback" }
+        "200":
+          description: reused existing should_be_rule draft
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FindingFeedback" }
+        "204":
+          description: current reaction cleared
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/rules:
     get:
       operationId: listRules
@@ -318,6 +354,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    FindingId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^fnd_" }
   responses:
     Error:
       description: error envelope
@@ -365,6 +406,12 @@ components:
     EventLevel:
       type: string
       enum: [debug, info, warning, error]
+    FeedbackVerdict:
+      type: string
+      enum: [agree, disagree, comment, should_be_rule]
+    FeedbackReaction:
+      type: string
+      enum: [thumbs_up, thumbs_down]
     ErrorCode:
       type: string
       enum:
@@ -499,6 +546,39 @@ components:
           type: array
           items: { $ref: "#/components/schemas/JobListItem" }
         total: { type: integer, minimum: 0 }
+    FindingFeedback:
+      type: object
+      additionalProperties: false
+      required: [id, finding_id, job_id, ts, verdict, reaction, comment, suggested_rule_id]
+      properties:
+        id: { type: integer }
+        finding_id: { type: string, pattern: "^fnd_" }
+        job_id: { type: string, format: uuid }
+        ts: { type: string, format: date-time }
+        verdict: { $ref: "#/components/schemas/FeedbackVerdict" }
+        reaction:
+          oneOf:
+            - { $ref: "#/components/schemas/FeedbackReaction" }
+            - { type: "null" }
+        comment: { type: ["string", "null"] }
+        suggested_rule_id: { type: ["string", "null"] }
+    FindingFeedbackListResponse:
+      type: object
+      additionalProperties: false
+      required: [feedback]
+      properties:
+        feedback:
+          type: array
+          items: { $ref: "#/components/schemas/FindingFeedback" }
+    FindingFeedbackRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        verdict: { $ref: "#/components/schemas/FeedbackVerdict" }
+        reaction:
+          type: string
+          description: thumbs_up/+1/👍 → agree; thumbs_down/-1/👎 → disagree. Unknown emoji → 400.
+        comment: { type: ["string", "null"] }
     JobEvent:
       type: object
       additionalProperties: false
