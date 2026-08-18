@@ -8,6 +8,10 @@ public enum ReviewContainers: Sendable {
         "meister-judge-\(jobID.rawValue)"
     }
 
+    public static func command(_ jobID: JobID, _ ruleID: RuleID) -> String {
+        "meister-cmd-\(jobID.rawValue)-\(ruleID.rawValue)"
+    }
+
     public static func all(_ jobID: JobID) -> [String] {
         [
             slot(jobID, .modelA),

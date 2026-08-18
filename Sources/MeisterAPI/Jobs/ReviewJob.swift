@@ -73,7 +73,10 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     skipAgent: skipAgent,
                     identifyTimeout: identifyTimeout,
                     deterministicTimeout: Duration.seconds(config.limits.deterministicTimeoutSec),
-                    deterministic: DeterministicEngine(),
+                    deterministic: DeterministicEngine(
+                        docker: docker,
+                        image: config.opencodeImage
+                    ),
                     reviewer: OpenCodeInvocation(
                         docker: docker,
                         http: OpenCodeHTTPClient(),

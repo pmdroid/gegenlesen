@@ -168,8 +168,12 @@ public struct DockerResult: Sendable {
     }
 }
 
-public protocol DockerExecuting: Sendable {
+/// Sandboxed command / openapi_break runner. Tests inject NoopDocker or scripted stdout.
+public protocol CommandRunning: Sendable {
     func run(_ request: DockerRequest) async throws -> DockerResult
+}
+
+public protocol DockerExecuting: CommandRunning {
     func kill(containerName: String) async
     func removeAll(prefix: String) async
 }

@@ -8,6 +8,24 @@ public struct OpenAPIBreakChecker: DeterministicChecker {
         []
     }
 
+    /// Same isolation as `command` (no keys, `--network none`, 20s).
+    public static func sandboxRequest(
+        jobID: JobID,
+        ruleID: RuleID,
+        workspace: URL,
+        image: String,
+        argv: [String],
+        timeout: Duration = .seconds(20)
+    ) -> DockerRequest {
+        CommandChecker.sandboxRequest(
+            name: ReviewContainers.command(jobID, ruleID),
+            workspace: workspace,
+            image: image,
+            argv: argv,
+            timeout: timeout
+        )
+    }
+
     public static func binaryAvailable() -> Bool {
         let fm = FileManager.default
         let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/local/bin"

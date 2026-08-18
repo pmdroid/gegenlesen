@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import MeisterCore
+@testable import MeisterDeterministic
 
 @Suite
 struct ReviewPipelineAgentTests {
@@ -68,6 +69,73 @@ struct ReviewPipelineAgentTests {
                 #expect(after.containerNameA == "meister-review-\(job.id.rawValue)-a")
                 let findings = try await store.findings(jobID: job.id)
                 #expect(findings.contains { $0.phase == .agent && $0.reviewerSlot == .modelA })
+            }
+        }
+    }
+
+    @Test
+    func commandExitZeroJSONLPersistsFindings() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await store.insertRule(
+                    sampleRule(id: "cmd", payload: .command(argv: ["true"], timeoutSec: 5))
+                )
+                let jsonl = """
+                {"title":"cmd hit","message":"from sandbox","severity":"error","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"print(2)"}
+                """
+                let docker = RecordingDocker(
+                    result: DockerResult(exitCode: 0, stdout: Data(jsonl.utf8))
+                )
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    deterministic: DeterministicEngine(docker: docker)
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.contains { $0.phase == .deterministic && $0.title == "cmd hit" })
+                let requests = await docker.requests
+                let args = try #require(requests.first).dockerCLIArguments()
+                #expect(args.contains("--network"))
+                #expect(args.contains("none"))
+                #expect(!args.contains { $0.contains("ANTHROPIC_API_KEY") })
+                #expect(!args.contains { $0.contains("OPENAI_API_KEY") })
+            }
+        }
+    }
+
+    @Test
+    func commandNonzeroExitDoesNotFailJob() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await store.insertRule(
+                    sampleRule(id: "cmd", payload: .command(argv: ["false"], timeoutSec: 5))
+                )
+                let docker = RecordingDocker(
+                    result: DockerResult(exitCode: 1, stderr: Data("oasdiff missing\n".utf8))
+                )
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    deterministic: DeterministicEngine(docker: docker)
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.isEmpty)
+                let events = try await store.events(jobID: job.id)
+                #expect(events.contains { $0.level == .warning && $0.message == "command_error" })
             }
         }
     }

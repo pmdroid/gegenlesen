@@ -117,4 +117,74 @@ struct DeterministicEngineTests {
             #expect(result.drafts.isEmpty)
         }
     }
+
+    @Test
+    func commandJSONLBecomesDeterministicFindings() async throws {
+        try await withTempDir("det-cmd-ok") { root in
+            try writeFile("Sources/A.swift", "print(2)\n", in: root)
+            let jsonl = """
+            {"title":"cmd hit","message":"from sandbox","severity":"warning","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"print(2)"}
+            not-json
+            """
+            let docker = RecordingDocker(
+                result: DockerResult(exitCode: 0, stdout: Data(jsonl.utf8))
+            )
+            let result = await DeterministicEngine(docker: docker).run(
+                files: [JobFile(jobID: JobID("job-cmd"), path: "Sources/A.swift", status: .modified, language: .swift)],
+                workspace: Workspace(root: root),
+                rules: [sampleRule(id: "cmd", payload: .command(argv: ["rg", "todo"], timeoutSec: 5))],
+                timeout: .seconds(5)
+            )
+            #expect(!result.timedOut)
+            #expect(result.drafts.count == 1)
+            #expect(result.drafts[0].phase == .deterministic)
+            #expect(result.drafts[0].ruleID?.rawValue == "cmd")
+            #expect(result.drafts[0].title == "cmd hit")
+            #expect(result.warnings.contains { $0.message == "command_jsonl_invalid" })
+
+            let requests = await docker.requests
+            #expect(requests.count == 1)
+            let request = try #require(requests.first)
+            let args = request.dockerCLIArguments()
+            #expect(args.contains("--network"))
+            #expect(args.contains("none"))
+            #expect(request.network == "none")
+            #expect(request.injectProviderKeys == false)
+            #expect(request.passThroughEnv.isEmpty)
+            #expect(request.env["ANTHROPIC_API_KEY"] == nil)
+            #expect(request.env["OPENAI_API_KEY"] == nil)
+            #expect(!args.contains { $0.contains("ANTHROPIC_API_KEY") })
+            #expect(!args.contains { $0.contains("OPENAI_API_KEY") })
+            #expect(request.argv == ["rg", "todo"])
+            #expect(request.name == "meister-cmd-job-cmd-cmd")
+            #expect(args.contains("1000:1000"))
+            #expect(args.contains("--read-only"))
+        }
+    }
+
+    @Test
+    func commandNonzeroExitEmitsNoFindings() async throws {
+        try await withTempDir("det-cmd-err") { root in
+            try writeFile("Sources/A.swift", "print(2)\n", in: root)
+            let docker = RecordingDocker(
+                result: DockerResult(
+                    exitCode: 1,
+                    stderr: Data("ANTHROPIC_API_KEY=sk-ant-secretvalue\nbad\n".utf8)
+                )
+            )
+            let result = await DeterministicEngine(docker: docker).run(
+                files: [JobFile(jobID: JobID("job-err"), path: "Sources/A.swift", status: .modified, language: .swift)],
+                workspace: Workspace(root: root),
+                rules: [sampleRule(id: "cmd", payload: .command(argv: ["false"], timeoutSec: 5))],
+                timeout: .seconds(5)
+            )
+            #expect(!result.timedOut)
+            #expect(result.drafts.isEmpty)
+            #expect(result.warnings.count == 1)
+            #expect(result.warnings[0].message == "command_error")
+            let payload = try #require(result.warnings[0].payloadJSON)
+            #expect(payload.contains("[REDACTED]"))
+            #expect(!payload.contains("sk-ant-secretvalue"))
+        }
+    }
 }

@@ -146,6 +146,14 @@ public struct ReviewPipeline: Sendable {
             try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")
             return
         }
+        for warning in result.warnings {
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .warning,
+                message: warning.message,
+                payloadJSON: warning.payloadJSON
+            )
+        }
         if !result.drafts.isEmpty {
             _ = try await store.insertFindings(result.drafts, jobID: jobID)
         }

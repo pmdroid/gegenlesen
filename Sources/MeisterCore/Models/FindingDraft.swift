@@ -43,13 +43,29 @@ public struct FindingDraft: Sendable, Equatable {
     }
 }
 
+public struct DeterministicWarning: Sendable, Equatable {
+    public var message: String
+    public var payloadJSON: String?
+
+    public init(message: String, payloadJSON: String? = nil) {
+        self.message = message
+        self.payloadJSON = payloadJSON
+    }
+}
+
 public struct DeterministicRunResult: Sendable, Equatable {
     public var drafts: [FindingDraft]
     public var timedOut: Bool
+    public var warnings: [DeterministicWarning]
 
-    public init(drafts: [FindingDraft], timedOut: Bool) {
+    public init(
+        drafts: [FindingDraft],
+        timedOut: Bool,
+        warnings: [DeterministicWarning] = []
+    ) {
         self.drafts = drafts
         self.timedOut = timedOut
+        self.warnings = warnings
     }
 }
 

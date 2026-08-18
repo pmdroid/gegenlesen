@@ -8,13 +8,19 @@ public protocol DeterministicChecker: Sendable {
 public struct DeterministicEngine: DeterministicRunning {
     public var perFileCap: Int
     public var oasdiffAvailable: Bool
+    public var docker: any CommandRunning
+    public var image: String
 
     public init(
         perFileCap: Int = 50,
-        oasdiffAvailable: Bool = OpenAPIBreakChecker.binaryAvailable()
+        oasdiffAvailable: Bool = OpenAPIBreakChecker.binaryAvailable(),
+        docker: any CommandRunning = NoopDocker(),
+        image: String = "meister/opencode-runner:0.1.0"
     ) {
         self.perFileCap = perFileCap
         self.oasdiffAvailable = oasdiffAvailable
+        self.docker = docker
+        self.image = image
     }
 
     public func run(
@@ -29,12 +35,28 @@ public struct DeterministicEngine: DeterministicRunning {
         }
         let selected = RuleSelector().select(rules: rules, files: files)
         var drafts: [FindingDraft] = []
+        var warnings: [DeterministicWarning] = []
+        let jobID = files.first?.jobID ?? JobID("unknown")
         for item in selected {
             if ContinuousClock.now >= deadline {
-                return DeterministicRunResult(drafts: drafts, timedOut: true)
+                return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
             }
             switch item.rule.payload {
-            case .semantic, .command:
+            case .semantic:
+                continue
+            case .command:
+                let remaining = deadline - ContinuousClock.now
+                let outcome = await CommandChecker(docker: docker, image: image).run(
+                    jobID: jobID,
+                    workspace: workspace,
+                    rule: item.rule,
+                    timeout: remaining
+                )
+                warnings.append(contentsOf: outcome.warnings)
+                drafts.append(contentsOf: outcome.drafts.prefix(perFileCap))
+                if outcome.timedOut {
+                    return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
+                }
                 continue
             case .openapiBreak:
                 if !oasdiffAvailable {
@@ -52,7 +74,7 @@ public struct DeterministicEngine: DeterministicRunning {
             }
             for file in item.files {
                 if ContinuousClock.now >= deadline {
-                    return DeterministicRunResult(drafts: drafts, timedOut: true)
+                    return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
                 }
                 switch await checkFile(
                     file: file,
@@ -66,14 +88,14 @@ public struct DeterministicEngine: DeterministicRunning {
                 case .skip:
                     continue
                 case .timedOut:
-                    return DeterministicRunResult(drafts: drafts, timedOut: true)
+                    return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
                 }
             }
         }
         if ContinuousClock.now >= deadline {
-            return DeterministicRunResult(drafts: drafts, timedOut: true)
+            return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
         }
-        return DeterministicRunResult(drafts: drafts, timedOut: false)
+        return DeterministicRunResult(drafts: drafts, timedOut: false, warnings: warnings)
     }
 
     private enum FileCheckOutcome: Sendable {
@@ -155,12 +177,10 @@ public struct DeterministicEngine: DeterministicRunning {
             return DenyListChecker()
         case .siblingTest:
             return SiblingTestChecker()
-        case .command:
-            return CommandChecker()
+        case .command, .semantic:
+            throw CheckerSkip()
         case .openapiBreak:
             return OpenAPIBreakChecker()
-        case .semantic:
-            throw CheckerSkip()
         }
     }
 }
