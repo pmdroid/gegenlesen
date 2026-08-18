@@ -100,7 +100,9 @@ struct ReviewPipelineAgentTests {
                 #expect(after.status == .succeeded)
                 let findings = try await store.findings(jobID: job.id)
                 #expect(findings.contains { $0.phase == .deterministic && $0.title == "cmd hit" })
-                #expect(findings.allSatisfy { $0.judgeVerdict == nil })
+                let cmd = try #require(findings.first { $0.title == "cmd hit" })
+                #expect(cmd.judgeVerdict == nil)
+                #expect(cmd.evidenceOK == true)
                 let requests = await docker.requests
                 let args = try #require(requests.first).dockerCLIArguments()
                 #expect(args.contains("--network"))

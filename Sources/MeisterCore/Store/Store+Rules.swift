@@ -121,9 +121,11 @@ extension Store {
                     endLine: draft.endLine,
                     snippet: draft.snippet,
                     agentRationale: draft.rationale,
+                    judgeVerdict: draft.requiresJudge ? nil : .keep,
                     confidence: draft.confidence,
                     lifecycle: .new,
                     suggestedPatch: draft.suggestedPatch,
+                    evidenceOK: draft.requiresJudge ? draft.evidenceOK : true,
                     createdAt: now
                 )
                 try db.execute(
@@ -131,8 +133,9 @@ extension Store {
                         INSERT INTO findings (
                           id, job_id, rule_id, phase, reviewer_slot, severity,
                           title, message, file_path, start_line, end_line, snippet,
-                          agent_rationale, confidence, lifecycle, suggested_patch, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          agent_rationale, judge_verdict, confidence, lifecycle,
+                          suggested_patch, evidence_ok, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                     arguments: [
                         finding.id.rawValue,
@@ -148,9 +151,11 @@ extension Store {
                         finding.endLine,
                         finding.snippet,
                         finding.agentRationale,
+                        finding.judgeVerdict?.rawValue,
                         finding.confidence,
                         finding.lifecycle.rawValue,
                         finding.suggestedPatch,
+                        finding.evidenceOK.map { $0 ? 1 : 0 },
                         ISO8601Dates.string(from: finding.createdAt),
                     ]
                 )

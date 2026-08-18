@@ -13,22 +13,36 @@ public struct Workspace: Sendable {
     }
 
     public func resolveForRead(_ filePath: String) -> URL? {
-        guard let relative = try? ArchivePath.normalizedRelative(filePath), !relative.isEmpty else {
-            return nil
-        }
-        if Self.isRenamedOpenCodeConfig(relative) {
-            let quarantined = ".meister/quarantine/" + relative
-            if let url = regularFileIfContained(relative: quarantined) {
-                return url
-            }
-        }
-        return regularFileIfContained(relative: relative)
+        guard let relative = resolvedRelative(filePath) else { return nil }
+        return ArchivePath.containedURL(root: root, relative: relative)
     }
 
-    /// Reads without following the last path component (`O_NOFOLLOW`).
+    /// Reads by opening each path component with `O_NOFOLLOW` (`openat`).
     public func readRegularFile(_ filePath: String) -> Data? {
-        guard let url = resolveForRead(filePath) else { return nil }
-        return Self.readNoFollow(url)
+        guard let relative = resolvedRelative(filePath),
+              let fd = openEachComponent(relative)
+        else { return nil }
+        defer { close(fd) }
+        return Self.readAll(fd)
+    }
+
+    public func lineSliceMatches(
+        filePath: String,
+        startLine: Int,
+        endLine: Int,
+        snippet: String
+    ) -> Bool {
+        guard let data = readRegularFile(filePath),
+              let text = String(data: data, encoding: .utf8)
+        else { return false }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        guard startLine >= 1, startLine <= lines.count else { return false }
+        let start = startLine - 1
+        let end = min(endLine, lines.count)
+        guard end > start else { return false }
+        let slice = lines[start..<end].joined(separator: "\n")
+        return Fingerprint.normalizeWhitespace(slice)
+            .contains(Fingerprint.normalizeWhitespace(snippet))
     }
 
     public func removeEscapingSymlinks() {
@@ -56,19 +70,58 @@ public struct Workspace: Sendable {
             || relative.hasPrefix(".opencode/")
     }
 
-    private func regularFileIfContained(relative: String) -> URL? {
-        guard let url = ArchivePath.containedURL(root: root, relative: relative) else {
+    private func resolvedRelative(_ filePath: String) -> String? {
+        guard let relative = try? ArchivePath.normalizedRelative(filePath), !relative.isEmpty else {
             return nil
+        }
+        if Self.isRenamedOpenCodeConfig(relative) {
+            let quarantined = ".meister/quarantine/" + relative
+            if let fd = openEachComponent(quarantined) {
+                close(fd)
+                return quarantined
+            }
+        }
+        guard let fd = openEachComponent(relative) else { return nil }
+        close(fd)
+        return relative
+    }
+
+    /// Opens `relative` under `root` one component at a time so intermediate symlinks cannot escape.
+    private func openEachComponent(_ relative: String) -> Int32? {
+        let parts = relative.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard !parts.isEmpty else { return nil }
+        var fd = open(root.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        for (index, part) in parts.enumerated() {
+            var flags = O_RDONLY | O_NOFOLLOW | O_CLOEXEC
+            if index < parts.count - 1 {
+                flags |= O_DIRECTORY
+            }
+            let next = part.withCString { name in
+                openat(fd, name, flags)
+            }
+            close(fd)
+            guard next >= 0 else { return nil }
+            fd = next
         }
         var info = stat()
-        guard lstat(url.path, &info) == 0 else { return nil }
-        if (info.st_mode & S_IFMT) == S_IFLNK {
+        if fstat(fd, &info) != 0 || (info.st_mode & S_IFMT) != S_IFREG {
+            close(fd)
             return nil
         }
-        if (info.st_mode & S_IFMT) != S_IFREG {
-            return nil
+        return fd
+    }
+
+    private static func readAll(_ fd: Int32) -> Data? {
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        while true {
+            let n = read(fd, &buffer, buffer.count)
+            if n == 0 { break }
+            if n < 0 { return nil }
+            data.append(buffer, count: Int(n))
         }
-        return url
+        return data
     }
 
     private func isSafeSymlink(_ url: URL) -> Bool {
@@ -87,18 +140,4 @@ public struct Workspace: Sendable {
         )) != nil
     }
 
-    static func readNoFollow(_ url: URL) -> Data? {
-        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
-        while true {
-            let n = read(fd, &buffer, buffer.count)
-            if n == 0 { break }
-            if n < 0 { return nil }
-            data.append(buffer, count: Int(n))
-        }
-        return data
-    }
 }

@@ -15,6 +15,7 @@ public struct FindingDraft: Sendable, Equatable {
     public var suggestedPatch: String?
     /// Command JSONL is untrusted argv output and must go to the judge (not auto-keep).
     public var requiresJudge: Bool
+    public var evidenceOK: Bool?
 
     public init(
         ruleID: RuleID? = nil,
@@ -29,7 +30,8 @@ public struct FindingDraft: Sendable, Equatable {
         rationale: String? = nil,
         confidence: Double? = nil,
         suggestedPatch: String? = nil,
-        requiresJudge: Bool = false
+        requiresJudge: Bool = false,
+        evidenceOK: Bool? = nil
     ) {
         self.ruleID = ruleID
         self.phase = phase
@@ -44,6 +46,7 @@ public struct FindingDraft: Sendable, Equatable {
         self.confidence = confidence
         self.suggestedPatch = suggestedPatch
         self.requiresJudge = requiresJudge
+        self.evidenceOK = evidenceOK
     }
 }
 

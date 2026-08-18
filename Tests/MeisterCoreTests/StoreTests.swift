@@ -151,6 +151,57 @@ struct StoreTests {
     }
 
     @Test
+    func insertFindingsPersistsRequiresJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let job = Job(
+                id: JobID("job-cmd"),
+                createdAt: now,
+                updatedAt: now,
+                status: .queued,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j"
+            )
+            try await store.insertJob(job)
+            let command = FindingDraft(
+                ruleID: RuleID("cmd"),
+                phase: .deterministic,
+                severity: .error,
+                title: "cmd hit",
+                message: "from sandbox",
+                filePath: "Sources/A.swift",
+                startLine: 1,
+                endLine: 1,
+                snippet: "print(2)",
+                requiresJudge: true,
+                evidenceOK: true
+            )
+            let mechanical = FindingDraft(
+                ruleID: RuleID("regex"),
+                phase: .deterministic,
+                severity: .warning,
+                title: "regex hit",
+                message: "mechanical",
+                filePath: "Sources/A.swift",
+                startLine: 1,
+                endLine: 1,
+                snippet: "print(2)"
+            )
+            _ = try await store.insertFindings([command, mechanical], jobID: job.id)
+            let findings = try await store.findings(jobID: job.id)
+            let cmd = try #require(findings.first { $0.ruleID?.rawValue == "cmd" })
+            #expect(cmd.judgeVerdict == nil)
+            #expect(cmd.evidenceOK == true)
+            let regex = try #require(findings.first { $0.ruleID?.rawValue == "regex" })
+            #expect(regex.judgeVerdict == .keep)
+            #expect(regex.evidenceOK == true)
+        }
+    }
+
+    @Test
     func usesWAL() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)

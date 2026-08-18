@@ -268,7 +268,13 @@ public struct CommandChecker: Sendable {
             rationale: rationale,
             confidence: confidence,
             suggestedPatch: suggested,
-            requiresJudge: true
+            requiresJudge: true,
+            evidenceOK: workspace.lineSliceMatches(
+                filePath: filePath,
+                startLine: startLine,
+                endLine: endLine,
+                snippet: snippet
+            )
         )
     }
 

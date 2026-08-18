@@ -138,19 +138,12 @@ public enum FindingsParser: Sendable {
         snippet: String,
         workspace: Workspace
     ) -> Bool {
-        guard let url = workspace.resolveForRead(filePath),
-              let text = try? String(contentsOf: url, encoding: .utf8)
-        else {
-            return false
-        }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        guard startLine >= 1, startLine <= lines.count else { return false }
-        let start = startLine - 1
-        let end = min(endLine, lines.count)
-        guard end > start else { return false }
-        let slice = lines[start..<end].joined(separator: "\n")
-        return Fingerprint.normalizeWhitespace(slice)
-            .contains(Fingerprint.normalizeWhitespace(snippet))
+        workspace.lineSliceMatches(
+            filePath: filePath,
+            startLine: startLine,
+            endLine: endLine,
+            snippet: snippet
+        )
     }
 
     private static func string(_ value: Any?, min: Int, max: Int) -> String? {

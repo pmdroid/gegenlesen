@@ -141,6 +141,7 @@ struct DeterministicEngineTests {
             #expect(result.drafts[0].ruleID?.rawValue == "cmd")
             #expect(result.drafts[0].title == "cmd hit")
             #expect(result.drafts[0].requiresJudge)
+            #expect(result.drafts[0].evidenceOK == true)
             #expect(result.warnings.contains { $0.message == "command_jsonl_invalid" })
 
             let requests = await docker.requests
@@ -193,6 +194,34 @@ struct DeterministicEngineTests {
             #expect(Workspace(root: root).readRegularFile("evil.swift") == nil)
             Workspace(root: root).removeEscapingSymlinks()
             #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) == nil)
+        }
+    }
+
+    @Test
+    func intermediateDirectorySymlinkIsNotFollowed() async throws {
+        try await withTempDir("det-mid-link") { root in
+            let sources = root.appendingPathComponent("Sources")
+            try FileManager.default.createSymbolicLink(
+                atPath: sources.path,
+                withDestinationPath: "/etc"
+            )
+            let job = JobID("job-mid")
+            let files = [
+                JobFile(jobID: job, path: "Sources/passwd", status: .modified, language: .other),
+            ]
+            let rule = sampleRule(
+                id: "has-root",
+                payload: .regex(pattern: "root", flags: nil, message: "passwd leak")
+            )
+            let result = await DeterministicEngine().run(
+                files: files,
+                workspace: Workspace(root: root),
+                rules: [rule],
+                timeout: .seconds(5)
+            )
+            #expect(result.drafts.isEmpty)
+            #expect(Workspace(root: root).resolveForRead("Sources/passwd") == nil)
+            #expect(Workspace(root: root).readRegularFile("Sources/passwd") == nil)
         }
     }
 
