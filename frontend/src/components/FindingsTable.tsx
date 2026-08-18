@@ -20,15 +20,18 @@ function loc(finding: Finding): string {
 }
 
 function verdictClass(finding: Finding): string {
-  if (finding.phase === "deterministic") return "verdict det";
   if (finding.judge_verdict === "drop") return "verdict dropped";
   if (finding.judge_verdict) return "verdict kept";
+  if (finding.phase === "deterministic") return "verdict det";
   return "verdict det";
 }
 
 function verdictLabel(finding: Finding): string {
+  if (finding.judge_verdict === "drop") return "judge: dropped";
+  if (finding.judge_verdict === "unavailable") return "judge: unavailable";
+  if (finding.judge_verdict === "downgrade") return "judge: downgrade";
+  if (finding.judge_verdict === "keep") return "judge: kept";
   if (finding.phase === "deterministic") return "deterministic";
-  if (finding.judge_verdict) return `judge: ${finding.judge_verdict}`;
   return finding.phase;
 }
 
@@ -37,11 +40,13 @@ export function FindingsTable({
   feedback,
   onFeedback,
   pending,
+  emptyLabel = "No findings yet.",
 }: {
   findings: Finding[];
   feedback: FindingFeedback[];
   onFeedback: (findingId: string, body: FindingFeedbackRequest) => void;
   pending: boolean;
+  emptyLabel?: string;
 }) {
   const byFinding = useMemo(() => {
     const map = new Map<string, FindingFeedback[]>();
@@ -54,7 +59,7 @@ export function FindingsTable({
   }, [feedback]);
 
   if (findings.length === 0) {
-    return <div className="empty">No findings yet.</div>;
+    return <div className="empty">{emptyLabel}</div>;
   }
 
   return (
@@ -104,8 +109,8 @@ function FindingRow({
         <span className="id">{finding.id}</span>
         <span className="title">{finding.title}</span>
         <span className={verdictClass(finding)}>{verdictLabel(finding)}</span>
-        <span className={`st ${finding.severity === "error" ? "fail" : finding.severity === "warning" ? "run" : "ok"}`}>
-          {finding.severity}
+        <span className={`st ${(finding.judge_severity ?? finding.severity) === "error" ? "fail" : (finding.judge_severity ?? finding.severity) === "warning" ? "run" : "ok"}`}>
+          {finding.judge_severity ?? finding.severity}
         </span>
       </div>
       {finding.snippet ? <pre>{finding.snippet}</pre> : null}

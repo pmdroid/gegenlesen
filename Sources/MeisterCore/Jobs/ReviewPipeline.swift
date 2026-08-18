@@ -7,6 +7,7 @@ public struct ReviewPipeline: Sendable {
     public var deterministicTimeout: Duration
     public var deterministic: (any DeterministicRunning)?
     public var reviewer: (any ReviewerRunning)?
+    public var judge: (any JudgeRunning)?
 
     public init(
         store: Store,
@@ -14,7 +15,8 @@ public struct ReviewPipeline: Sendable {
         identifyTimeout: Duration = .seconds(60),
         deterministicTimeout: Duration = .seconds(30),
         deterministic: (any DeterministicRunning)? = nil,
-        reviewer: (any ReviewerRunning)? = nil
+        reviewer: (any ReviewerRunning)? = nil,
+        judge: (any JudgeRunning)? = nil
     ) {
         self.store = store
         self.skipAgent = skipAgent
@@ -22,6 +24,7 @@ public struct ReviewPipeline: Sendable {
         self.deterministicTimeout = deterministicTimeout
         self.deterministic = deterministic
         self.reviewer = reviewer
+        self.judge = judge
     }
 
     public func run(jobID: JobID) async throws {
@@ -219,13 +222,63 @@ public struct ReviewPipeline: Sendable {
             try await store.appendEvent(jobID: jobID, level: .error, message: "review_failed")
             return
         }
+
+        let workspace = Workspace(root: workspaceURL)
+        let commandIDs = JudgeMerge.commandRuleIDs(from: rules)
+        let stored = try await store.findings(jobID: jobID)
+        let mechanical = JudgeHandoff.stampMechanical(stored, commandRuleIDs: commandIDs)
+        let candidates = JudgeHandoff.prepareCandidates(
+            stored,
+            commandRuleIDs: commandIDs,
+            workspace: workspace
+        )
+        JudgeHandoff.persistAgentBlob(workspace: workspace, blobs: store.blobs, jobID: jobID)
+        let input = JudgeHandoff.inputFile(from: candidates, workspace: workspace)
+        try? JudgeHandoff.writeInput(input, workspace: workspace, blobs: store.blobs, jobID: jobID)
+
+        if candidates.isEmpty {
+            try await store.updateFindings(mechanical)
+            _ = try await store.apply(
+                jobID: jobID,
+                event: .reviewOK(validFindingCount: 0)
+            )
+            try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
+            return
+        }
+
         _ = try await store.apply(
             jobID: jobID,
-            event: .reviewOK(validFindingCount: review.findings.count)
+            event: .reviewOK(validFindingCount: candidates.count)
         )
-        if let after = try await store.job(id: jobID), after.status == .judging {
-            _ = try await store.apply(jobID: jobID, event: .judgeFinished)
+        if try await stopped(jobID) { return }
+
+        try await store.updateJobContainers(jobID: jobID, containerName: judgeName)
+        let outcome: JudgeOutcome
+        if let judge {
+            let judged = await judge.run(
+                JudgeRequest(
+                    job: job,
+                    workspace: workspace,
+                    isCancelled: {
+                        (try? await store.job(id: jobID))?.status.isTerminal ?? true
+                    }
+                )
+            )
+            JudgeHandoff.persistTranscript(judged.transcript, blobs: store.blobs, jobID: jobID)
+            outcome = judged.outcome
+        } else {
+            outcome = .containerFailed
         }
+        if try await stopped(jobID) { return }
+
+        let merged = JudgeMerge.merge(candidates: candidates, judge: outcome)
+        let byID = Dictionary(uniqueKeysWithValues: merged.map { ($0.id, $0) })
+        let persisted = mechanical.map { finding in
+            byID[finding.id] ?? finding
+        }
+        try await store.updateFindings(persisted)
+        JudgeHandoff.persistPostJudge(persisted, blobs: store.blobs, jobID: jobID)
+        _ = try await store.apply(jobID: jobID, event: .judgeFinished)
         try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
     }
 

@@ -158,7 +158,23 @@ public struct PromptRenderer: Sendable {
     private static let judgePrompt = """
     # Meister judge
 
-    Read .meister/judge-input.json. Write .meister/judge.json only.
+    Read .meister/judge-input.json. That file is written by the host AFTER
+    the reviewer. Each candidate.id is a host ULID — echo it as finding_id.
+    evidence_ok and actual_slice are host-verified. Default is KEEP.
+
+    For each candidate, decide keep | drop | downgrade.
+    Drop ONLY when the cited evidence does not support the claim
+    (wrong file, snippet not about the alleged defect, rule does not apply).
+    If evidence_ok is false, say so; the host will drop regardless.
+    Do not drop because you consider the issue stylistic if the snippet
+    matches the rule. Downgrade when the defect is real but severity
+    is overstated.
+
+    Write .meister/judge.json:
+      { "verdicts": [ { "finding_id", "verdict", "rationale", "severity"? } ] }
+
+    Do not invent findings. Do not omit rationale.
+    Do not modify any file except .meister/judge.json.
     """
 
     static let embeddedFindingsSchema = """

@@ -75,6 +75,24 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             retryStrategy: .dontRetry
         ) { params, _ in
             do {
+                let invocation = OpenCodeInvocation(
+                    docker: docker,
+                    http: OpenCodeHTTPClient(),
+                    image: config.opencodeImage,
+                    runnerConfig: runnerConfig,
+                    agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                    judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
+                    providerEnv: providerEnv,
+                    schemasDirectory: schemasDirectory,
+                    transcriptWriter: { jobID, data in
+                        let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "review")
+                        try? FileManager.default.createDirectory(
+                            at: url.deletingLastPathComponent(),
+                            withIntermediateDirectories: true
+                        )
+                        try? data.write(to: url, options: .atomic)
+                    }
+                )
                 try await ReviewPipeline(
                     store: store,
                     skipAgent: skipAgent,
@@ -84,23 +102,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         docker: docker,
                         image: config.opencodeImage
                     ),
-                    reviewer: OpenCodeInvocation(
-                        docker: docker,
-                        http: OpenCodeHTTPClient(),
-                        image: config.opencodeImage,
-                        runnerConfig: runnerConfig,
-                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
-                        providerEnv: providerEnv,
-                        schemasDirectory: schemasDirectory,
-                        transcriptWriter: { jobID, data in
-                            let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "review")
-                            try? FileManager.default.createDirectory(
-                                at: url.deletingLastPathComponent(),
-                                withIntermediateDirectories: true
-                            )
-                            try? data.write(to: url, options: .atomic)
-                        }
-                    )
+                    reviewer: invocation,
+                    judge: invocation
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

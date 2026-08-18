@@ -1,7 +1,7 @@
 import Foundation
 import MeisterCore
 
-public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
+public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, Sendable {
     public var docker: any DockerExecuting
     public var http: any OpenCodeHTTPClienting
     public var image: String
@@ -9,6 +9,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
     public var cpus: String
     public var memory: String
     public var agentTimeout: Duration
+    public var judgeTimeout: Duration
     public var healthTimeout: Duration
     public var providerEnv: [String: String]
     public var schemasDirectory: URL?
@@ -22,6 +23,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
         cpus: String = ProcessInfo.processInfo.environment["MEISTER_DOCKER_CPUS"] ?? "2",
         memory: String = ProcessInfo.processInfo.environment["MEISTER_DOCKER_MEMORY"] ?? "4g",
         agentTimeout: Duration = .seconds(900),
+        judgeTimeout: Duration = .seconds(300),
         healthTimeout: Duration = .seconds(30),
         providerEnv: [String: String] = [:],
         schemasDirectory: URL? = nil,
@@ -34,6 +36,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
         self.cpus = cpus
         self.memory = memory
         self.agentTimeout = agentTimeout
+        self.judgeTimeout = judgeTimeout
         self.healthTimeout = healthTimeout
         self.providerEnv = providerEnv
         self.schemasDirectory = schemasDirectory
@@ -129,7 +132,148 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
         model: String,
         fallbackRun: Bool
     ) throws -> DockerRequest {
-        let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: "reviewer")
+        try isolatedDockerRequest(
+            name: Self.containerName(jobID: jobID, slot: slot),
+            workspace: workspace,
+            hostPort: hostPort,
+            password: password,
+            model: model,
+            defaultAgent: "reviewer",
+            timeout: agentTimeout,
+            fallbackRun: fallbackRun
+        )
+    }
+
+    public func judgeDockerRequest(
+        jobID: JobID,
+        workspace: URL,
+        hostPort: Int,
+        password: String,
+        model: String,
+        fallbackRun: Bool
+    ) throws -> DockerRequest {
+        try isolatedDockerRequest(
+            name: ReviewContainers.judge(jobID),
+            workspace: workspace,
+            hostPort: hostPort,
+            password: password,
+            model: model,
+            defaultAgent: "judge",
+            timeout: judgeTimeout,
+            fallbackRun: fallbackRun
+        )
+    }
+
+    public func run(_ request: JudgeRequest) async -> JudgeRunResult {
+        let name = ReviewContainers.judge(request.job.id)
+        if await request.isCancelled?() == true {
+            return JudgeRunResult(outcome: .containerFailed, containerName: name)
+        }
+        let password = Self.randomPassword()
+        let lease: LoopbackPortLease
+        do {
+            lease = try DockerRunner.allocateLoopbackPort()
+        } catch {
+            return JudgeRunResult(outcome: .containerFailed, containerName: name)
+        }
+        let serve: DockerRequest
+        do {
+            serve = try judgeDockerRequest(
+                jobID: request.job.id,
+                workspace: request.workspace.root,
+                hostPort: lease.port,
+                password: password,
+                model: request.job.judgeModelID,
+                fallbackRun: false
+            )
+        } catch {
+            lease.release()
+            return JudgeRunResult(outcome: .containerFailed, containerName: name)
+        }
+        let port = lease.port
+        let serveTask = Task {
+            lease.release()
+            return try await docker.run(serve)
+        }
+        let baseURL = URL(string: "http://127.0.0.1:\(port)")!
+        let healthy = await http.waitUntilHealthy(baseURL: baseURL, password: password, timeout: healthTimeout)
+        var transcript = Data()
+        if await request.isCancelled?() == true {
+            await docker.kill(containerName: serve.name)
+            _ = try? await serveTask.value
+            return JudgeRunResult(outcome: .containerFailed, transcript: transcript, containerName: name)
+        }
+        if healthy {
+            do {
+                let session = try await http.createSession(
+                    baseURL: baseURL,
+                    password: password,
+                    title: "meister-judge-\(request.job.id.rawValue)"
+                )
+                let promptURL = request.workspace.root.appendingPathComponent(".meister/prompt-judge.md")
+                let judgePrompt = (try? String(contentsOf: promptURL, encoding: .utf8)) ?? ""
+                try await http.sendReview(
+                    baseURL: baseURL,
+                    password: password,
+                    sessionID: session,
+                    agent: "judge",
+                    model: request.job.judgeModelID,
+                    prompt: judgePrompt,
+                    filePaths: [
+                        "/workspace/.meister/prompt-judge.md",
+                        "/workspace/.meister/judge-input.json",
+                    ],
+                    timeout: judgeTimeout
+                )
+                await http.abort(baseURL: baseURL, password: password, sessionID: session)
+            } catch {
+                transcript.append(contentsOf: Data("http_error\n".utf8))
+            }
+            await docker.kill(containerName: serve.name)
+            if let result = try? await serveTask.value {
+                transcript.append(SecretRedactor().redact(result.stdout))
+                transcript.append(SecretRedactor().redact(result.stderr))
+            }
+        } else {
+            await docker.kill(containerName: serve.name)
+            _ = try? await serveTask.value
+            let fallback: DockerRequest
+            do {
+                fallback = try judgeDockerRequest(
+                    jobID: request.job.id,
+                    workspace: request.workspace.root,
+                    hostPort: port,
+                    password: password,
+                    model: request.job.judgeModelID,
+                    fallbackRun: true
+                )
+            } catch {
+                return JudgeRunResult(outcome: .containerFailed, transcript: transcript, containerName: name)
+            }
+            if let result = try? await docker.run(fallback) {
+                transcript.append(SecretRedactor().redact(result.stdout))
+                transcript.append(SecretRedactor().redact(result.stderr))
+            }
+        }
+
+        let url = request.workspace.root.appendingPathComponent(".meister/judge.json")
+        guard let data = try? Data(contentsOf: url) else {
+            return JudgeRunResult(outcome: .containerFailed, transcript: transcript, containerName: name)
+        }
+        return JudgeRunResult(outcome: JudgeMerge.parse(data), transcript: transcript, containerName: name)
+    }
+
+    private func isolatedDockerRequest(
+        name: String,
+        workspace: URL,
+        hostPort: Int,
+        password: String,
+        model: String,
+        defaultAgent: String,
+        timeout: Duration,
+        fallbackRun: Bool
+    ) throws -> DockerRequest {
+        let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: defaultAgent)
         let permission = try OpenCodeConfig.permissionJSON()
         var env: [String: String] = [
             "HOME": "/home/meister",
@@ -152,7 +296,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
         if fallbackRun {
             argv = [
                 "opencode", "run",
-                "--agent", "reviewer",
+                "--agent", defaultAgent,
                 "--model", model,
                 "--auto",
                 "--format", "json",
@@ -161,7 +305,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
             argv = ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
         }
         return DockerRequest(
-            name: Self.containerName(jobID: jobID, slot: slot),
+            name: name,
             image: image,
             argv: argv,
             env: env,
@@ -186,7 +330,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
             noNewPrivileges: true,
             ulimitNproc: "256:256",
             ulimitNofile: "1024:1024",
-            timeout: agentTimeout,
+            timeout: timeout,
             injectProviderKeys: true,
             remove: true,
             passThroughEnv: [

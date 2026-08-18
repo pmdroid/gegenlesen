@@ -106,7 +106,13 @@ public enum FindingsParser: Sendable {
         let rationale = (object["rationale"] as? String) ?? ""
         let confidence = object["confidence"] as? Double
         let suggested = object["suggested_patch"] as? String
-        let evidence = evidenceOK(filePath: filePath, startLine: startLine, endLine: endLine, snippet: snippet, workspace: workspace)
+        let evidence = Evidence.evidenceOK(
+            filePath: filePath,
+            startLine: startLine,
+            endLine: endLine,
+            snippet: snippet,
+            workspace: workspace
+        )
 
         return Finding(
             id: FindingID.generate(at: now),
@@ -138,11 +144,12 @@ public enum FindingsParser: Sendable {
         snippet: String,
         workspace: Workspace
     ) -> Bool {
-        workspace.lineSliceMatches(
+        Evidence.evidenceOK(
             filePath: filePath,
             startLine: startLine,
             endLine: endLine,
-            snippet: snippet
+            snippet: snippet,
+            workspace: workspace
         )
     }
 

@@ -204,6 +204,82 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
+    func judgeDockerRequestMatchesReviewIsolation() throws {
+        let invocation = OpenCodeInvocation(
+            docker: NoopDocker(),
+            image: "meister/opencode-runner:0.1.0",
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config"),
+            judgeTimeout: .seconds(300)
+        )
+        let request = try invocation.judgeDockerRequest(
+            jobID: JobID("job-1"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            hostPort: 41235,
+            password: "secret",
+            model: "anthropic/claude-sonnet-4-5",
+            fallbackRun: false
+        )
+        let args = request.dockerCLIArguments()
+        #expect(args.contains("meister-judge-job-1"))
+        #expect(args.contains("127.0.0.1:41235:4096"))
+        #expect(args.contains("meister-egress"))
+        #expect(args.contains("--read-only"))
+        #expect(args.contains("ANTHROPIC_API_KEY"))
+        #expect(request.env["OPENCODE_SERVER_PASSWORD"] == "secret")
+        let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
+        let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+        #expect(object["default_agent"] as? String == "judge")
+        #expect((object["mcp"] as? [String: Any])?.isEmpty == true)
+    }
+
+    @Test
+    func fakeJudgeHTTPWritesVerdicts() async throws {
+        try await withTempDir("judge-http") { root in
+            try writeFile("Sources/A.swift", "print(2)\n", in: root)
+            try writeFile(".meister/prompt-judge.md", "judge\n", in: root)
+            let job = sampleJob()
+            let findingID = FindingID.generate()
+            let input = JudgeInputFile(candidates: [
+                JudgeCandidate(
+                    id: findingID,
+                    severity: .error,
+                    title: "t",
+                    message: "m",
+                    filePath: "Sources/A.swift",
+                    startLine: 1,
+                    endLine: 1,
+                    snippet: "print(2)",
+                    phase: .agent,
+                    evidenceOK: true,
+                    actualSlice: "print(2)"
+                ),
+            ])
+            let encoder = JSONEncoder()
+            try encoder.encode(input).write(
+                to: root.appendingPathComponent(".meister/judge-input.json")
+            )
+            let http = JudgeWritingHTTP(workspace: root, findingID: findingID)
+            let invocation = OpenCodeInvocation(
+                docker: NoopDocker(),
+                http: http,
+                image: "meister/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let result = await invocation.run(
+                JudgeRequest(job: job, workspace: Workspace(root: root))
+            )
+            #expect(http.agent == "judge")
+            guard case .verdicts(let file) = result.outcome else {
+                Issue.record("expected parsed verdicts")
+                return
+            }
+            #expect(file.verdicts.count == 1)
+            #expect(file.verdicts[0].findingID == findingID)
+            #expect(file.verdicts[0].verdict == .keep)
+        }
+    }
+
+    @Test
     func missingFindingsFilesFailWhenNewWork() async throws {
         try await withTempDir("invoke-none") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
@@ -230,6 +306,44 @@ struct OpenCodeInvocationTests {
             #expect(result.errorMessage == "reviewer_no_findings_file")
         }
     }
+}
+
+final class JudgeWritingHTTP: OpenCodeHTTPClienting, @unchecked Sendable {
+    let workspace: URL
+    let findingID: FindingID
+    var agent: String?
+
+    init(workspace: URL, findingID: FindingID) {
+        self.workspace = workspace
+        self.findingID = findingID
+    }
+
+    func waitUntilHealthy(baseURL: URL, password: String, timeout: Duration) async -> Bool {
+        true
+    }
+
+    func createSession(baseURL: URL, password: String, title: String) async throws -> String {
+        "ses_judge"
+    }
+
+    func sendReview(
+        baseURL: URL,
+        password: String,
+        sessionID: String,
+        agent: String,
+        model: String,
+        prompt: String,
+        filePaths: [String],
+        timeout: Duration
+    ) async throws {
+        self.agent = agent
+        let payload = """
+        {"verdicts":[{"finding_id":"\(findingID.rawValue)","verdict":"keep","rationale":"ok"}]}
+        """
+        try Data(payload.utf8).write(to: workspace.appendingPathComponent(".meister/judge.json"))
+    }
+
+    func abort(baseURL: URL, password: String, sessionID: String) async {}
 }
 
 actor FindingsWritingDocker: DockerExecuting {

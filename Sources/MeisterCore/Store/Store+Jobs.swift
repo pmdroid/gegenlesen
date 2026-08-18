@@ -442,6 +442,31 @@ extension Store {
         }
     }
 
+    public func updateFindings(_ findings: [Finding]) throws {
+        guard !findings.isEmpty else { return }
+        try write { db in
+            for finding in findings {
+                try db.execute(
+                    sql: """
+                        UPDATE findings SET
+                          judge_verdict = ?,
+                          judge_severity = ?,
+                          judge_rationale = ?,
+                          evidence_ok = ?
+                        WHERE id = ?
+                        """,
+                    arguments: [
+                        finding.judgeVerdict?.rawValue,
+                        finding.judgeSeverity?.rawValue,
+                        finding.judgeRationale,
+                        finding.evidenceOK.map { $0 ? 1 : 0 },
+                        finding.id.rawValue,
+                    ]
+                )
+            }
+        }
+    }
+
     public func insertParsedFindings(_ findings: [Finding]) throws {
         guard !findings.isEmpty else { return }
         try write { db in

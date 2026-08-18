@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { TranscriptViewer } from "../components/TranscriptViewer";
@@ -43,6 +44,7 @@ function pipelineLine(job: JobListItem): string {
 export function JobDetailPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const [showDropped, setShowDropped] = useState(false);
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: () => getJob(id ?? ""),
@@ -97,6 +99,17 @@ export function JobDetailPage() {
   const detail = job.data;
   const live = !isTerminal(detail.status);
   const events = detail.events.slice(-40);
+  const droppedCount = useMemo(
+    () => detail.findings.filter((finding) => finding.judge_verdict === "drop").length,
+    [detail.findings],
+  );
+  const visibleFindings = useMemo(
+    () =>
+      showDropped
+        ? detail.findings
+        : detail.findings.filter((finding) => finding.judge_verdict !== "drop"),
+    [detail.findings, showDropped],
+  );
 
   return (
     <div className="page">
@@ -118,9 +131,24 @@ export function JobDetailPage() {
         </div>
       </div>
 
-      <h1>findings</h1>
+      <div className="pagehead">
+        <h1>findings</h1>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showDropped}
+            onChange={(event) => setShowDropped(event.target.checked)}
+          />
+          show dropped{droppedCount > 0 ? ` (${droppedCount})` : ""}
+        </label>
+      </div>
       <FindingsTable
-        findings={detail.findings}
+        findings={visibleFindings}
+        emptyLabel={
+          detail.findings.length === 0
+            ? "No findings yet."
+            : "No kept findings. Toggle show dropped to inspect judge drops."
+        }
         feedback={feedback.data?.feedback ?? []}
         pending={send.isPending}
         onFeedback={(findingId, body) => send.mutate({ findingId, body })}

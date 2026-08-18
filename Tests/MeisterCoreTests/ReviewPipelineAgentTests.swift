@@ -61,7 +61,8 @@ struct ReviewPipelineAgentTests {
                 let pipeline = ReviewPipeline(
                     store: store,
                     skipAgent: false,
-                    reviewer: fake
+                    reviewer: fake,
+                    judge: UnavailableJudge()
                 )
                 try await pipeline.run(jobID: job.id)
                 let after = try #require(try await store.job(id: job.id))
@@ -69,6 +70,81 @@ struct ReviewPipelineAgentTests {
                 #expect(after.containerNameA == "meister-review-\(job.id.rawValue)-a")
                 let findings = try await store.findings(jobID: job.id)
                 #expect(findings.contains { $0.phase == .agent && $0.reviewerSlot == .modelA })
+                #expect(findings.contains { $0.judgeVerdict == .unavailable })
+            }
+        }
+    }
+
+    @Test
+    func emptyAgentFindingsSkipJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let judge = RecordingJudge()
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: EmptyValidReviewer(),
+                    judge: judge
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                #expect(judge.ran == false)
+            }
+        }
+    }
+
+    @Test
+    func judgeFailDoesNotFailJobAndPersistsPostJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: FakeReviewer(),
+                    judge: UnavailableJudge()
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                #expect(after.containerName == "meister-judge-\(job.id.rawValue)")
+                let post = store.blobs.findingsURL(jobID: job.id.rawValue, stage: "post-judge")
+                #expect(FileManager.default.fileExists(atPath: post.path))
+                let pre = store.blobs.findingsURL(jobID: job.id.rawValue, stage: "pre-judge")
+                #expect(FileManager.default.fileExists(atPath: pre.path))
+            }
+        }
+    }
+
+    @Test
+    func hostForcedDropPersistsAndCountsSummary() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: MismatchedEvidenceReviewer(),
+                    judge: KeepAllJudge()
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.contains { $0.judgeVerdict == .drop })
+                let summary = try await store.summary(jobID: job.id)
+                #expect(summary.dropped == 1)
             }
         }
     }
@@ -151,6 +227,70 @@ struct EmptyReviewer: ReviewerRunning {
             validFileCount: 0,
             failed: request.newWork,
             errorMessage: request.newWork ? "reviewer_no_findings_file" : nil,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+struct EmptyValidReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        AgentReviewResult(
+            findings: [],
+            validFileCount: 2,
+            failed: false,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+struct UnavailableJudge: JudgeRunning {
+    func run(_ request: JudgeRequest) async -> JudgeRunResult {
+        JudgeRunResult(outcome: .containerFailed, containerName: ReviewContainers.judge(request.job.id))
+    }
+}
+
+final class RecordingJudge: JudgeRunning, @unchecked Sendable {
+    var ran = false
+    func run(_ request: JudgeRequest) async -> JudgeRunResult {
+        ran = true
+        return JudgeRunResult(outcome: .containerFailed, containerName: ReviewContainers.judge(request.job.id))
+    }
+}
+
+struct KeepAllJudge: JudgeRunning {
+    func run(_ request: JudgeRequest) async -> JudgeRunResult {
+        JudgeRunResult(
+            outcome: .verdicts(JudgeFile(verdicts: [])),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+struct MismatchedEvidenceReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        let finding = Finding(
+            id: FindingID.generate(),
+            jobID: request.job.id,
+            phase: .agent,
+            reviewerSlot: .modelA,
+            severity: .error,
+            title: "bad evidence",
+            message: "snippet does not match",
+            filePath: "Sources/A.swift",
+            startLine: 1,
+            endLine: 1,
+            snippet: "this-is-not-in-the-file",
+            evidenceOK: false,
+            createdAt: Date()
+        )
+        return AgentReviewResult(
+            findings: [finding],
+            validFileCount: 1,
+            failed: false,
             containerNameA: ReviewContainers.slot(request.job.id, .modelA),
             containerNameB: ReviewContainers.slot(request.job.id, .modelB),
             containerName: ReviewContainers.judge(request.job.id)
