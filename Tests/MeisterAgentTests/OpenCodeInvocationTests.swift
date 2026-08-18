@@ -6,6 +6,18 @@ import Testing
 @Suite
 struct OpenCodeInvocationTests {
     @Test
+    func incrementalReviewAttachesParentFindings() {
+        let full = OpenCodeInvocation.reviewFilePaths(incremental: false)
+        #expect(full == [
+            "/workspace/.meister/rules.json",
+            "/workspace/.meister/diff.patch",
+        ])
+        let incremental = OpenCodeInvocation.reviewFilePaths(incremental: true)
+        #expect(incremental.contains("/workspace/.meister/parent-findings.json"))
+        #expect(incremental.contains("/workspace/.meister/diff.patch"))
+    }
+
+    @Test
     func canonicalDockerRunSealsConfigContent() throws {
         let invocation = OpenCodeInvocation(
             docker: NoopDocker(),

@@ -44,27 +44,78 @@ public enum IncrementalDiff: Sendable {
         source: ChangeSet.Source,
         deadline: Date
     ) throws -> ChangeSet? {
+        do {
+            try fetchBundleIfPresent(workspace: workspace, deadline: deadline)
+        } catch let error as IdentifyError where error == .timeout {
+            throw error
+        } catch {
+            // Bundle optional; a packed workspace may already have .git.
+        }
         guard hasGitDirectory(workspace) else { return nil }
         let git = GitRunner(workspace: workspace, deadline: deadline)
         guard objectExists(parentHeadSHA, git: git) else { return nil }
-        let head = (try? git.run(["rev-parse", newHead]).trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? newHead
-        let patch = try git.run([
-            "diff", "--no-ext-diff", "--no-color", "--find-renames", parentHeadSHA, head,
-        ])
-        try writePatch(Data(patch.utf8), blobs: blobs, jobID: jobID)
-        let nameStatus = try git.run([
-            "diff", "--no-ext-diff", "--name-status", "--find-renames", parentHeadSHA, head,
-        ])
-        var files = NameStatus.parse(nameStatus, jobID: jobID)
-        try enrich(files: &files, workspace: workspace)
-        return ChangeSet(
-            baseSHA: parentHeadSHA,
-            headSHA: head,
-            patchRelativePath: "blobs/patches/\(jobID.rawValue).patch",
-            files: files,
-            source: source == .bundle ? .bundle : .git
-        )
+        let head = resolveGitHead(newHead, git: git)
+        guard let head, objectExists(head, git: git) else { return nil }
+        do {
+            let patch = try git.run([
+                "diff", "--no-ext-diff", "--no-color", "--find-renames", parentHeadSHA, head,
+            ])
+            try writePatch(Data(patch.utf8), blobs: blobs, jobID: jobID, workspace: workspace)
+            let nameStatus = try git.run([
+                "diff", "--no-ext-diff", "--name-status", "--find-renames", parentHeadSHA, head,
+            ])
+            var files = NameStatus.parse(nameStatus, jobID: jobID)
+            try enrich(files: &files, workspace: workspace)
+            let fromBundle = FileManager.default.fileExists(
+                atPath: workspace.appendingPathComponent(".meister/history.bundle").path
+            )
+            return ChangeSet(
+                baseSHA: parentHeadSHA,
+                headSHA: head,
+                patchRelativePath: "blobs/patches/\(jobID.rawValue).patch",
+                files: files,
+                source: fromBundle || source == .bundle ? .bundle : .git
+            )
+        } catch let error as IdentifyError where error == .timeout {
+            throw error
+        } catch {
+            return nil
+        }
+    }
+
+    private static func resolveGitHead(_ newHead: String, git: GitRunner) -> String? {
+        let trimmed = newHead.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != "noparent" {
+            if let resolved = try? git.run(["rev-parse", trimmed]) {
+                let sha = resolved.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sha.isEmpty { return sha }
+            }
+            if objectExists(trimmed, git: git) { return trimmed }
+        }
+        if let resolved = try? git.run(["rev-parse", "HEAD"]) {
+            let sha = resolved.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sha.isEmpty { return sha }
+        }
+        return nil
+    }
+
+    private static func fetchBundleIfPresent(workspace: URL, deadline: Date) throws {
+        let bundle = workspace.appendingPathComponent(".meister/history.bundle")
+        guard FileManager.default.fileExists(atPath: bundle.path) else { return }
+        let git = GitRunner(workspace: workspace, deadline: deadline)
+        if !hasGitDirectory(workspace) {
+            let gitURL = workspace.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: gitURL.path, isDirectory: &isDir), !isDir.boolValue {
+                try FileManager.default.removeItem(at: gitURL)
+            }
+            try git.run(["init"])
+        }
+        do {
+            _ = try git.run(["fetch", ".meister/history.bundle", "+refs/*:refs/bundle/*"])
+        } catch {
+            _ = try git.run(["fetch", ".meister/history.bundle", "HEAD:refs/heads/bundle-head"])
+        }
     }
 
     private static func hashInterdiff(
@@ -145,10 +196,16 @@ public enum IncrementalDiff: Sendable {
             let bySHA = parentOnly.first { file in
                 !claimedParents.contains(file.path) && file.sha256 != nil && file.sha256 == snap.sha
             }
-            let byOldPath = parentFiles.first { file in
+            let byParentOldPath = parentFiles.first { file in
                 !claimedParents.contains(file.path) && file.oldPath == snap.path
             }
-            if let old = bySHA ?? byOldPath {
+            let byIdentifiedOld = parentOnly.first { file in
+                !claimedParents.contains(file.path) && snap.identified?.oldPath == file.path
+            }
+            let byIdentifiedOldOnParent = parentFiles.first { file in
+                !claimedParents.contains(file.path) && snap.identified?.oldPath == file.path
+            }
+            if let old = bySHA ?? byParentOldPath ?? byIdentifiedOld ?? byIdentifiedOldOnParent {
                 claimedParents.insert(old.path)
                 files.append(
                     JobFile(
@@ -161,13 +218,26 @@ public enum IncrementalDiff: Sendable {
                         bytes: byteCount(ws.resolveForRead(snap.path))
                     )
                 )
+            } else if snap.identified?.status == .renamed, let oldPath = snap.identified?.oldPath {
+                claimedParents.insert(oldPath)
+                files.append(
+                    JobFile(
+                        jobID: jobID,
+                        path: snap.path,
+                        sha256: snap.sha,
+                        status: .renamed,
+                        oldPath: oldPath,
+                        language: LanguageMap.language(forPath: snap.path),
+                        bytes: byteCount(ws.resolveForRead(snap.path))
+                    )
+                )
             } else {
                 files.append(
                     JobFile(
                         jobID: jobID,
                         path: snap.path,
                         sha256: snap.sha,
-                        status: snap.identified?.status == .renamed ? .renamed : .added,
+                        status: .added,
                         oldPath: snap.identified?.oldPath,
                         language: LanguageMap.language(forPath: snap.path),
                         bytes: byteCount(ws.resolveForRead(snap.path))
@@ -195,7 +265,7 @@ public enum IncrementalDiff: Sendable {
             child: workspace,
             parent: parentWorkspace
         )
-        try writePatch(Data(patch.utf8), blobs: blobs, jobID: jobID)
+        try writePatch(Data(patch.utf8), blobs: blobs, jobID: jobID, workspace: workspace)
         return ChangeSet(
             baseSHA: parentHeadSHA,
             headSHA: identified.headSHA,
@@ -279,9 +349,15 @@ public enum IncrementalDiff: Sendable {
         return FileManager.default.fileExists(atPath: git.path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    private static func writePatch(_ data: Data, blobs: BlobStore, jobID: JobID) throws {
+    private static func writePatch(_ data: Data, blobs: BlobStore, jobID: JobID, workspace: URL) throws {
         try FileManager.default.createDirectory(at: blobs.patches, withIntermediateDirectories: true)
         try data.write(to: blobs.patchURL(jobID: jobID.rawValue), options: .atomic)
+        let dest = workspace.appendingPathComponent(".meister/diff.patch")
+        try FileManager.default.createDirectory(
+            at: dest.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: dest, options: .atomic)
     }
 
     private static func enrich(files: inout [JobFile], workspace: URL) throws {

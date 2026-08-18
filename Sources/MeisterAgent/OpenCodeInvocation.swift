@@ -54,12 +54,15 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             }
             try Quarantine.run(workspace: request.workspace)
             try DockerRunner.chownWorkspace(request.workspace.root)
+            let diffURL = request.workspace.root.appendingPathComponent(".meister/diff.patch")
+            let diffPatch = try? Data(contentsOf: diffURL)
             try PromptRenderer(schemasDirectory: schemasDirectory).write(
                 workspace: request.workspace,
                 job: request.job,
                 files: request.files,
                 rules: request.rules,
-                parentFindings: request.parentFindings
+                parentFindings: request.parentFindings,
+                diffPatch: diffPatch
             )
         } catch {
             return AgentReviewResult(
@@ -122,6 +125,17 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             guard FileManager.default.fileExists(atPath: url.path) else { return nil }
             return "/workspace/" + relative
         }
+    }
+
+    static func reviewFilePaths(incremental: Bool) -> [String] {
+        var paths = [
+            "/workspace/.meister/rules.json",
+            "/workspace/.meister/diff.patch",
+        ]
+        if incremental {
+            paths.append("/workspace/.meister/parent-findings.json")
+        }
+        return paths
     }
 
     public func reviewDockerRequest(
@@ -602,10 +616,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                     agent: "reviewer",
                     model: model,
                     prompt: prompt,
-                    filePaths: [
-                        "/workspace/.meister/rules.json",
-                        "/workspace/.meister/diff.patch",
-                    ],
+                    filePaths: Self.reviewFilePaths(incremental: request.job.scope == .incremental),
                     timeout: agentTimeout
                 )
                 await http.abort(baseURL: baseURL, password: password, sessionID: session)

@@ -36,6 +36,33 @@ struct ReviewPipelineIncrementalTests {
             }
         }
     }
+
+    @Test
+    func restatedReviewerFindingDoesNotDuplicateCarried() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepoPlusNewFile(dir: dir) { archive in
+                let parent = try await insertSucceededParent(store: store, archive: archive)
+                let child = queuedJob(scope: .incremental, parent: parent.id)
+                try await store.insertJob(child)
+                try FileManager.default.copyItem(
+                    at: archive,
+                    to: store.blobs.archiveURL(jobID: child.id.rawValue)
+                )
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: RestatingReviewer()
+                )
+                try await pipeline.run(jobID: child.id)
+                let after = try #require(try await store.job(id: child.id))
+                #expect(after.status == .succeeded)
+                let findings = try await store.findings(jobID: child.id)
+                let stillOpen = findings.filter { $0.lifecycle == .stillOpen }
+                #expect(stillOpen.count == 1)
+            }
+        }
+    }
 }
 
 private final class RecordingReviewer: ReviewerRunning, @unchecked Sendable {
@@ -114,6 +141,66 @@ private func queuedJob(scope: JobScope = .full, parent: JobID? = nil) -> Job {
         reviewerBModelID: "openai/gpt-5.2",
         judgeModelID: "anthropic/claude-sonnet-4-5"
     )
+}
+
+private struct RestatingReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        let restated = request.parentFindings.map { parent in
+            Finding(
+                id: FindingID.generate(),
+                jobID: request.job.id,
+                ruleID: parent.ruleID,
+                phase: .agent,
+                reviewerSlot: .modelA,
+                severity: parent.severity,
+                title: parent.title,
+                message: parent.message,
+                filePath: parent.filePath,
+                startLine: parent.startLine,
+                endLine: parent.endLine,
+                snippet: parent.snippet,
+                createdAt: Date()
+            )
+        }
+        return AgentReviewResult(
+            findings: restated,
+            validFileCount: restated.isEmpty ? 0 : 1,
+            failed: false,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+private func withPackedRepoPlusNewFile(dir: URL, _ body: (URL) async throws -> Void) async throws {
+    try await withTempDir("pipe-inc-new") { repo in
+        try writeFile("Sources/A.swift", "print(2)\n", in: repo)
+        try writeFile("Sources/B.swift", "print(3)\n", in: repo)
+        try writeFile(
+            ".meister/diff.patch",
+            """
+            diff --git a/Sources/A.swift b/Sources/A.swift
+            new file mode 100644
+            --- /dev/null
+            +++ b/Sources/A.swift
+            @@ -0,0 +1 @@
+            +print(2)
+            diff --git a/Sources/B.swift b/Sources/B.swift
+            new file mode 100644
+            --- /dev/null
+            +++ b/Sources/B.swift
+            @@ -0,0 +1 @@
+            +print(3)
+            """,
+            in: repo
+        )
+        try writeFile(".meister/base_sha", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", in: repo)
+        try writeFile(".meister/head_sha", "cccccccccccccccccccccccccccccccccccccccc", in: repo)
+        let archive = dir.appendingPathComponent("change-\(UUID().uuidString).tar.gz")
+        try gzipTarCreate(from: repo, to: archive)
+        try await body(archive)
+    }
 }
 
 private func withPackedRepo(dir: URL, _ body: (URL) async throws -> Void) async throws {

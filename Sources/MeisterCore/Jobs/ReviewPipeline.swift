@@ -285,13 +285,17 @@ public struct ReviewPipeline: Sendable {
             )
         )
         if try await stopped(jobID) { return }
-        let reviewFindings = review.findings.map { finding in
-            matcher.collapse(
+        let reviewFindings = review.findings.compactMap { finding -> Finding? in
+            let collapsed = matcher.collapse(
                 child: finding,
                 parents: parentFindings,
                 childFiles: files,
                 parentFiles: parentFiles
             ) ?? finding
+            if let parentID = collapsed.parentFindingID, carriedParents.contains(parentID) {
+                return nil
+            }
+            return collapsed
         }
         if !reviewFindings.isEmpty {
             try await store.insertParsedFindings(reviewFindings)

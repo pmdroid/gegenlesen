@@ -139,6 +139,230 @@ struct IncrementalDiffTests {
             #expect(interdiff.source == .git)
             #expect(interdiff.files.contains { $0.path == "a.txt" && $0.status == .modified })
             #expect(interdiff.baseSHA == parentHead)
+            let workspacePatch = try String(
+                contentsOf: repo.appendingPathComponent(".meister/diff.patch"),
+                encoding: .utf8
+            )
+            let blobPatch = try String(contentsOf: blobs.patchURL(jobID: jobID.rawValue), encoding: .utf8)
+            #expect(workspacePatch == blobPatch)
+        }
+    }
+
+    @Test
+    func hashInterdiffRenamePlusEditDoesNotAlsoDelete() throws {
+        try withTempDir("inc-rename") { dir in
+            let workspace = dir.appendingPathComponent("ws")
+            try writeFile("b.swift", "print(3)\n", in: workspace)
+            try writeFile(
+                ".meister/diff.patch",
+                """
+                diff --git a/a.swift b/b.swift
+                rename from a.swift
+                rename to b.swift
+                --- a/a.swift
+                +++ b/b.swift
+                @@ -1 +1 @@
+                -print(2)
+                +print(3)
+                """,
+                in: workspace
+            )
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            #expect(identified.files.contains { $0.path == "b.swift" && $0.oldPath == "a.swift" })
+            let parentFiles = [
+                JobFile(
+                    jobID: JobID.generate(),
+                    path: "a.swift",
+                    sha256: ContentHash.sha256(Data("print(2)\n".utf8)),
+                    status: .added
+                ),
+            ]
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                parentFiles: parentFiles,
+                parentWorkspace: nil,
+                timeout: .seconds(10)
+            )
+            #expect(interdiff.files.contains { $0.path == "b.swift" && $0.status == .renamed && $0.oldPath == "a.swift" })
+            #expect(!interdiff.files.contains { $0.path == "a.swift" && $0.status == .deleted })
+            #expect(interdiff.files.count == 1)
+        }
+    }
+
+    @Test
+    func overwritesWorkspaceDiffPatchWithInterdiff() throws {
+        try withTempDir("inc-overwrite") { dir in
+            let workspace = dir.appendingPathComponent("ws")
+            let original = """
+                diff --git a/Sources/A.swift b/Sources/A.swift
+                --- a/Sources/A.swift
+                +++ b/Sources/A.swift
+                @@ -1 +1 @@
+                -print(2)
+                +print(3)
+                """
+            try writeFile("Sources/A.swift", "print(3)\n", in: workspace)
+            try writeFile(".meister/diff.patch", original, in: workspace)
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                parentFiles: [
+                    JobFile(
+                        jobID: JobID.generate(),
+                        path: "Sources/A.swift",
+                        sha256: ContentHash.sha256(Data("print(2)\n".utf8)),
+                        status: .modified
+                    ),
+                ],
+                parentWorkspace: nil,
+                timeout: .seconds(10)
+            )
+            #expect(!interdiff.files.isEmpty)
+            let workspacePatch = try String(
+                contentsOf: workspace.appendingPathComponent(".meister/diff.patch"),
+                encoding: .utf8
+            )
+            let blobPatch = try String(contentsOf: blobs.patchURL(jobID: jobID.rawValue), encoding: .utf8)
+            #expect(workspacePatch == blobPatch)
+            #expect(workspacePatch != original)
+            #expect(workspacePatch.contains("--- /dev/null"))
+        }
+    }
+
+    @Test
+    func fetchesBundleThenGitInterdiffs() throws {
+        try withTempDir("inc-bundle") { dir in
+            let repo = dir.appendingPathComponent("src")
+            try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+            try git(["init"], cwd: repo)
+            try writeFile("f.swift", "a\n", in: repo)
+            try git(["add", "f.swift"], cwd: repo)
+            try git(["commit", "-m", "base"], cwd: repo)
+            let parentHead = try revParse(repo)
+            try writeFile("f.swift", "b\n", in: repo)
+            try git(["add", "f.swift"], cwd: repo)
+            try git(["commit", "-m", "head"], cwd: repo)
+            let head = try revParse(repo)
+            try git(["tag", "meister-base", parentHead], cwd: repo)
+            try git(["tag", "meister-head", head], cwd: repo)
+            let bundle = repo.appendingPathComponent("history.bundle")
+            try git(["bundle", "create", bundle.path, "meister-base", "meister-head"], cwd: repo)
+
+            let workspace = dir.appendingPathComponent("ws")
+            try writeFile("f.swift", "b\n", in: workspace)
+            try FileManager.default.createDirectory(
+                at: workspace.appendingPathComponent(".meister"),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.copyItem(
+                at: bundle,
+                to: workspace.appendingPathComponent(".meister/history.bundle")
+            )
+            try writeFile(".meister/head_sha", head, in: workspace)
+            try writeFile(
+                ".meister/diff.patch",
+                """
+                diff --git a/f.swift b/f.swift
+                --- a/f.swift
+                +++ b/f.swift
+                @@ -1 +1 @@
+                -a
+                +b
+                """,
+                in: workspace
+            )
+
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            #expect(identified.source == .embeddedDiff)
+            #expect(!FileManager.default.fileExists(atPath: workspace.appendingPathComponent(".git").path))
+
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: workspace,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: parentHead,
+                parentFiles: [
+                    JobFile(
+                        jobID: JobID.generate(),
+                        path: "f.swift",
+                        sha256: ContentHash.sha256(Data("a\n".utf8)),
+                        status: .added
+                    ),
+                ],
+                parentWorkspace: nil,
+                timeout: .seconds(10)
+            )
+            #expect(interdiff.source == .bundle)
+            #expect(interdiff.files.contains { $0.path == "f.swift" && $0.status == .modified })
+        }
+    }
+
+    @Test
+    func missingParentObjectFallsBackToHashInterdiff() throws {
+        try withTempDir("inc-fallback") { dir in
+            let repo = dir.appendingPathComponent("repo")
+            try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+            try git(["init"], cwd: repo)
+            try writeFile("a.txt", "two\n", in: repo)
+            try git(["add", "a.txt"], cwd: repo)
+            try git(["commit", "-m", "two"], cwd: repo)
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: repo,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: repo,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                parentFiles: [
+                    JobFile(
+                        jobID: JobID.generate(),
+                        path: "a.txt",
+                        sha256: ContentHash.sha256(Data("one\n".utf8)),
+                        status: .added
+                    ),
+                ],
+                parentWorkspace: nil,
+                timeout: .seconds(10)
+            )
+            #expect(interdiff.source == .hashInterdiff)
+            #expect(interdiff.files.contains { $0.path == "a.txt" })
         }
     }
 }

@@ -133,6 +133,96 @@ struct JobsRouteTests {
     }
 
     @Test
+    func incrementalParentNotSucceededIsUnprocessable() async throws {
+        try await withMeisterApp { app in
+            let now = Date()
+            let parent = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                status: .queued,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j",
+                baseSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                headSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            )
+            try await app.meisterStore.insertJob(parent)
+            try await app.meisterStore.replaceJobFiles([
+                JobFile(jobID: parent.id, path: "Sources/A.swift", sha256: "ab", status: .added),
+            ])
+            let res = try await postJob(
+                app,
+                archive: try tinyTarGz(),
+                filename: "change.tar.gz",
+                meta: #"{"scope":"incremental","parent_job_id":"11111111-1111-4111-8111-111111111111"}"#
+            )
+            #expect(res.status == .unprocessableEntity)
+            try assertError(res, code: "unprocessable")
+        }
+    }
+
+    @Test
+    func incrementalParentMissingSHAsIsUnprocessable() async throws {
+        try await withMeisterApp { app in
+            let now = Date()
+            let parent = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                finishedAt: now,
+                status: .succeeded,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j"
+            )
+            try await app.meisterStore.insertJob(parent)
+            try await app.meisterStore.replaceJobFiles([
+                JobFile(jobID: parent.id, path: "Sources/A.swift", sha256: "ab", status: .added),
+            ])
+            let res = try await postJob(
+                app,
+                archive: try tinyTarGz(),
+                filename: "change.tar.gz",
+                meta: #"{"scope":"incremental","parent_job_id":"11111111-1111-4111-8111-111111111111"}"#
+            )
+            #expect(res.status == .unprocessableEntity)
+            try assertError(res, code: "unprocessable")
+        }
+    }
+
+    @Test
+    func incrementalParentWithoutFilesIsUnprocessable() async throws {
+        try await withMeisterApp { app in
+            let now = Date()
+            let parent = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                finishedAt: now,
+                status: .succeeded,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j",
+                baseSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                headSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            )
+            try await app.meisterStore.insertJob(parent)
+            let res = try await postJob(
+                app,
+                archive: try tinyTarGz(),
+                filename: "change.tar.gz",
+                meta: #"{"scope":"incremental","parent_job_id":"11111111-1111-4111-8111-111111111111"}"#
+            )
+            #expect(res.status == .unprocessableEntity)
+            try assertError(res, code: "unprocessable")
+        }
+    }
+
+    @Test
     func incrementalMissingParentIsUnprocessable() async throws {
         try await withMeisterApp { app in
             let res = try await postJob(

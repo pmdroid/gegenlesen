@@ -13,13 +13,19 @@ public struct PromptRenderer: Sendable {
         job: Job,
         files: [JobFile],
         rules: [Rule],
-        parentFindings: [Finding] = []
+        parentFindings: [Finding] = [],
+        diffPatch: Data? = nil
     ) throws {
         let fm = FileManager.default
         let meister = workspace.root.appendingPathComponent(".meister", isDirectory: true)
         try fm.createDirectory(at: meister, withIntermediateDirectories: true)
 
-        try writeIfAbsent(meister.appendingPathComponent("diff.patch"), contents: "")
+        let diffURL = meister.appendingPathComponent("diff.patch")
+        if let diffPatch {
+            try diffPatch.write(to: diffURL, options: .atomic)
+        } else {
+            try writeIfAbsent(diffURL, contents: "")
+        }
         try writeJSON(meister.appendingPathComponent("rules.json"), object: rules.map(Self.ruleJSON))
         try writeJSON(meister.appendingPathComponent("files.json"), object: files.map(Self.fileJSON))
         try writeIfAbsent(meister.appendingPathComponent("context.md"), contents: "")
