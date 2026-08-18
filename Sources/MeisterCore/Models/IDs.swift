@@ -54,7 +54,7 @@ public struct RuleID: RawRepresentable, Hashable, Codable, Sendable, CustomStrin
     public static func slug(from title: String) -> RuleID {
         var scalars: [Character] = []
         for character in title.lowercased() {
-            if character.isLetter || character.isNumber {
+            if character.isASCII, character.isLetter || character.isNumber {
                 scalars.append(character)
             } else if scalars.last != "-" {
                 scalars.append("-")

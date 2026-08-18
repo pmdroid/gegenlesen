@@ -26,6 +26,19 @@ struct RulePayloadTests {
     }
 
     @Test
+    func slugIsAsciiKebabAndValid() {
+        let umlaut = RuleID.slug(from: "Über logger")
+        #expect(umlaut.isValid)
+        #expect(umlaut.rawValue == "ber-logger")
+        let cjk = RuleID.slug(from: "日本語")
+        #expect(cjk.isValid)
+        #expect(cjk.rawValue == "rule")
+        let mixed = RuleID.slug(from: "Ban print()")
+        #expect(mixed.isValid)
+        #expect(mixed.rawValue == "ban-print")
+    }
+
+    @Test
     func regexRoundTrip() throws {
         let payload = RulePayload.regex(pattern: "foo", flags: "i", message: "no")
         let data = try JSONEncoder().encode(payload)

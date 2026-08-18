@@ -8,6 +8,12 @@ function instructionOf(payload: RulePayload): string {
   return "instruction" in payload ? payload.instruction : "";
 }
 
+function payloadSummary(payload: RulePayload | undefined): string {
+  if (!payload) return "";
+  if ("instruction" in payload) return payload.instruction;
+  return JSON.stringify(payload, null, 2);
+}
+
 export function RuleEditorPage() {
   const { id } = useParams();
   const isNew = id === undefined;
@@ -90,16 +96,6 @@ export function RuleEditorPage() {
     },
   });
 
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    if (!title.trim() || !instruction.trim()) {
-      setError("title and instruction are required");
-      return;
-    }
-    save.mutate();
-  }
-
   if (!isNew && existing.isLoading) {
     return (
       <div className="page">
@@ -120,6 +116,21 @@ export function RuleEditorPage() {
 
   const rule = existing.data;
   const canPromote = rule && rule.provenance !== "handwritten";
+  const isSemantic = isNew || (rule !== undefined && "instruction" in rule.payload);
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    if (!title.trim()) {
+      setError("title is required");
+      return;
+    }
+    if (isSemantic && !instruction.trim()) {
+      setError("instruction is required");
+      return;
+    }
+    save.mutate();
+  }
 
   return (
     <div className="page">
@@ -140,15 +151,22 @@ export function RuleEditorPage() {
             <option value="error">error</option>
           </select>
         </label>
-        <label>
-          instruction
-          <textarea
-            rows={6}
-            value={instruction}
-            onChange={(event) => setInstruction(event.target.value)}
-            required
-          />
-        </label>
+        {isSemantic ? (
+          <label>
+            instruction
+            <textarea
+              rows={6}
+              value={instruction}
+              onChange={(event) => setInstruction(event.target.value)}
+              required
+            />
+          </label>
+        ) : (
+          <label>
+            checker payload
+            <textarea rows={4} value={payloadSummary(rule?.payload)} readOnly />
+          </label>
+        )}
         <label>
           path globs (one per line, default **/*)
           <textarea rows={3} value={pathGlobs} onChange={(event) => setPathGlobs(event.target.value)} />

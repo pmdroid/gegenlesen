@@ -100,4 +100,21 @@ struct DeterministicEngineTests {
             #expect(!result.timedOut)
         }
     }
+
+    @Test
+    func zeroTimeoutExpiresWithoutHanging() async throws {
+        try await withTempDir("det-timeout") { root in
+            try writeFile("a.swift", "hello\n", in: root)
+            let files = [JobFile(jobID: JobID("job"), path: "a.swift", status: .modified, language: .swift)]
+            let rule = sampleRule(id: "ok-regex", payload: .regex(pattern: "hello", flags: nil, message: "found"))
+            let result = await DeterministicEngine().run(
+                files: files,
+                workspace: Workspace(root: root),
+                rules: [rule],
+                timeout: .zero
+            )
+            #expect(result.timedOut)
+            #expect(result.drafts.isEmpty)
+        }
+    }
 }
