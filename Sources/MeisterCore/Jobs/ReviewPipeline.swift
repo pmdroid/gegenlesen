@@ -4,11 +4,21 @@ public struct ReviewPipeline: Sendable {
     public var store: Store
     public var skipAgent: Bool
     public var identifyTimeout: Duration
+    public var deterministicTimeout: Duration
+    public var deterministic: (any DeterministicRunning)?
 
-    public init(store: Store, skipAgent: Bool = true, identifyTimeout: Duration = .seconds(60)) {
+    public init(
+        store: Store,
+        skipAgent: Bool = true,
+        identifyTimeout: Duration = .seconds(60),
+        deterministicTimeout: Duration = .seconds(30),
+        deterministic: (any DeterministicRunning)? = nil
+    ) {
         self.store = store
         self.skipAgent = skipAgent
         self.identifyTimeout = identifyTimeout
+        self.deterministicTimeout = deterministicTimeout
+        self.deterministic = deterministic
     }
 
     public func run(jobID: JobID) async throws {
@@ -35,10 +45,10 @@ public struct ReviewPipeline: Sendable {
         _ = try await store.apply(jobID: jobID, event: .dequeued)
         if try await stopped(jobID) { return }
 
-        let workspace = store.blobs.workspaceURL(jobID: jobID.rawValue)
+        let workspaceURL = store.blobs.workspaceURL(jobID: jobID.rawValue)
         let archive = store.blobs.archiveURL(jobID: jobID.rawValue)
         do {
-            try ArchiveUnpacker().unpack(archive: archive, into: workspace)
+            try ArchiveUnpacker().unpack(archive: archive, into: workspaceURL)
             try await store.appendEvent(jobID: jobID, level: .info, message: "unpacked")
             _ = try await store.apply(jobID: jobID, event: .unpackOK)
         } catch {
@@ -56,7 +66,7 @@ public struct ReviewPipeline: Sendable {
             let meta = loadIdentifyMeta(jobID: jobID)
             let patch = loadMultipartPatch(jobID: jobID)
             let identifier = ChangeSetIdentifier(
-                workspace: workspace,
+                workspace: workspaceURL,
                 blobs: store.blobs,
                 jobID: jobID,
                 meta: meta,
@@ -92,13 +102,50 @@ public struct ReviewPipeline: Sendable {
         }
         if try await stopped(jobID) { return }
 
-        try await store.appendEvent(jobID: jobID, level: .info, message: "selecting_rules")
-        _ = try await store.apply(jobID: jobID, event: .rulesOK)
+        let files = try await store.jobFiles(id: jobID)
+        let rules: [Rule]
+        do {
+            rules = try await store.listRules(RuleListFilter(enabled: true))
+            let selected = RuleSelector().select(rules: rules, files: files)
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .info,
+                message: "selecting_rules",
+                payloadJSON: #"{"count":\#(selected.count)}"#
+            )
+            _ = try await store.apply(jobID: jobID, event: .rulesOK)
+        } catch {
+            _ = try await store.apply(
+                jobID: jobID,
+                event: .rulesFailed("internal"),
+                errorMessage: "internal"
+            )
+            try await store.appendEvent(jobID: jobID, level: .error, message: "rules_failed")
+            return
+        }
         if try await stopped(jobID) { return }
 
-        let files = try await store.jobFiles(id: jobID)
         let newWork = !files.isEmpty
         try await store.appendEvent(jobID: jobID, level: .info, message: "deterministic")
+        let result: DeterministicRunResult
+        if let deterministic {
+            result = await deterministic.run(
+                files: files,
+                workspace: Workspace(root: workspaceURL),
+                rules: rules,
+                timeout: deterministicTimeout
+            )
+        } else {
+            result = DeterministicRunResult(drafts: [], timedOut: false)
+        }
+        if result.timedOut {
+            _ = try await store.apply(jobID: jobID, event: .deterministicTimeout)
+            try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")
+            return
+        }
+        if !result.drafts.isEmpty {
+            _ = try await store.insertFindings(result.drafts, jobID: jobID)
+        }
         _ = try await store.apply(
             jobID: jobID,
             event: .deterministicDone(newWork: newWork, skipAgent: skipAgent)

@@ -10,12 +10,14 @@ let package = Package(
         .executable(name: "MeisterAPI", targets: ["MeisterAPI"]),
         .executable(name: "meister", targets: ["MeisterCLI"]),
         .library(name: "MeisterCore", targets: ["MeisterCore"]),
+        .library(name: "MeisterDeterministic", targets: ["MeisterDeterministic"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/hummingbird-project/swift-jobs.git", from: "1.4.0"),
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.3.1"),
     ],
     targets: [
         .target(
@@ -30,9 +32,20 @@ let package = Package(
             name: "MeisterCore",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "Yams", package: "Yams"),
                 "CLibArchive",
             ],
             path: "Sources/MeisterCore",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .target(
+            name: "MeisterDeterministic",
+            dependencies: [
+                .target(name: "MeisterCore"),
+            ],
+            path: "Sources/MeisterDeterministic",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
@@ -41,6 +54,7 @@ let package = Package(
             name: "MeisterAPI",
             dependencies: [
                 .target(name: "MeisterCore"),
+                .target(name: "MeisterDeterministic"),
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Jobs", package: "swift-jobs"),
@@ -64,6 +78,7 @@ let package = Package(
             name: "MeisterCoreTests",
             dependencies: [
                 .target(name: "MeisterCore"),
+                .target(name: "MeisterDeterministic"),
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),

@@ -58,6 +58,21 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 
 .page { padding: 16px 20px; font-size: 12.5px; line-height: 1.6; }
 .page h1 { font-size: 14px; color: #e8f5e9; font-weight: 700; margin: 0 0 12px; }
+.pagehead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.form { max-width: 720px; }
+.form label { display: block; color: #557a58; margin: 10px 0; }
+.form input, .form textarea, .form select {
+  display: block; width: 100%; margin-top: 4px;
+  background: #080a07; color: #c8e6c9; border: 1px solid #2e4a26;
+  border-radius: 3px; padding: 6px 8px; font-family: inherit; font-size: 12.5px;
+}
+.formrow { display: flex; gap: 8px; margin-top: 14px; }
+.formerr { color: #e57373; margin-top: 8px; }
+.btn {
+  font-family: inherit; font-size: 11px; cursor: pointer;
+  background: #1b3a1e; color: #a5d6a7; border: 1px solid #4caf50;
+  border-radius: 3px; padding: 4px 10px;
+}
 
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }

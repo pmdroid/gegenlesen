@@ -400,7 +400,7 @@ extension Store {
     }
 }
 
-public enum StoreJobError: Error, Sendable {
+public enum StoreJobError: Error, Sendable, Equatable {
     case notFound
 }
 

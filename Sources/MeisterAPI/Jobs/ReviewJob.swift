@@ -2,6 +2,7 @@ import Foundation
 import Jobs
 import Logging
 import MeisterCore
+import MeisterDeterministic
 import Vapor
 
 struct ReviewJobParameters: JobParameters {
@@ -48,7 +49,9 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                 try await ReviewPipeline(
                     store: store,
                     skipAgent: true,
-                    identifyTimeout: identifyTimeout
+                    identifyTimeout: identifyTimeout,
+                    deterministicTimeout: Duration.seconds(config.limits.deterministicTimeoutSec),
+                    deterministic: DeterministicEngine()
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

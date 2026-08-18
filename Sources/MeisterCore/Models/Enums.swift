@@ -69,6 +69,22 @@ public enum FindingLifecycle: String, Codable, Sendable, Equatable {
     case relocated
 }
 
+public enum RuleKind: String, Codable, Sendable, Equatable {
+    case deterministic, semantic
+}
+
+public enum RuleProvenance: String, Codable, Sendable, Equatable {
+    case handwritten, mined, suggested
+}
+
+public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {
+    case regex
+    case denyApi = "deny_api"
+    case siblingTest = "sibling_test"
+    case command
+    case openapiBreak = "openapi_break"
+}
+
 public enum EventLevel: String, Codable, Sendable, Equatable {
     case debug, info, warning, error
 }

@@ -65,7 +65,12 @@ func configure(
         req.application.meisterConfig.settingsDTO
     }
 
+    let rulesDir = URL(fileURLWithPath: app.directory.workingDirectory, isDirectory: true)
+        .appendingPathComponent("rules", isDirectory: true)
+    _ = try await RuleSeeder.upsertAbsent(from: rulesDir, into: app.meisterStore)
+
     JobsRoute.register(app)
+    RulesRoute.register(app)
 
     // RoutingKit does not match `/` against a lone `**`, so register the empty path too.
     let spa: @Sendable (Request) async throws -> Response = { req in

@@ -4,6 +4,7 @@ import { getHealth, getSettings } from "./client";
 import { ContextPage } from "./pages/Context";
 import { JobsPage } from "./pages/Jobs";
 import { LearningsPage } from "./pages/Learnings";
+import { RuleEditorPage } from "./pages/RuleEditor";
 import { RulesPage } from "./pages/Rules";
 
 export function App() {
@@ -41,6 +42,8 @@ export function App() {
       <Routes>
         <Route path="/" element={<JobsPage />} />
         <Route path="/rules" element={<RulesPage />} />
+        <Route path="/rules/new" element={<RuleEditorPage />} />
+        <Route path="/rules/:id" element={<RuleEditorPage />} />
         <Route path="/context" element={<ContextPage />} />
         <Route path="/learnings" element={<LearningsPage />} />
       </Routes>

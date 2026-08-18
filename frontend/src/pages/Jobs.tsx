@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
-import { listJobs } from "../client";
+import { listJobs, listRules } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -44,7 +44,14 @@ export function JobsPage() {
     refetchInterval: 2000,
   });
 
+  const rules = useQuery({
+    queryKey: ["rules", "rail"],
+    queryFn: () => listRules({ enabled: true }),
+    refetchInterval: 2000,
+  });
+
   const items = jobs.data?.jobs ?? [];
+  const railRules = rules.data?.rules ?? [];
   const queued = items.filter((job) => job.status === "queued").length;
   const running = items.filter((job) => !isTerminal(job.status) && job.status !== "queued").length;
   const succeeded = items.filter((job) => job.status === "succeeded").length;
@@ -82,11 +89,25 @@ export function JobsPage() {
       </div>
       <aside className="rail">
         <h3>Rules (edit in UI)</h3>
-        <div className="rule">
-          <span className="rn">—</span>
-          <br />
-          <span className="rk">rule editor is not available yet</span>
-        </div>
+        {railRules.length === 0 ? (
+          <div className="rule">
+            <span className="rn">—</span>
+            <br />
+            <span className="rk">no enabled rules</span>
+          </div>
+        ) : (
+          railRules.map((rule) => (
+            <div className="rule" key={rule.id}>
+              <span className="rn">{rule.id}</span>
+              <br />
+              <span className="rk">
+                {rule.kind}
+                {"instruction" in rule.payload ? " · semantic guidance" : ""} ·{" "}
+                {rule.path_globs.join(", ")} · {rule.enabled ? "enabled" : "disabled"}
+              </span>
+            </div>
+          ))
+        )}
         <h3>Context notes (/context)</h3>
         <div className="ctx">User notes will list here.</div>
         <h3>Learnings inbox</h3>
