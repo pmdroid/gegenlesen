@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meister — admin UI mocks (kimi set)</title>
+  <style>
+    :root { --ph: 52px; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; }
+    code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+
+    .picker {
+      position: sticky; top: 0; z-index: 30;
+      height: var(--ph); display: flex; align-items: center; gap: 8px;
+      padding: 0 12px; background: #0d0d0d; color: #eee; font-size: 13px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .picker strong { margin-right: 6px; }
+    .picker button {
+      border: 1px solid #444; background: #1c1c1c; color: #eee;
+      padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    }
+    .picker button.on { background: #eee; color: #111; border-color: #eee; }
+    .picker .hint { margin-left: auto; color: #888; font-size: 12px; }
+
+    .mock { display: none; height: calc(100% - var(--ph)); overflow: auto; }
+    .mock.on { display: block; }
+
+    /* ============================================================
+       D1 — LEDGER: terminal log-stream. The UI as a read-only tail
+       of what the CLI already did, plus triage + knowledge panes.
+       ============================================================ */
+    .d1 { background: #0c0f0a; color: #c8e6c9; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .d1 .topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 18px; border-bottom: 1px solid #1e2b1a;
+      background: #0a0d08; font-size: 12px; color: #7fa882;
+      position: sticky; top: 0; z-index: 5;
+    }
+    .d1 .topbar .brand { color: #e8f5e9; font-weight: 700; letter-spacing: 0.1em; }
+    .d1 .topbar nav { display: flex; gap: 12px; }
+    .d1 .topbar nav span { color: #557a58; cursor: pointer; }
+    .d1 .topbar nav span.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
+    .d1 .topbar .srv { margin-left: auto; color: #557a58; }
+    .d1 .layout { display: grid; grid-template-columns: 1fr 340px; min-height: calc(100% - 37px); }
+    .d1 .stream { padding: 16px 20px; font-size: 12.5px; line-height: 1.6; }
+    .d1 .logline { color: #557a58; white-space: pre-wrap; }
+    .d1 .logline b { color: #a5d6a7; font-weight: 400; }
+    .d1 .jobblock { border: 1px solid #1e2b1a; border-radius: 6px; margin: 14px 0; background: #0e120b; }
+    .d1 .jobhead {
+      display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+      padding: 10px 14px; border-bottom: 1px solid #1e2b1a;
+    }
+    .d1 .jobhead .t { color: #e8f5e9; font-weight: 700; }
+    .d1 .jobhead .sha { color: #557a58; }
+    .d1 .st { padding: 1px 7px; border-radius: 3px; font-size: 11px; }
+    .d1 .st.ok { background: #14301a; color: #81c784; }
+    .d1 .st.run { background: #2b2a10; color: #d4c95a; }
+    .d1 .st.fail { background: #331414; color: #e57373; }
+    .d1 .pipe { padding: 6px 14px; color: #557a58; font-size: 11.5px; border-bottom: 1px solid #1e2b1a; }
+    .d1 .pipe b { color: #a5d6a7; font-weight: 400; }
+    .d1 .finding { padding: 10px 14px; border-bottom: 1px solid #16200f; }
+    .d1 .finding:last-child { border-bottom: 0; }
+    .d1 .finding .fh { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .d1 .finding .id { color: #557a58; }
+    .d1 .finding .title { color: #e8f5e9; }
+    .d1 .verdict { font-size: 11px; padding: 0 6px; border-radius: 3px; }
+    .d1 .verdict.kept { background: #14301a; color: #81c784; }
+    .d1 .verdict.dropped { background: #2b1a10; color: #d49a5a; }
+    .d1 .verdict.det { background: #10222b; color: #5ab8d4; }
+    .d1 .finding pre {
+      margin: 8px 0; padding: 8px 10px; background: #080a07;
+      border-left: 2px solid #2e4a26; color: #a5d6a7; overflow: auto; font-size: 11.5px;
+    }
+    .d1 .finding .src { color: #557a58; font-size: 11px; }
+    .d1 .rxn { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .d1 .rxn button {
+      font-family: inherit; font-size: 11px; cursor: pointer;
+      background: transparent; color: #7fa882; border: 1px solid #2e4a26;
+      border-radius: 3px; padding: 3px 8px;
+    }
+    .d1 .rxn button.on { background: #1b3a1e; color: #c8e6c9; border-color: #4caf50; }
+    .d1 .empty {
+      border: 1px dashed #2e4a26; border-radius: 6px; padding: 26px 18px;
+      text-align: center; color: #7fa882; margin: 14px 0; font-size: 13px;
+    }
+    .d1 .empty code { color: #e8f5e9; background: #14301a; padding: 2px 6px; border-radius: 3px; }
+    .d1 .rail { border-left: 1px solid #1e2b1a; background: #0a0d08; padding: 14px; font-size: 12px; overflow: auto; }
+    .d1 .rail h3 {
+      font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: #557a58; margin: 18px 0 8px; font-weight: 400;
+    }
+    .d1 .rail h3:first-child { margin-top: 0; }
+    .d1 .rule { padding: 7px 9px; border: 1px solid #1e2b1a; border-radius: 4px; margin-bottom: 6px; }
+    .d1 .rule .rn { color: #a5d6a7; }
+    .d1 .rule .rk { color: #557a58; font-size: 11px; }
+    .d1 .rule .rk .sem { color: #d4c95a; }
+    .d1 .ctx { padding: 7px 9px; border-left: 2px solid #2e4a26; margin-bottom: 6px; color: #7fa882; }
+    .d1 .learn { border: 1px solid #2b2a10; border-radius: 4px; padding: 8px 9px; margin-bottom: 8px; background: #12110a; }
+    .d1 .learn .lk { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .d1 .learn .lk.rule-k { color: #d4c95a; }
+    .d1 .learn .lk.arch-k { color: #5ab8d4; }
+    .d1 .learn .lk.ctx-k { color: #b98ad4; }
+    .d1 .learn p { margin: 5px 0 8px; color: #c8e6c9; font-size: 11.5px; }
+    .d1 .learn .lb { display: flex; gap: 6px; }
+    .d1 .learn button {
+      font-family: inherit; font-size: 10.5px; cursor: pointer; border-radius: 3px; padding: 2px 8px;
+    }
+    .d1 .learn .acc { background: #1b3a1e; color: #a5d6a7; border: 1px solid #4caf50; }
+    .d1 .learn .dis { background: transparent; color: #557a58; border: 1px solid #2e4a26; }
+    .d1 .neverapply { color: #557a58; font-size: 10.5px; margin-top: 4px; }
+
+    /* ============================================================
+       D2 — BOARD: pipeline kanban. Jobs live in stage columns the
+       CLI moved them through; knowledge management in a bottom dock.
+       ============================================================ */
+    .d2 { background: #e9edf3; color: #1b2432; display: none; }
+    .d2.on { display: flex; flex-direction: column; }
+    .d2 .topbar {
+      display: flex; align-items: center; gap: 16px;
+      background: #1b2432; color: #e9edf3; padding: 12px 20px; font-size: 13px;
+    }
+    .d2 .topbar .brand { font-weight: 700; letter-spacing: 0.04em; }
+    .d2 .topbar .cli-note { margin-left: auto; color: #8fa1b8; font-size: 12px; }
+    .d2 .cli-note code { background: #2c3a4f; padding: 2px 6px; border-radius: 4px; color: #cfe0f4; }
+    .d2 .board {
+      flex: 1; display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 12px; padding: 16px; overflow: auto; align-items: start;
+    }
+    .d2 .col { background: #dde3ec; border-radius: 10px; padding: 10px; min-height: 200px; }
+    .d2 .col h3 {
+      margin: 2px 4px 10px; font-size: 11px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #5b6b80; display: flex; justify-content: space-between;
+    }
+    .d2 .col h3 .cnt { background: #c4cedd; border-radius: 8px; padding: 0 7px; font-size: 10px; }
+    .d2 .card {
+      background: #fff; border: 1px solid #ccd5e2; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(27,36,50,0.06);
+    }
+    .d2 .card .ct { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .d2 .card .cm { font-size: 11px; color: #5b6b80; margin-bottom: 6px; }
+    .d2 .card .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .d2 .chip { font-size: 10px; padding: 2px 7px; border-radius: 999px; background: #eef2f8; color: #44536a; border: 1px solid #d5deeb; }
+    .d2 .chip.a { background: #e7f0fd; color: #1d4fa1; border-color: #c2d8f5; }
+    .d2 .chip.b { background: #f3e9fd; color: #6b2fa1; border-color: #dec9f5; }
+    .d2 .chip.j { background: #fdeee4; color: #a14a1d; border-color: #f5d3bc; }
+    .d2 .chip.det { background: #e6f6ec; color: #1d7a44; border-color: #bfe8cf; }
+    .d2 .chip.human { background: #fff7d6; color: #8a6d1d; border-color: #eee0a0; }
+    .d2 .card .prog { height: 4px; background: #eef2f8; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .d2 .card .prog i { display: block; height: 100%; background: linear-gradient(90deg, #1d4fa1, #6b2fa1); }
+    .d2 .emptycol {
+      border: 2px dashed #b8c3d4; border-radius: 8px; padding: 18px 12px;
+      text-align: center; color: #5b6b80; font-size: 12px; line-height: 1.5;
+    }
+    .d2 .emptycol code { background: #fff; border: 1px solid #ccd5e2; padding: 1px 5px; border-radius: 4px; }
+    .d2 .dock { border-top: 1px solid #ccd5e2; background: #f4f7fb; }
+    .d2 .docktabs { display: flex; gap: 2px; padding: 8px 16px 0; }
+    .d2 .docktabs span {
+      font-size: 12px; padding: 6px 14px; border-radius: 8px 8px 0 0;
+      color: #5b6b80; cursor: pointer; border: 1px solid transparent; border-bottom: 0;
+    }
+    .d2 .docktabs span.on { background: #fff; color: #1b2432; border-color: #ccd5e2; font-weight: 600; }
+    .d2 .dockbody {
+      background: #fff; border-top: 1px solid #ccd5e2;
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; max-height: 240px; overflow: auto;
+    }
+    .d2 .docksec { padding: 12px 16px; border-right: 1px solid #eef2f8; }
+    .d2 .docksec:last-child { border-right: 0; }
+    .d2 .docksec h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #5b6b80; }
+    .d2 .ditem { font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid #eef2f8; }
+    .d2 .ditem:last-child { border-bottom: 0; }
+    .d2 .ditem small { display: block; color: #7d8ca1; font-size: 11px; margin-top: 2px; }
+    .d2 .ditem .lrow { display: flex; gap: 6px; margin-top: 6px; }
+    .d2 .ditem button {
+      font-size: 11px; border-radius: 5px; padding: 3px 10px; cursor: pointer; border: 1px solid #ccd5e2;
+    }
+    .d2 .ditem .acc { background: #1b2432; color: #fff; border-color: #1b2432; }
+    .d2 .ditem .dis { background: #fff; color: #5b6b80; }
+    .d2 .badge { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; margin-right: 5px; }
+    .d2 .badge.rule-k { background: #e7f0fd; color: #1d4fa1; }
+    .d2 .badge.arch-k { background: #fdeee4; color: #a14a1d; }
+    .d2 .badge.ctx-k { background: #f3e9fd; color: #6b2fa1; }
+    .d2 .toggle { float: right; font-size: 10px; color: #1d7a44; }
+
+    /* ============================================================
+       D3 — REVIEW ROOM: single-job deep dive. Diff-anchored findings
+       with a reaction gutter; right rail tabs for rules/context/learnings.
+       ============================================================ */
+    .d3 { background: #faf9f7; color: #23201b; display: none; }
+    .d3.on { display: flex; flex-direction: column; }
+    .d3 .jobstrip {
+      display: flex; align-items: center; gap: 10px; padding: 10px 18px;
+      background: #23201b; color: #efe9df; font-size: 13px; overflow-x: auto;
+    }
+    .d3 .jobstrip .lbl { color: #a89e8d; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .d3 .jobtab {
+      white-space: nowrap; font-size: 12px; padding: 5px 12px; border-radius: 999px;
+      border: 1px solid #4a443b; color: #cfc6b6; cursor: pointer; background: transparent;
+    }
+    .d3 .jobtab.on { background: #efe9df; color: #23201b; border-color: #efe9df; font-weight: 600; }
+    .d3 .jobstrip .cli-note { margin-left: auto; color: #a89e8d; font-size: 11.5px; white-space: nowrap; }
+    .d3 .main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+    .d3 .diffpane { overflow: auto; padding: 18px 22px; }
+    .d3 .jobmeta { margin-bottom: 14px; }
+    .d3 .jobmeta h2 { margin: 0 0 4px; font-size: 19px; }
+    .d3 .jobmeta .sub { font-size: 12px; color: #7a7264; }
+    .d3 .jobmeta .sub .k { color: #23201b; font-weight: 600; }
+    .d3 .file { border: 1px solid #e3ddd2; border-radius: 10px; margin-bottom: 16px; overflow: hidden; background: #fff; }
+    .d3 .filehead {
+      background: #f3efe8; padding: 7px 14px; font-size: 12px;
+      font-family: ui-monospace, Menlo, monospace; color: #5c554a;
+      border-bottom: 1px solid #e3ddd2; display: flex; justify-content: space-between;
+    }
+    .d3 .hunk { display: grid; grid-template-columns: 44px 1fr; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .d3 .hunk .ln { text-align: right; padding: 2px 8px; color: #b0a894; background: #faf8f4; user-select: none; }
+    .d3 .hunk .lc { padding: 2px 12px; white-space: pre; }
+    .d3 .hunk.add .lc { background: #eef7ee; }
+    .d3 .hunk.add .ln { background: #e4f0e4; }
+    .d3 .hunk.del .lc { background: #fbeeee; color: #8a4444; }
+    .d3 .anchor { border-top: 1px solid #e3ddd2; background: #fffdf5; padding: 10px 14px 12px 56px; }
+    .d3 .anchor .ah { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    .d3 .anchor .at { font-weight: 600; font-size: 13px; }
+    .d3 .anchor .who { font-size: 11px; color: #7a7264; }
+    .d3 .anchor .vd { font-size: 10px; padding: 1px 7px; border-radius: 999px; }
+    .d3 .vd.kept { background: #e4f0e4; color: #2e6b34; }
+    .d3 .vd.dropped { background: #f6e8dd; color: #a15a1d; }
+    .d3 .vd.det { background: #e2eef6; color: #1d5a8a; }
+    .d3 .anchor p { margin: 6px 0 8px; font-size: 12.5px; color: #4a443b; max-width: 60ch; }
+    .d3 .gutter { display: flex; gap: 6px; flex-wrap: wrap; }
+    .d3 .gutter button {
+      font-size: 11.5px; border: 1px solid #ddd5c6; background: #fff; color: #5c554a;
+      border-radius: 999px; padding: 4px 11px; cursor: pointer;
+    }
+    .d3 .gutter button.on { background: #23201b; color: #efe9df; border-color: #23201b; }
+    .d3 .gutter button.rulebtn { border-style: dashed; }
+    .d3 .commentbox {
+      margin-top: 8px; font-size: 12px; color: #4a443b; background: #f3efe8;
+      border-radius: 6px; padding: 7px 10px; max-width: 60ch;
+    }
+    .d3 .commentbox b { font-size: 11px; color: #7a7264; }
+    .d3 .rail { border-left: 1px solid #e3ddd2; background: #fff; display: flex; flex-direction: column; min-height: 0; }
+    .d3 .railtabs { display: flex; border-bottom: 1px solid #e3ddd2; }
+    .d3 .railtabs span {
+      flex: 1; text-align: center; font-size: 12px; padding: 10px 0; color: #7a7264; cursor: pointer;
+    }
+    .d3 .railtabs span.on { color: #23201b; font-weight: 600; box-shadow: inset 0 -2px 0 #23201b; }
+    .d3 .railtabs .pill { background: #b45309; color: #fff; font-size: 9.5px; border-radius: 8px; padding: 0 6px; margin-left: 4px; }
+    .d3 .railbody { overflow: auto; padding: 14px; font-size: 12.5px; }
+    .d3 .ritem { border: 1px solid #e3ddd2; border-radius: 8px; padding: 9px 11px; margin-bottom: 8px; }
+    .d3 .ritem .rt { font-weight: 600; font-size: 12.5px; }
+    .d3 .ritem small { display: block; color: #7a7264; margin-top: 3px; font-size: 11px; }
+    .d3 .ritem .sem-tag { color: #b45309; font-weight: 600; }
+    .d3 .ritem .lrow { display: flex; gap: 6px; margin-top: 8px; }
+    .d3 .ritem button { font-size: 11px; border-radius: 5px; padding: 3px 10px; cursor: pointer; }
+    .d3 .ritem .acc { background: #23201b; color: #efe9df; border: 1px solid #23201b; }
+    .d3 .ritem .dis { background: #fff; color: #7a7264; border: 1px solid #ddd5c6; }
+    .d3 .ritem .lk { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .d3 .lk.rule-k { color: #1d5a8a; }
+    .d3 .lk.arch-k { color: #a15a1d; }
+    .d3 .lk.ctx-k { color: #6b2fa1; }
+    .d3 .railnote { font-size: 11px; color: #a89e8d; margin: 4px 0 12px; line-height: 1.5; }
+    .d3 .newbtn {
+      width: 100%; margin-top: 4px; padding: 7px; font-size: 12px; cursor: pointer;
+      background: #fff; border: 1px dashed #b0a894; border-radius: 8px; color: #5c554a;
+    }
+  </style>
+</head>
+<body>
+  <div class="picker">
+    <strong>Meister admin — kimi set</strong>
+    <button class="on" data-m="d1" type="button">D1 · Ledger</button>
+    <button data-m="d2" type="button">D2 · Board</button>
+    <button data-m="d3" type="button">D3 · Review room</button>
+    <span class="hint">Management only — reviews start from <code>meister review</code> in a repo, never here</span>
+  </div>
+
+  <!-- ================= D1 · LEDGER ================= -->
+  <div class="mock on d1" id="d1">
+    <div class="topbar">
+      <span class="brand">MEISTER</span>
+      <nav>
+        <span class="on">jobs</span><span>rules</span><span>context</span><span>learnings</span>
+      </nav>
+      <span class="srv">api 127.0.0.1:8080 · 1 worker · docker ok</span>
+    </div>
+    <div class="layout">
+      <div class="stream">
+        <div class="logline">$ meister status</div>
+        <div class="logline"><b>queue:</b> 0 queued · 1 running · 4 succeeded · this UI is a read-only tail — start work with <b>meister review</b></div>
+
+        <div class="jobblock">
+          <div class="jobhead">
+            <span class="t">rate-limiter: token bucket</span>
+            <span class="sha">a1b2c3d..e4f5g6h</span>
+            <span class="st run">reviewing</span>
+          </div>
+          <div class="pipe">deterministic ✓ 0 hits → reviewer A (sonnet) <b>running</b> ∥ reviewer B (gpt) <b>running</b> → judge pending</div>
+          <div class="pipe" style="border-bottom:0">posted by CLI 2 min ago · scope: full · the browser cannot start, retry, or cancel this job</div>
+        </div>
+
+        <div class="jobblock">
+          <div class="jobhead">
+            <span class="t">auth: drop print logging</span>
+            <span class="sha">9f8e7d6..5c4b3a2</span>
+            <span class="st ok">succeeded</span>
+          </div>
+          <div class="pipe">deterministic ✓ → A: 4 findings · B: 5 findings → union 9 → judge: <b>6 kept · 3 dropped</b> · evidence check passed 9/9</div>
+
+          <div class="finding">
+            <div class="fh">
+              <span class="id">fnd_01J…A4</span>
+              <span class="title">Use the project logger, not print</span>
+              <span class="verdict kept">judge: kept</span>
+            </div>
+            <pre>41  print("token \(token)")</pre>
+            <div class="src">model_a · Sources/Auth/Session.swift:41 · rule: use-project-logger (semantic)</div>
+            <div class="rxn">
+              <button class="on" type="button">👍 3</button>
+              <button type="button">👎</button>
+              <button type="button">💬 comment</button>
+              <button class="on" type="button">→ should be a rule</button>
+            </div>
+          </div>
+
+          <div class="finding">
+            <div class="fh">
+              <span class="id">fnd_01J…B1</span>
+              <span class="title">Possible hardcoded secret</span>
+              <span class="verdict dropped">judge: dropped</span>
+            </div>
+            <pre>12  let demo = "sk-test-not-real"</pre>
+            <div class="src">model_b · Sources/Auth/Client.swift:12 · judge: value is a documented test fixture</div>
+            <div class="rxn">
+              <button type="button">👍</button>
+              <button class="on" type="button">👎 1</button>
+              <button type="button">💬 comment</button>
+              <button type="button">→ should be a rule</button>
+            </div>
+          </div>
+
+          <div class="finding">
+            <div class="fh">
+              <span class="id">fnd_01J…D0</span>
+              <span class="title">OpenAPI: removed response field `retry_after`</span>
+              <span class="verdict det">deterministic · oasdiff</span>
+            </div>
+            <pre>DELETE /v2/usage 200.retry_after  (breaking)</pre>
+            <div class="src">host · openapi.yaml · skips the judge by design</div>
+            <div class="rxn">
+              <button type="button">👍</button>
+              <button type="button">👎</button>
+              <button type="button">💬 comment</button>
+              <button type="button">→ should be a rule</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="jobblock">
+          <div class="jobhead">
+            <span class="t">billing: retry backoff</span>
+            <span class="sha">incremental · parent 01HX…</span>
+            <span class="st ok">succeeded</span>
+          </div>
+          <div class="pipe" style="border-bottom:0">2 new hunks · carry-forward: 3 still_open · 1 resolved · 0 relocated</div>
+        </div>
+
+        <div class="empty">
+          No jobs yet. In a repo run <code>meister review</code>.<br>
+          Jobs appear here only after the CLI POSTs them.
+        </div>
+      </div>
+
+      <div class="rail">
+        <h3>Rules (edit in UI)</h3>
+        <div class="rule"><span class="rn">use-project-logger</span><br><span class="rk"><span class="sem">semantic guidance</span> · **/*.swift · enabled</span></div>
+        <div class="rule"><span class="rn">openapi-breaking-changes</span><br><span class="rk">deterministic · oasdiff · enabled</span></div>
+        <div class="rule"><span class="rn">no-hardcoded-secrets</span><br><span class="rk">deterministic · regex · enabled</span></div>
+        <div class="rule"><span class="rn">sibling-test-required</span><br><span class="rk">deterministic · disabled</span></div>
+
+        <h3>Context notes (/context)</h3>
+        <div class="ctx">Use OSLog everywhere; print is never OK.</div>
+        <div class="ctx">Never touch Payments from Auth — HTTP only.</div>
+        <div class="ctx">Burst size is 20 in prod; tests may use 2.</div>
+
+        <h3>Learnings inbox — 3 pending</h3>
+        <div class="learn">
+          <span class="lk rule-k">rule</span>
+          <p>Ban print() in Sources/Auth (from “should be a rule” on fnd_01J…A4)</p>
+          <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+        </div>
+        <div class="learn">
+          <span class="lk arch-k">architecture</span>
+          <p>Auth talks to Billing over HTTP, not the shared store.</p>
+          <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+        </div>
+        <div class="learn">
+          <span class="lk ctx-k">context</span>
+          <p>“This change taught us: backoff is capped at 30s by the gateway.”</p>
+          <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+        </div>
+        <div class="neverapply">nothing auto-applies — accept writes, dismiss deletes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= D2 · BOARD ================= -->
+  <div class="mock d2" id="d2">
+    <div class="topbar">
+      <span class="brand">Meister</span>
+      <span>Jobs board</span>
+      <span class="cli-note">the CLI moves cards left → right · this board only reads · start work with <code>meister review</code></span>
+    </div>
+    <div class="board">
+      <div class="col">
+        <h3>Queued <span class="cnt">0</span></h3>
+        <div class="emptycol">
+          No jobs yet.<br>In a repo run <code>meister review</code>.<br>Cards appear when the CLI POSTs.
+        </div>
+      </div>
+      <div class="col">
+        <h3>Reviewing · A ∥ B <span class="cnt">1</span></h3>
+        <div class="card">
+          <div class="ct">rate-limiter: token bucket</div>
+          <div class="cm">full scope · posted by CLI 2 min ago</div>
+          <div class="chips">
+            <span class="chip det">det ✓ 0 hits</span>
+            <span class="chip a">A · sonnet · running</span>
+            <span class="chip b">B · gpt · running</span>
+          </div>
+          <div class="prog"><i style="width:55%"></i></div>
+        </div>
+      </div>
+      <div class="col">
+        <h3>Judging <span class="cnt">0</span></h3>
+        <div class="emptycol" style="border-style:dotted">Judge runs after both reviewers finish. Union + evidence, default keep.</div>
+      </div>
+      <div class="col">
+        <h3>Done <span class="cnt">3</span></h3>
+        <div class="card">
+          <div class="ct">auth: drop print logging</div>
+          <div class="cm">union 9 → judge kept 6 · dropped 3</div>
+          <div class="chips">
+            <span class="chip j">judge ✓</span>
+            <span class="chip human">👍 3 · 👎 1 · 1 → rule</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">openapi: add /v2/usage</div>
+          <div class="cm">1 breaking change (oasdiff, skipped judge)</div>
+          <div class="chips">
+            <span class="chip det">deterministic</span>
+            <span class="chip human">👍 1</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">billing: retry backoff</div>
+          <div class="cm">incremental · 2 new hunks · 3 still_open · 1 resolved</div>
+          <div class="chips">
+            <span class="chip a">A ✓</span><span class="chip b">B ✓</span><span class="chip j">judge ✓</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dock">
+      <div class="docktabs">
+        <span class="on">Learnings · 3</span><span>Rules</span><span>Context</span>
+      </div>
+      <div class="dockbody">
+        <div class="docksec">
+          <h4>Learnings inbox — accept or dismiss, never auto-applied</h4>
+          <div class="ditem">
+            <span class="badge rule-k">rule</span>Ban print() in Sources/Auth
+            <small>from “should be a rule” · auth: drop print logging</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+          <div class="ditem">
+            <span class="badge arch-k">architecture</span>Auth → Billing is HTTP-only
+            <small>drafted by miner after last unpack · merges into the architecture card</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+          <div class="ditem">
+            <span class="badge ctx-k">context</span>Gateway caps backoff at 30s
+            <small>from a 👍’d reviewer comment</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+        </div>
+        <div class="docksec">
+          <h4>Rules — UI is source of truth</h4>
+          <div class="ditem">use-project-logger <span class="toggle">enabled</span><small>semantic guidance for both reviewers · **/*.swift</small></div>
+          <div class="ditem">openapi-breaking-changes <span class="toggle">enabled</span><small>deterministic · oasdiff · **/openapi*.yaml</small></div>
+          <div class="ditem">no-hardcoded-secrets <span class="toggle">enabled</span><small>deterministic · regex · **/*</small></div>
+          <div class="ditem">sibling-test-required <span class="toggle" style="color:#a14a1d">disabled</span><small>deterministic · promote from learnings to enable</small></div>
+        </div>
+        <div class="docksec">
+          <h4>Context — always-on notes</h4>
+          <div class="ditem">Use OSLog; print is never OK<small>embedded · always included in .meister/context.md</small></div>
+          <div class="ditem">Never touch Payments from Auth<small>user note</small></div>
+          <div class="ditem">Burst size 20 in prod, 2 in tests<small>accepted from learnings on Aug 12</small></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= D3 · REVIEW ROOM ================= -->
+  <div class="mock d3" id="d3">
+    <div class="jobstrip">
+      <span class="lbl">Job</span>
+      <button class="jobtab on" type="button">auth: drop print logging · succeeded</button>
+      <button class="jobtab" type="button">rate-limiter: token bucket · reviewing</button>
+      <button class="jobtab" type="button">openapi: add /v2/usage · succeeded</button>
+      <button class="jobtab" type="button">billing: retry backoff · incremental</button>
+      <span class="cli-note">jobs come from <code>meister review</code> — pick one to inspect, not to start</span>
+    </div>
+    <div class="main">
+      <div class="diffpane">
+        <div class="jobmeta">
+          <h2>auth: drop print logging</h2>
+          <div class="sub">
+            <span class="k">9f8e7d6..5c4b3a2</span> · full scope ·
+            reviewers A (sonnet) + B (gpt) ran in parallel ·
+            judge: <span class="k">6 kept / 3 dropped</span> · evidence verified 9/9 ·
+            human: 👍 3 · 👎 1 · 1 should-be-a-rule
+          </div>
+        </div>
+
+        <div class="file">
+          <div class="filehead"><span>Sources/Auth/Session.swift</span><span>+12 −4</span></div>
+          <div class="hunk"><div class="ln">38</div><div class="lc">  func refresh() async throws {</div></div>
+          <div class="hunk del"><div class="ln">39</div><div class="lc">-    log.debug("refreshing")</div></div>
+          <div class="hunk add"><div class="ln">39</div><div class="lc">+    logger.debug("refreshing")</div></div>
+          <div class="hunk add"><div class="ln">40</div><div class="lc">+    let token = try await store.token()</div></div>
+          <div class="hunk add"><div class="ln">41</div><div class="lc">+    print("token \(token)")</div></div>
+          <div class="anchor">
+            <div class="ah">
+              <span class="at">Use the project logger, not print</span>
+              <span class="vd kept">judge kept</span>
+              <span class="who">model_a · semantic rule: use-project-logger · line 41</span>
+            </div>
+            <p>Both reviewers flagged this; the judge kept it once. Logs the raw token to stdout — use <code>logger</code> and redact.</p>
+            <div class="gutter">
+              <button class="on" type="button">👍 3</button>
+              <button type="button">👎</button>
+              <button type="button">💬 comment</button>
+              <button class="rulebtn on" type="button">→ should be a rule</button>
+            </div>
+            <div class="commentbox"><b>pascal · 1h ago</b> — this exact pattern is why we wrote the logger rule. Promote it to a ban in Sources/Auth.</div>
+          </div>
+          <div class="hunk add"><div class="ln">42</div><div class="lc">+    return token</div></div>
+          <div class="hunk"><div class="ln">43</div><div class="lc">  }</div></div>
+        </div>
+
+        <div class="file">
+          <div class="filehead"><span>Sources/Auth/Client.swift</span><span>+3 −1</span></div>
+          <div class="hunk add"><div class="ln">12</div><div class="lc">+    let demo = "sk-test-not-real"</div></div>
+          <div class="anchor">
+            <div class="ah">
+              <span class="at">Possible hardcoded secret</span>
+              <span class="vd dropped">judge dropped</span>
+              <span class="who">model_b · deterministic rule matched, judge: documented test fixture</span>
+            </div>
+            <p>Shown because pre-judge findings are kept for audit. Your 👎 confirms the judge — it teaches the next review.</p>
+            <div class="gutter">
+              <button type="button">👍</button>
+              <button class="on" type="button">👎 1</button>
+              <button type="button">💬 comment</button>
+              <button class="rulebtn" type="button">→ should be a rule</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="file">
+          <div class="filehead"><span>openapi.yaml</span><span>deterministic · oasdiff</span></div>
+          <div class="anchor" style="padding-left:14px">
+            <div class="ah">
+              <span class="at">Removed response field `retry_after` on DELETE /v2/usage</span>
+              <span class="vd det">breaking · skipped judge</span>
+              <span class="who">host · deterministic checks become findings immediately</span>
+            </div>
+            <div class="gutter">
+              <button type="button">👍 1</button>
+              <button type="button">👎</button>
+              <button type="button">💬 comment</button>
+              <button class="rulebtn" type="button">→ should be a rule</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail">
+        <div class="railtabs">
+          <span class="on">Learnings<span class="pill">3</span></span><span>Rules</span><span>Context</span>
+        </div>
+        <div class="railbody">
+          <p class="railnote">Drafted from this job and your reactions. Accept writes it (rule, architecture card, or context note). Dismiss deletes it. Nothing auto-applies.</p>
+          <div class="ritem">
+            <span class="lk rule-k">rule</span>
+            <div class="rt">Ban print() in Sources/Auth</div>
+            <small>from “should be a rule” on Session.swift:41 · would start disabled until you promote</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+          <div class="ritem">
+            <span class="lk arch-k">architecture</span>
+            <div class="rt">Auth → Billing is HTTP-only</div>
+            <small>miner draft · merges into the living architecture card and re-embeds</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+          <div class="ritem">
+            <span class="lk ctx-k">context</span>
+            <div class="rt">Gateway caps backoff at 30s</div>
+            <small>from a 👍’d reviewer comment on billing: retry backoff</small>
+            <div class="lrow"><button class="acc" type="button">Accept</button><button class="dis" type="button">Dismiss</button></div>
+          </div>
+          <p class="railnote" style="margin-top:14px">Rules and context you already manage:</p>
+          <div class="ritem">
+            <div class="rt">use-project-logger</div>
+            <small><span class="sem-tag">semantic guidance</span> · **/*.swift · enabled · read by both reviewers next CLI run</small>
+          </div>
+          <div class="ritem">
+            <div class="rt">Never touch Payments from Auth</div>
+            <small>context note · always included in .meister/context.md</small>
+          </div>
+          <button class="newbtn" type="button">+ New rule or context note</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const buttons = document.querySelectorAll(".picker button");
+    const mocks = {
+      d1: document.getElementById("d1"),
+      d2: document.getElementById("d2"),
+      d3: document.getElementById("d3"),
+    };
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        buttons.forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        Object.values(mocks).forEach((el) => el.classList.remove("on"));
+        mocks[btn.dataset.m].classList.add("on");
+      });
+    });
+  </script>
+
+  <!--
+    HOW THE THREE DIRECTIONS DIFFER (and how they differ from docs/dashboard-mocks.html)
+
+    The earlier set (Catalog / Inbox / Findings) is organized around *which page
+    you're on*: an overview table, a learnings-first inbox, a two-column triage
+    split. All three are conventional SaaS admin layouts. This set keeps the same
+    product facts (management-only, CLI starts reviews, A+B+judge already done,
+    learnings never auto-apply) but varies the *mental model* of the whole app,
+    not just the landing page:
+
+    D1 · LEDGER — "the UI is a read-only tail of the CLI."
+      Dark monospace log-stream. Jobs render as `$ meister status` output with
+      one pipeline line per job (deterministic → A ∥ B → judge verdicts), so the
+      server-side sequencing is the visual structure itself. Findings are log
+      entries with [judge: kept/dropped] and [deterministic · skipped judge]
+      tags; pre-judge drops stay visible for audit. Rules/context/learnings live
+      in a dense config-file-style rail. Empty state is inline in the stream:
+      "No jobs yet. In a repo run meister review." Best fit if the audience is
+      the operator who thinks in terminal output; worst fit for scanning many
+      jobs at a glance.
+
+    D2 · BOARD — "the pipeline is a kanban the CLI moves cards through."
+      Light, card-based. Columns are the server stages (Queued / Reviewing A∥B /
+      Judging / Done), which makes "one worker, one job at a time, judge after
+      both reviewers" legible at a glance — the Reviewing column literally cannot
+      hold two cards. The empty state lives in the Queued column. Knowledge
+      management is a bottom dock with Learnings / Rules / Context sections
+      side by side, framing them as one triage surface rather than separate
+      pages. Human signals (👍/👎/should-be-a-rule) appear as summary chips on
+      done cards. Best fit for a quick "what is the system doing right now"
+      glance; the dock trades depth for breadth.
+
+    D3 · REVIEW ROOM — "one job, deep: findings anchored to the diff."
+      Warm paper, single-job focus. A job strip on top (explicitly labelled as
+      *inspecting*, not starting), then a diff viewer where each finding is
+      anchored under the exact hunk line it cites — mirroring the host's
+      evidence check that the snippet must be on those lines. The reaction
+      gutter (👍/👎/comment/should-be-a-rule) sits directly under the finding,
+      with an inline comment shown. Dropped findings remain in the diff with a
+      "judge dropped" pill and copy explaining why 👎 still matters. The right
+      rail is tabbed Learnings (badged rule | architecture | context, accept /
+      dismiss) / Rules (semantic guidance first-class) / Context. Best fit for
+      the actual triage work of reading findings in code context; weakest as a
+      fleet overview — that's what the job strip concedes.
+
+    Shared invariants across all three: no upload button, no start-review
+    affordance anywhere; every screen states that jobs come from `meister
+    review`; learnings are accept/dismiss only; semantic rules are presented as
+    first-class guidance for both reviewers; deterministic (oasdiff/regex)
+    findings are marked as skipping the judge.
+  -->
+</body>
+</html>

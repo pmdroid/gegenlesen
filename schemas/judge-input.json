@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meister.local/schemas/judge-input.json",
+  "title": "JudgeInputFile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["candidates"],
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/JudgeCandidate" }
+    }
+  },
+  "$defs": {
+    "JudgeCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "message",
+        "severity",
+        "file_path",
+        "start_line",
+        "end_line",
+        "snippet",
+        "phase",
+        "evidence_ok",
+        "actual_slice"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^fnd_" },
+        "rule_id": { "type": ["string", "null"] },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "title": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "file_path": { "type": "string", "minLength": 1 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "snippet": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string" },
+        "phase": { "enum": ["deterministic", "agent"] },
+        "evidence_ok": { "type": "boolean" },
+        "actual_slice": { "type": "string" }
+      }
+    }
+  }
+}

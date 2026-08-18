@@ -1,0 +1,769 @@
+openapi: 3.1.0
+info:
+  title: Meister API
+  version: 0.1.0
+  description: |
+    Single-tenant PR review service. No auth.
+    Wire format is snake_case. See docs/technical-plan.md.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDTO"
+  /api/settings:
+    get:
+      operationId: getSettings
+      responses:
+        "200":
+          description: Non-secret config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsDTO"
+  /api/metrics:
+    get:
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus text
+          content:
+            text/plain:
+              schema:
+                type: string
+  /api/jobs:
+    get:
+      operationId: listJobs
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/JobStatus" }
+      responses:
+        "200":
+          description: newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+    post:
+      operationId: createJob
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archive, meta]
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                  description: .tar or .tar.gz. Zip rejected.
+                meta:
+                  type: string
+                  description: UTF-8 JSON CreateJobMeta
+                patch:
+                  type: string
+                  format: binary
+                  description: Unified diff or git format-patch mbox
+      responses:
+        "202":
+          description: queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAccepted"
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "507": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}:
+    get:
+      operationId: getJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: full job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobDetail"
+        "404": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/events:
+    get:
+      operationId: listJobEvents
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/JobEvent" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/transcript:
+    get:
+      operationId: getJobTranscript
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - name: phase
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [review, judge]
+      responses:
+        "200":
+          description: redacted NDJSON
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/cancel:
+    post:
+      operationId: cancelJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/rules:
+    get:
+      operationId: listRules
+      parameters:
+        - name: enabled
+          in: query
+          schema: { type: boolean }
+        - name: kind
+          in: query
+          schema: { $ref: "#/components/schemas/RuleKind" }
+        - name: provenance
+          in: query
+          schema: { $ref: "#/components/schemas/RuleProvenance" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RuleListResponse" }
+    post:
+      operationId: createRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RuleUpsert" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/rules/{id}:
+    get:
+      operationId: getRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RuleUpsert" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          description: soft delete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/rules/{id}/promote:
+    post:
+      operationId: promoteRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/rules/{id}/enable:
+    post:
+      operationId: enableRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/rules/{id}/disable:
+    post:
+      operationId: disableRule
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Rule" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/corpus:
+    get:
+      operationId: listCorpus
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorpusListResponse" }
+    post:
+      operationId: ingestCorpus
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [item]
+              properties:
+                item:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorpusAccepted" }
+  /api/corpus/mine:
+    post:
+      operationId: mineCorpus
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MineRequest" }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MineAccepted" }
+  /api/corpus/{id}:
+    get:
+      operationId: getCorpusItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CorpusItem" }
+        "404": { $ref: "#/components/responses/Error" }
+
+components:
+  parameters:
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RuleId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Error:
+      description: error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/APIErrorBody" }
+  schemas:
+    JobStatus:
+      type: string
+      enum:
+        - queued
+        - unpacking
+        - identifying
+        - selecting_rules
+        - deterministic
+        - reviewing
+        - judging
+        - succeeded
+        - failed
+        - cancelled
+    JobScope:
+      type: string
+      enum: [full, incremental]
+    ReviewerSlot:
+      type: string
+      enum: [model_a, model_b]
+    Severity:
+      type: string
+      enum: [info, warning, error]
+    FindingPhase:
+      type: string
+      enum: [deterministic, agent]
+    JudgeVerdict:
+      type: string
+      enum: [keep, drop, downgrade, unavailable]
+    FindingLifecycle:
+      type: string
+      enum: [new, still_open, resolved, relocated]
+    RuleKind:
+      type: string
+      enum: [deterministic, semantic]
+    RuleProvenance:
+      type: string
+      enum: [handwritten, mined, suggested]
+    EventLevel:
+      type: string
+      enum: [debug, info, warning, error]
+    ErrorCode:
+      type: string
+      enum:
+        - bad_request
+        - not_found
+        - conflict
+        - payload_too_large
+        - unsupported_media_type
+        - unprocessable
+        - insufficient_storage
+        - internal
+    HealthDTO:
+      type: object
+      additionalProperties: false
+      required: [ok, version]
+      properties:
+        ok: { type: boolean, const: true }
+        version: { type: string }
+    Limits:
+      type: object
+      additionalProperties: false
+      required:
+        - archive_bytes
+        - queued_archive_bytes
+        - agent_timeout_sec
+        - judge_timeout_sec
+        - deterministic_timeout_sec
+        - identify_timeout_sec
+        - rule_token_budget
+      properties:
+        archive_bytes: { type: integer }
+        queued_archive_bytes: { type: integer }
+        agent_timeout_sec: { type: integer }
+        judge_timeout_sec: { type: integer }
+        deterministic_timeout_sec: { type: integer }
+        identify_timeout_sec: { type: integer }
+        rule_token_budget: { type: integer }
+    ModelSlots:
+      type: object
+      additionalProperties: false
+      required: [model_a, model_b]
+      properties:
+        model_a: { type: string }
+        model_b: { type: string }
+    SettingsDTO:
+      type: object
+      additionalProperties: false
+      required: [bind, port, models, judge_model, opencode_image, limits]
+      properties:
+        bind: { type: string }
+        port: { type: integer }
+        models: { $ref: "#/components/schemas/ModelSlots" }
+        judge_model: { type: string }
+        opencode_image: { type: string }
+        limits: { $ref: "#/components/schemas/Limits" }
+    APIErrorBody:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: { type: string }
+    JobAccepted:
+      type: object
+      additionalProperties: false
+      required: [id, status, queue_position]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, const: queued }
+        queue_position: { type: integer, minimum: 1 }
+    JobSummary:
+      type: object
+      additionalProperties: false
+      required: [new, still_open, resolved, relocated, dropped]
+      properties:
+        new: { type: integer, minimum: 0 }
+        still_open: { type: integer, minimum: 0 }
+        resolved: { type: integer, minimum: 0 }
+        relocated: { type: integer, minimum: 0 }
+        dropped: { type: integer, minimum: 0 }
+    JobListItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - status
+        - scope
+        - parent_job_id
+        - reviewer_a_model_id
+        - reviewer_b_model_id
+        - judge_model_id
+        - base_sha
+        - head_sha
+        - queue_position
+        - summary
+        - created_at
+        - started_at
+        - finished_at
+        - error_message
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: ["string", "null"] }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        scope: { $ref: "#/components/schemas/JobScope" }
+        parent_job_id: { type: ["string", "null"], format: uuid }
+        reviewer_a_model_id: { type: string }
+        reviewer_b_model_id: { type: string }
+        judge_model_id: { type: string }
+        base_sha: { type: ["string", "null"] }
+        head_sha: { type: ["string", "null"] }
+        queue_position: { type: ["integer", "null"] }
+        summary: { oneOf: [{ $ref: "#/components/schemas/JobSummary" }, { type: "null" }] }
+        created_at: { type: string, format: date-time }
+        started_at: { type: ["string", "null"], format: date-time }
+        finished_at: { type: ["string", "null"], format: date-time }
+        error_message: { type: ["string", "null"] }
+    JobListResponse:
+      type: object
+      additionalProperties: false
+      required: [jobs, total]
+      properties:
+        jobs:
+          type: array
+          items: { $ref: "#/components/schemas/JobListItem" }
+        total: { type: integer, minimum: 0 }
+    JobEvent:
+      type: object
+      additionalProperties: false
+      required: [id, job_id, ts, level, message]
+      properties:
+        id: { type: integer }
+        job_id: { type: string, format: uuid }
+        ts: { type: string, format: date-time }
+        level: { $ref: "#/components/schemas/EventLevel" }
+        message: { type: string }
+        payload_json: { type: ["string", "null"] }
+    Finding:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - job_id
+        - rule_id
+        - phase
+        - reviewer_slot
+        - severity
+        - title
+        - message
+        - file_path
+        - start_line
+        - end_line
+        - snippet
+        - agent_rationale
+        - judge_verdict
+        - judge_severity
+        - judge_rationale
+        - confidence
+        - lifecycle
+        - parent_finding_id
+        - suggested_patch
+        - evidence_ok
+        - created_at
+      properties:
+        id: { type: string, pattern: "^fnd_" }
+        job_id: { type: string, format: uuid }
+        rule_id: { type: ["string", "null"] }
+        phase: { $ref: "#/components/schemas/FindingPhase" }
+        reviewer_slot:
+          oneOf:
+            - { $ref: "#/components/schemas/ReviewerSlot" }
+            - { type: "null" }
+        severity: { $ref: "#/components/schemas/Severity" }
+        title: { type: string }
+        message: { type: string }
+        file_path: { type: ["string", "null"] }
+        start_line: { type: ["integer", "null"] }
+        end_line: { type: ["integer", "null"] }
+        snippet: { type: ["string", "null"] }
+        agent_rationale: { type: ["string", "null"] }
+        judge_verdict:
+          oneOf:
+            - { $ref: "#/components/schemas/JudgeVerdict" }
+            - { type: "null" }
+        judge_severity:
+          oneOf:
+            - { $ref: "#/components/schemas/Severity" }
+            - { type: "null" }
+        judge_rationale: { type: ["string", "null"] }
+        confidence: { type: ["number", "null"] }
+        lifecycle: { $ref: "#/components/schemas/FindingLifecycle" }
+        parent_finding_id: { type: ["string", "null"] }
+        suggested_patch: { type: ["string", "null"] }
+        evidence_ok: { type: ["boolean", "null"] }
+        created_at: { type: string, format: date-time }
+    JobDetail:
+      allOf:
+        - $ref: "#/components/schemas/JobListItem"
+        - type: object
+          additionalProperties: false
+          required: [findings, events]
+          properties:
+            findings:
+              type: array
+              items: { $ref: "#/components/schemas/Finding" }
+            events:
+              type: array
+              items: { $ref: "#/components/schemas/JobEvent" }
+    RuleExample:
+      type: object
+      additionalProperties: false
+      required: [excerpt]
+      properties:
+        path: { type: ["string", "null"] }
+        excerpt: { type: string }
+        note: { type: ["string", "null"] }
+    RulePayload:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [checker, pattern, message]
+          properties:
+            checker: { const: regex }
+            pattern: { type: string }
+            flags: { type: string }
+            message: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [checker, symbols, message]
+          properties:
+            checker: { const: deny_api }
+            symbols:
+              type: array
+              items: { type: string }
+            message: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [checker, source_glob, test_template]
+          properties:
+            checker: { const: sibling_test }
+            source_glob: { type: string }
+            test_template: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [checker, argv, timeout_sec]
+          properties:
+            checker: { const: command }
+            argv:
+              type: array
+              items: { type: string }
+            timeout_sec: { type: integer, minimum: 1, maximum: 20 }
+        - type: object
+          additionalProperties: false
+          required: [checker, spec_globs, message]
+          properties:
+            checker: { const: openapi_break }
+            spec_globs:
+              type: array
+              items: { type: string }
+            fail_on:
+              type: string
+              enum: [breaking, changelog]
+              default: breaking
+            message: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [instruction]
+          properties:
+            instruction: { type: string }
+            few_shots:
+              type: array
+              items: { type: string }
+    Rule:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - severity
+        - kind
+        - enabled
+        - deleted_at
+        - provenance
+        - languages
+        - path_globs
+        - payload
+        - examples
+        - source_pr_refs
+        - promoted_from_rule_id
+        - body
+        - created_at
+        - updated_at
+      properties:
+        id: { type: string }
+        title: { type: string }
+        severity: { $ref: "#/components/schemas/Severity" }
+        kind: { $ref: "#/components/schemas/RuleKind" }
+        enabled: { type: boolean }
+        deleted_at: { type: ["string", "null"], format: date-time }
+        provenance: { $ref: "#/components/schemas/RuleProvenance" }
+        languages:
+          type: array
+          items: { type: string }
+        path_globs:
+          type: array
+          items: { type: string }
+        payload: { $ref: "#/components/schemas/RulePayload" }
+        examples:
+          type: array
+          items: { $ref: "#/components/schemas/RuleExample" }
+        source_pr_refs:
+          type: array
+          items: { type: string }
+        promoted_from_rule_id: { type: ["string", "null"] }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    RuleUpsert:
+      type: object
+      additionalProperties: false
+      required: [title, severity, kind, languages, path_globs, payload]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        severity: { $ref: "#/components/schemas/Severity" }
+        kind: { $ref: "#/components/schemas/RuleKind" }
+        enabled: { type: boolean }
+        languages:
+          type: array
+          items: { type: string }
+        path_globs:
+          type: array
+          items: { type: string }
+        payload: { $ref: "#/components/schemas/RulePayload" }
+        examples:
+          type: array
+          items: { $ref: "#/components/schemas/RuleExample" }
+        body: { type: string }
+    RuleListResponse:
+      type: object
+      additionalProperties: false
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items: { $ref: "#/components/schemas/Rule" }
+    CorpusItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source_label
+        - title
+        - body
+        - comments_json
+        - patch_relpath
+        - mined_at
+        - created_at
+      properties:
+        id: { type: string, format: uuid }
+        source_label: { type: string }
+        title: { type: ["string", "null"] }
+        body: { type: ["string", "null"] }
+        comments_json: { type: ["string", "null"] }
+        patch_relpath: { type: string }
+        mined_at: { type: ["string", "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+    CorpusListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CorpusItem" }
+    CorpusAccepted:
+      type: object
+      additionalProperties: false
+      required: [accepted]
+      properties:
+        accepted: { type: integer, minimum: 0 }
+    MineRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        item_ids:
+          type: array
+          items: { type: string, format: uuid }
+    MineAccepted:
+      type: object
+      additionalProperties: false
+      required: [job_id]
+      properties:
+        job_id: { type: string, format: uuid }

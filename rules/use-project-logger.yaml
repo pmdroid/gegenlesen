@@ -1,0 +1,19 @@
+id: use-project-logger
+title: Use the project logger, not print / NSLog
+severity: warning
+enabled: true
+kind: semantic
+provenance: handwritten
+languages: ["swift"]
+path_globs:
+  - "**/*.swift"
+  - "!**/*Tests.swift"
+payload:
+  instruction: >
+    Prefer the project's structured logger (OSLog, or whatever Logger type
+    the repo already uses) over print(), debugPrint(), NSLog, or dump().
+    Flag new call sites in production code. Test files are exempt.
+  few_shots:
+    - "print(\"token \\(token)\")  →  logger.debug(\"token\", metadata: …)"
+body: |
+  House style: one logger, no ad-hoc prints in shipped code.

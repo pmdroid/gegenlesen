@@ -1,0 +1,23 @@
+id: openapi-breaking-changes
+title: OpenAPI / Swagger breaking changes
+severity: error
+enabled: true
+kind: deterministic
+provenance: handwritten
+languages: ["yaml", "json"]
+path_globs:
+  - "**/{openapi,swagger}.{yaml,yml,json}"
+  - "**/openapi*.{yaml,yml,json}"
+  - "**/swagger*.{yaml,yml,json}"
+payload:
+  checker: openapi_break
+  spec_globs:
+    - "**/{openapi,swagger}.{yaml,yml,json}"
+    - "**/openapi*.{yaml,yml,json}"
+    - "**/swagger*.{yaml,yml,json}"
+  fail_on: breaking
+  message: "Breaking API change versus the review base."
+body: |
+  When an OpenAPI 3 or Swagger spec changes, compare the review base to HEAD
+  with oasdiff. Report only breaking changes (removed paths, tighter types,
+  new required fields, etc.). Documentation-only edits are not findings.

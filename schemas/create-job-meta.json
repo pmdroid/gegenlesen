@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meister.local/schemas/create-job-meta.json",
+  "title": "CreateJobMeta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope"],
+  "properties": {
+    "title": { "type": ["string", "null"] },
+    "scope": { "enum": ["full", "incremental"] },
+    "reviewer_model": { "enum": ["model_a", "model_b"], "description": "Ignored. Both reviewers always run." },
+    "parent_job_id": { "type": ["string", "null"], "format": "uuid" },
+    "base_ref": { "type": ["string", "null"] },
+    "head_ref": { "type": ["string", "null"] },
+    "base_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "head_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+  }
+}

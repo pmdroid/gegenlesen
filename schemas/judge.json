@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meister.local/schemas/judge.json",
+  "title": "JudgeFile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdicts"],
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/JudgeVerdictRow" }
+    }
+  },
+  "$defs": {
+    "JudgeVerdictRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "verdict", "rationale"],
+      "properties": {
+        "finding_id": { "type": "string", "minLength": 1 },
+        "verdict": { "enum": ["keep", "drop", "downgrade"] },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 4000 }
+      }
+    }
+  }
+}

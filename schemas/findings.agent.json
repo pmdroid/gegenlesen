@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meister.local/schemas/findings.agent.json",
+  "title": "AgentFindingsFile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/AgentFinding" }
+    }
+  },
+  "$defs": {
+    "AgentFinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title", "message", "severity", "file_path", "start_line", "end_line", "snippet"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "rule_id": { "type": ["string", "null"], "maxLength": 128 },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "file_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "snippet": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "rationale": { "type": "string", "maxLength": 4000 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "suggested_patch": { "type": ["string", "null"], "maxLength": 20000 }
+      }
+    }
+  }
+}

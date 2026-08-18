@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meister — Ledger (canonical admin UI)</title>
+  <!-- Locked UI direction: Kimi D1 Ledger. Implementation target for the React SPA. Management only. -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: #0c0f0a; color: #c8e6c9;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    code { font-family: inherit; }
+    .topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 18px; border-bottom: 1px solid #1e2b1a;
+      background: #0a0d08; font-size: 12px; color: #7fa882;
+      position: sticky; top: 0; z-index: 5;
+    }
+    .brand { color: #e8f5e9; font-weight: 700; letter-spacing: 0.1em; }
+    nav { display: flex; gap: 12px; }
+    nav span { color: #557a58; cursor: pointer; }
+    nav span.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
+    .srv { margin-left: auto; color: #557a58; }
+    .layout { display: grid; grid-template-columns: 1fr 340px; min-height: calc(100% - 37px); }
+    .stream { padding: 16px 20px; font-size: 12.5px; line-height: 1.6; }
+    .logline { color: #557a58; white-space: pre-wrap; }
+    .logline b { color: #a5d6a7; font-weight: 400; }
+    .jobblock { border: 1px solid #1e2b1a; border-radius: 6px; margin: 14px 0; background: #0e120b; }
+    .jobhead {
+      display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+      padding: 10px 14px; border-bottom: 1px solid #1e2b1a;
+    }
+    .jobhead .t { color: #e8f5e9; font-weight: 700; }
+    .jobhead .sha { color: #557a58; }
+    .st { padding: 1px 7px; border-radius: 3px; font-size: 11px; }
+    .st.ok { background: #14301a; color: #81c784; }
+    .st.run { background: #2b2a10; color: #d4c95a; }
+    .st.fail { background: #331414; color: #e57373; }
+    .pipe { padding: 6px 14px; color: #557a58; font-size: 11.5px; border-bottom: 1px solid #1e2b1a; }
+    .pipe b { color: #a5d6a7; font-weight: 400; }
+    .finding { padding: 10px 14px; border-bottom: 1px solid #16200f; }
+    .finding:last-child { border-bottom: 0; }
+    .fh { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .id { color: #557a58; }
+    .title { color: #e8f5e9; }
+    .verdict { font-size: 11px; padding: 0 6px; border-radius: 3px; }
+    .verdict.kept { background: #14301a; color: #81c784; }
+    .verdict.dropped { background: #2b1a10; color: #d49a5a; }
+    .verdict.det { background: #10222b; color: #5ab8d4; }
+    pre {
+      margin: 8px 0; padding: 8px 10px; background: #080a07;
+      border-left: 2px solid #2e4a26; color: #a5d6a7; overflow: auto; font-size: 11.5px;
+    }
+    .src { color: #557a58; font-size: 11px; }
+    .rxn { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .rxn button {
+      font-family: inherit; font-size: 11px; cursor: pointer;
+      background: transparent; color: #7fa882; border: 1px solid #2e4a26;
+      border-radius: 3px; padding: 3px 8px;
+    }
+    .rxn button.on { background: #1b3a1e; color: #c8e6c9; border-color: #4caf50; }
+    .empty {
+      border: 1px dashed #2e4a26; border-radius: 6px; padding: 26px 18px;
+      text-align: center; color: #7fa882; margin: 14px 0; font-size: 13px;
+    }
+    .empty code { color: #e8f5e9; background: #14301a; padding: 2px 6px; border-radius: 3px; }
+    .rail { border-left: 1px solid #1e2b1a; background: #0a0d08; padding: 14px; font-size: 12px; overflow: auto; }
+    .rail h3 {
+      font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: #557a58; margin: 18px 0 8px; font-weight: 400;
+    }
+    .rail h3:first-child { margin-top: 0; }
+    .rule { padding: 7px 9px; border: 1px solid #1e2b1a; border-radius: 4px; margin-bottom: 6px; }
+    .rn { color: #a5d6a7; }
+    .rk { color: #557a58; font-size: 11px; }
+    .rk .sem { color: #d4c95a; }
+    .ctx { padding: 7px 9px; border-left: 2px solid #2e4a26; margin-bottom: 6px; color: #7fa882; }
+    .learn { border: 1px solid #2b2a10; border-radius: 4px; padding: 8px 9px; margin-bottom: 8px; background: #12110a; }
+    .lk { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .lk.rule-k { color: #d4c95a; }
+    .lk.arch-k { color: #5ab8d4; }
+    .lk.ctx-k { color: #b98ad4; }
+    .learn p { margin: 5px 0 8px; color: #c8e6c9; font-size: 11.5px; }
+    .lb { display: flex; gap: 6px; }
+    .learn button { font-family: inherit; font-size: 10.5px; cursor: pointer; border-radius: 3px; padding: 2px 8px; }
+    .acc { background: #1b3a1e; color: #a5d6a7; border: 1px solid #4caf50; }
+    .dis { background: transparent; color: #557a58; border: 1px solid #2e4a26; }
+    .neverapply { color: #557a58; font-size: 10.5px; margin-top: 4px; }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .rail { border-left: 0; border-top: 1px solid #1e2b1a; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">MEISTER</span>
+    <nav>
+      <span class="on">jobs</span><span>rules</span><span>context</span><span>learnings</span>
+    </nav>
+    <span class="srv">api 127.0.0.1:8080 · 1 worker · docker ok</span>
+  </div>
+  <div class="layout">
+    <div class="stream">
+      <div class="logline">$ meister status</div>
+      <div class="logline"><b>queue:</b> 0 queued · 1 running · 4 succeeded · this UI is a read-only tail — start work with <b>meister review</b></div>
+
+      <div class="jobblock">
+        <div class="jobhead">
+          <span class="t">rate-limiter: token bucket</span>
+          <span class="sha">a1b2c3d..e4f5g6h</span>
+          <span class="st run">reviewing</span>
+        </div>
+        <div class="pipe">deterministic ✓ 0 hits → reviewer A (sonnet) <b>running</b> ∥ reviewer B (gpt) <b>running</b> → judge pending</div>
+        <div class="pipe" style="border-bottom:0">posted by CLI 2 min ago · scope: full · the browser cannot start, retry, or cancel this job</div>
+      </div>
+
+      <div class="jobblock">
+        <div class="jobhead">
+          <span class="t">auth: drop print logging</span>
+          <span class="sha">9f8e7d6..5c4b3a2</span>
+          <span class="st ok">succeeded</span>
+        </div>
+        <div class="pipe">deterministic ✓ → A: 4 findings · B: 5 findings → union 9 → judge: <b>6 kept · 3 dropped</b> · evidence check passed 9/9</div>
+
+        <div class="finding">
+          <div class="fh">
+            <span class="id">fnd_01J…A4</span>
+            <span class="title">Use the project logger, not print</span>
+            <span class="verdict kept">judge: kept</span>
+          </div>
+          <pre>41  print("token \(token)")</pre>
+          <div class="src">model_a · Sources/Auth/Session.swift:41 · rule: use-project-logger (semantic)</div>
+          <div class="rxn">
+            <button class="on" type="button">👍 3</button>
+            <button type="button">👎</button>
+            <button type="button">💬 comment</button>
+            <button class="on" type="button">→ should be a rule</button>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="fh">
+            <span class="id">fnd_01J…B1</span>
+            <span class="title">Possible hardcoded secret</span>
+            <span class="verdict dropped">judge: dropped</span>
+          </div>
+          <pre>12  let demo = "sk-test-not-real"</pre>
+          <div class="src">model_b · Sources/Auth/Client.swift:12 · judge: value is a documented test fixture</div>
+          <div class="rxn">
+            <button type="button">👍</button>
+            <button class="on" type="button">👎 1</button>
+            <button type="button">💬 comment</button>
+            <button type="button">→ should be a rule</button>
+          </div>
+        </div>
+
+        <div class="finding">
+          <div class="fh">
+            <span class="id">fnd_01J…D0</span>
+            <span class="title">OpenAPI: removed response field `retry_after`</span>
+            <span class="verdict det">deterministic · oasdiff</span>
+          </div>
+          <pre>DELETE /v2/usage 200.retry_after  (breaking)</pre>
+          <div class="src">host · openapi.yaml · skips the judge by design</div>
+          <div class="rxn">
+            <button type="button">👍</button>
+            <button type="button">👎</button>
+            <button type="button">💬 comment</button>
+            <button type="button">→ should be a rule</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="jobblock">
+        <div class="jobhead">
+          <span class="t">billing: retry backoff</span>
+          <span class="sha">incremental · parent 01HX…</span>
+          <span class="st ok">succeeded</span>
+        </div>
+        <div class="pipe" style="border-bottom:0">2 new hunks · carry-forward: 3 still_open · 1 resolved · 0 relocated</div>
+      </div>
+
+      <div class="empty">
+        No jobs yet. In a repo run <code>meister review</code>.<br>
+        Jobs appear here only after the CLI POSTs them.
+      </div>
+    </div>
+
+    <div class="rail">
+      <h3>Rules (edit in UI)</h3>
+      <div class="rule"><span class="rn">use-project-logger</span><br><span class="rk"><span class="sem">semantic guidance</span> · **/*.swift · enabled</span></div>
+      <div class="rule"><span class="rn">openapi-breaking-changes</span><br><span class="rk">deterministic · oasdiff · enabled</span></div>
+      <div class="rule"><span class="rn">no-hardcoded-secrets</span><br><span class="rk">deterministic · regex · enabled</span></div>
+      <div class="rule"><span class="rn">sibling-test-required</span><br><span class="rk">deterministic · disabled</span></div>
+
+      <h3>Context notes (/context)</h3>
+      <div class="ctx">Use OSLog everywhere; print is never OK.</div>
+      <div class="ctx">Never touch Payments from Auth — HTTP only.</div>
+      <div class="ctx">Burst size is 20 in prod; tests may use 2.</div>
+
+      <h3>Learnings inbox — 3 pending</h3>
+      <div class="learn">
+        <span class="lk rule-k">rule</span>
+        <p>Ban print() in Sources/Auth (from “should be a rule” on fnd_01J…A4)</p>
+        <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+      </div>
+      <div class="learn">
+        <span class="lk arch-k">architecture</span>
+        <p>Auth talks to Billing over HTTP, not the shared store.</p>
+        <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+      </div>
+      <div class="learn">
+        <span class="lk ctx-k">context</span>
+        <p>“This change taught us: backoff is capped at 30s by the gateway.”</p>
+        <div class="lb"><button class="acc" type="button">accept</button><button class="dis" type="button">dismiss</button></div>
+      </div>
+      <div class="neverapply">nothing auto-applies — accept writes, dismiss deletes</div>
+    </div>
+  </div>
+</body>
+</html>
