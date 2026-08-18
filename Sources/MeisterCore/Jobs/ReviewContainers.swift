@@ -16,11 +16,16 @@ public enum ReviewContainers: Sendable {
         "meister-cmd-\(jobID.rawValue)-"
     }
 
+    public static func miner(_ jobID: JobID) -> String {
+        "meister-mine-\(jobID.rawValue)"
+    }
+
     public static func all(_ jobID: JobID) -> [String] {
         [
             slot(jobID, .modelA),
             slot(jobID, .modelB),
             judge(jobID),
+            miner(jobID),
         ]
     }
 }

@@ -44,6 +44,18 @@ public struct BlobStore: Sendable {
         corpus.appendingPathComponent(itemID, isDirectory: true)
     }
 
+    public func corpusPatchURL(itemID: String) -> URL {
+        corpusItemDirectory(itemID: itemID).appendingPathComponent("item.patch", isDirectory: false)
+    }
+
+    public func corpusJSONURL(itemID: String) -> URL {
+        corpusItemDirectory(itemID: itemID).appendingPathComponent("item.json", isDirectory: false)
+    }
+
+    public func mineSpecURL(jobID: String) -> URL {
+        archives.appendingPathComponent("\(jobID).mine.json", isDirectory: false)
+    }
+
     public func workspaceURL(jobID: String) -> URL {
         workspaces.appendingPathComponent(jobID, isDirectory: true)
     }

@@ -344,6 +344,53 @@ extension Store {
         }
     }
 
+    public func finishJob(
+        id: JobID,
+        status: JobStatus,
+        errorMessage: String? = nil,
+        now: Date = Date()
+    ) throws -> Job? {
+        try write { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM jobs WHERE id = ?",
+                arguments: [id.rawValue]
+            ) else {
+                return nil
+            }
+            var job = Job(row: row)
+            if job.status.isTerminal {
+                return job
+            }
+            job.status = status
+            job.updatedAt = now
+            job.finishedAt = now
+            if job.startedAt == nil {
+                job.startedAt = now
+            }
+            if let errorMessage {
+                job.errorMessage = errorMessage
+            }
+            try db.execute(
+                sql: """
+                    UPDATE jobs SET
+                      updated_at = ?, started_at = ?, finished_at = ?,
+                      status = ?, error_message = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    ISO8601Dates.string(from: job.updatedAt),
+                    job.startedAt.map(ISO8601Dates.string(from:)),
+                    job.finishedAt.map(ISO8601Dates.string(from:)),
+                    job.status.rawValue,
+                    job.errorMessage,
+                    job.id.rawValue,
+                ]
+            )
+            return job
+        }
+    }
+
     public func updateJobContainers(
         jobID: JobID,
         containerName: String? = nil,

@@ -11,6 +11,12 @@ struct ReviewJobParameters: JobParameters {
     var jobID: JobID
 }
 
+struct MineCorpusJobParameters: JobParameters {
+    static let jobName = "meister.mine"
+    var corpusJobID: JobID
+    var spec: MineJobSpec
+}
+
 struct WorkspaceGCJobParameters: JobParameters {
     static let jobName = "meister.gc"
 }
@@ -31,6 +37,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let memory: MemoryQueue
     let service: JobService<MemoryQueue>
     let handles: QueueHandles
+    let blobs: BlobStore
     private var task: Task<Void, Never>?
 
     init(
@@ -102,6 +109,39 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             _ = await handles.remove(params.jobID)
         }
         service.registerJob(
+            parameters: MineCorpusJobParameters.self,
+            retryStrategy: .dontRetry
+        ) { params, _ in
+            do {
+                try await MineCorpusPipeline(
+                    store: store,
+                    skipAgent: skipAgent,
+                    miner: skipAgent ? nil : OpenCodeInvocation(
+                        docker: docker,
+                        http: OpenCodeHTTPClient(),
+                        image: config.opencodeImage,
+                        runnerConfig: runnerConfig,
+                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                        providerEnv: providerEnv,
+                        schemasDirectory: schemasDirectory,
+                        transcriptWriter: { jobID, data in
+                            let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "mine")
+                            try? FileManager.default.createDirectory(
+                                at: url.deletingLastPathComponent(),
+                                withIntermediateDirectories: true
+                            )
+                            try? data.write(to: url, options: .atomic)
+                        }
+                    ),
+                    model: config.judgeModel
+                ).run(jobID: params.corpusJobID, spec: params.spec)
+            } catch {
+                _ = await handles.remove(params.corpusJobID)
+                throw error
+            }
+            _ = await handles.remove(params.corpusJobID)
+        }
+        service.registerJob(
             parameters: WorkspaceGCJobParameters.self,
             retryStrategy: .dontRetry
         ) { _, _ in
@@ -111,6 +151,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         self.memory = memory
         self.service = service
         self.handles = handles
+        self.blobs = store.blobs
     }
 
     func start() {
@@ -128,6 +169,18 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     func pushReview(_ id: JobID) async throws {
         let handle = try await service.push(ReviewJobParameters(jobID: id))
         await handles.set(id, handle: handle)
+    }
+
+    func pushMine(_ id: JobID) async throws {
+        let spec = loadMineSpec(id) ?? MineJobSpec(source: .corpus)
+        let handle = try await service.push(MineCorpusJobParameters(corpusJobID: id, spec: spec))
+        await handles.set(id, handle: handle)
+    }
+
+    private func loadMineSpec(_ id: JobID) -> MineJobSpec? {
+        let url = blobs.mineSpecURL(jobID: id.rawValue)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(MineJobSpec.self, from: data)
     }
 
     func cancel(_ id: JobID) async {

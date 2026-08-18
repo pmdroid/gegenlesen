@@ -61,6 +61,32 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
+    func minerDockerRequestUsesMinerAgentAndEgress() throws {
+        let invocation = OpenCodeInvocation(
+            docker: NoopDocker(),
+            image: "meister/opencode-runner:0.1.0",
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
+        )
+        let request = try invocation.minerDockerRequest(
+            jobID: JobID("job-9"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            hostPort: 41235,
+            password: "secret",
+            model: "anthropic/claude-sonnet-4-5",
+            fallbackRun: true
+        )
+        let args = request.dockerCLIArguments()
+        #expect(args.contains("meister-mine-job-9"))
+        #expect(args.contains("meister-egress"))
+        #expect(args.contains("--agent"))
+        #expect(args.contains("miner"))
+        #expect(request.injectProviderKeys)
+        let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
+        let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+        #expect(object["default_agent"] as? String == "miner")
+    }
+
+    @Test
     func parallelSlotsAndEmptyFindingsSucceed() async throws {
         try await withTempDir("invoke-empty") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)

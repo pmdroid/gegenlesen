@@ -12,6 +12,7 @@ enum JobsRoute {
         app.get("api", "jobs", ":id", "transcript", use: transcript)
         app.get("api", "jobs", ":id", "feedback", use: feedback)
         app.post("api", "jobs", ":id", "cancel", use: cancel)
+        app.post("api", "jobs", ":id", "learn", use: learn)
     }
 
     static func create(_ req: Request) async throws -> Response {
@@ -186,6 +187,16 @@ enum JobsRoute {
             throw APIError.notFound()
         }
         return try await jobDetail(updated, store: req.application.meisterStore)
+    }
+
+    static func learn(_ req: Request) async throws -> Response {
+        let job = try await requireJob(req)
+        return try await CorpusRoute.enqueueMine(
+            on: req,
+            spec: MineJobSpec(source: .job, sourceJobID: job.id),
+            title: "learn \(job.title ?? job.id.rawValue)",
+            parentJobID: job.id
+        )
     }
 
     private static func requireJob(_ req: Request) async throws -> Job {

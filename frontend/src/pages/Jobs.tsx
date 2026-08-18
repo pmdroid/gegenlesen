@@ -15,6 +15,35 @@ function statusClass(status: JobStatus): string {
   return "st run";
 }
 
+function InboxRail() {
+  const suggested = useQuery({
+    queryKey: ["rules", "suggested"],
+    queryFn: () => listRules({ provenance: "suggested" }),
+    refetchInterval: 4000,
+  });
+  const mined = useQuery({
+    queryKey: ["rules", "mined"],
+    queryFn: () => listRules({ provenance: "mined" }),
+    refetchInterval: 4000,
+  });
+  const items = [...(suggested.data?.rules ?? []), ...(mined.data?.rules ?? [])];
+  if (items.length === 0) {
+    return <div className="ctx">empty — accept / dismiss on /learnings</div>;
+  }
+  return (
+    <>
+      {items.slice(0, 8).map((rule) => (
+        <div className="learn" key={rule.id}>
+          <Link to={`/learnings`} className="rn">
+            {rule.title}
+          </Link>
+          <div className="rk">{rule.provenance}</div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function pipelineLine(job: JobListItem): string {
   switch (job.status) {
     case "queued":
@@ -114,6 +143,7 @@ export function JobsPage() {
         <h3>Context notes (/context)</h3>
         <div className="ctx">User notes will list here.</div>
         <h3>Learnings inbox</h3>
+        <InboxRail />
         <div className="neverapply">nothing auto-applies — accept writes, dismiss deletes</div>
       </aside>
     </div>

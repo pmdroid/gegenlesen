@@ -1,7 +1,7 @@
 import Foundation
 import MeisterCore
 
-public struct OpenCodeInvocation: ReviewerRunning, Sendable {
+public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
     public var docker: any DockerExecuting
     public var http: any OpenCodeHTTPClienting
     public var image: String
@@ -180,6 +180,192 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
                 "OPENCODE_SERVER_PASSWORD",
             ]
         )
+    }
+
+    public func minerDockerRequest(
+        jobID: JobID,
+        workspace: URL,
+        hostPort: Int,
+        password: String,
+        model: String,
+        fallbackRun: Bool
+    ) throws -> DockerRequest {
+        let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: "miner")
+        let permission = try OpenCodeConfig.permissionJSON()
+        var env: [String: String] = [
+            "HOME": "/home/meister",
+            "OPENCODE_DISABLE_AUTOUPDATE": "true",
+            "OPENCODE_AUTO_SHARE": "false",
+            "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
+            "OPENCODE_DISABLE_CLAUDE_CODE": "true",
+            "OPENCODE_CONFIG": "/home/meister/.config/opencode/opencode.json",
+            "OPENCODE_CONFIG_CONTENT": policy,
+            "OPENCODE_PERMISSION": permission,
+            "OPENCODE_SERVER_PASSWORD": password,
+            "OPENCODE_SERVER_USERNAME": "opencode",
+        ]
+        for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
+            if let value = providerEnv[key], !value.isEmpty {
+                env[key] = value
+            }
+        }
+        let argv: [String]
+        if fallbackRun {
+            argv = [
+                "opencode", "run",
+                "--agent", "miner",
+                "--model", model,
+                "--auto",
+                "--format", "json",
+            ]
+        } else {
+            argv = ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+        }
+        return DockerRequest(
+            name: ReviewContainers.miner(jobID),
+            image: image,
+            argv: argv,
+            env: env,
+            network: "meister-egress",
+            workdir: "/workspace",
+            publishLoopback: fallbackRun ? nil : (hostPort, 4096),
+            user: "1000:1000",
+            readOnly: true,
+            tmpfs: [
+                "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m",
+                "/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m",
+                "/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
+            ],
+            binds: [
+                .init(source: workspace.path, dest: "/workspace", readOnly: false),
+                .init(source: runnerConfig.path, dest: "/home/meister/.config/opencode", readOnly: true),
+            ],
+            cpus: cpus,
+            memory: memory,
+            pidsLimit: 256,
+            capDropAll: true,
+            noNewPrivileges: true,
+            ulimitNproc: "256:256",
+            ulimitNofile: "1024:1024",
+            timeout: agentTimeout,
+            injectProviderKeys: true,
+            remove: true,
+            passThroughEnv: [
+                "ANTHROPIC_API_KEY",
+                "OPENAI_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENCODE_SERVER_PASSWORD",
+            ]
+        )
+    }
+
+    public func runMiner(
+        jobID: JobID,
+        workspace: Workspace,
+        model: String,
+        isCancelled: (@Sendable () async -> Bool)? = nil
+    ) async -> MinerRunResult {
+        let name = ReviewContainers.miner(jobID)
+        do {
+            if let runner = docker as? DockerRunner {
+                try runner.ensureEgressNetwork()
+            }
+            try Quarantine.run(workspace: workspace)
+            try DockerRunner.chownWorkspace(workspace.root)
+        } catch {
+            return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
+        }
+
+        if await isCancelled?() == true {
+            return MinerRunResult(containerName: name, failed: true, errorMessage: "cancelled")
+        }
+
+        let password = Self.randomPassword()
+        let lease: LoopbackPortLease
+        do {
+            lease = try DockerRunner.allocateLoopbackPort()
+        } catch {
+            return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
+        }
+        let serve: DockerRequest
+        do {
+            serve = try minerDockerRequest(
+                jobID: jobID,
+                workspace: workspace.root,
+                hostPort: lease.port,
+                password: password,
+                model: model,
+                fallbackRun: false
+            )
+        } catch {
+            lease.release()
+            return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
+        }
+        let port = lease.port
+        let serveTask = Task {
+            lease.release()
+            return try await docker.run(serve)
+        }
+        let baseURL = URL(string: "http://127.0.0.1:\(port)")!
+        let healthy = await http.waitUntilHealthy(baseURL: baseURL, password: password, timeout: healthTimeout)
+        var transcript = Data()
+        if await isCancelled?() == true {
+            await docker.kill(containerName: serve.name)
+            _ = try? await serveTask.value
+            return MinerRunResult(containerName: name, failed: true, errorMessage: "cancelled")
+        }
+        if healthy {
+            do {
+                let session = try await http.createSession(
+                    baseURL: baseURL,
+                    password: password,
+                    title: "meister-mine-\(jobID.rawValue)"
+                )
+                let promptURL = workspace.root.appendingPathComponent(".meister/prompt.md")
+                let prompt = (try? String(contentsOf: promptURL, encoding: .utf8)) ?? ""
+                try await http.sendReview(
+                    baseURL: baseURL,
+                    password: password,
+                    sessionID: session,
+                    agent: "miner",
+                    model: model,
+                    prompt: prompt,
+                    filePaths: ["/workspace/.meister/prompt.md"],
+                    timeout: agentTimeout
+                )
+                await http.abort(baseURL: baseURL, password: password, sessionID: session)
+            } catch {
+                transcript.append(contentsOf: Data("http_error\n".utf8))
+            }
+            await docker.kill(containerName: serve.name)
+            if let result = try? await serveTask.value {
+                transcript.append(SecretRedactor().redact(result.stdout))
+                transcript.append(SecretRedactor().redact(result.stderr))
+            }
+        } else {
+            await docker.kill(containerName: serve.name)
+            _ = try? await serveTask.value
+            let fallback: DockerRequest
+            do {
+                fallback = try minerDockerRequest(
+                    jobID: jobID,
+                    workspace: workspace.root,
+                    hostPort: port,
+                    password: password,
+                    model: model,
+                    fallbackRun: true
+                )
+            } catch {
+                return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
+            }
+            if let result = try? await docker.run(fallback) {
+                transcript.append(SecretRedactor().redact(result.stdout))
+                transcript.append(SecretRedactor().redact(result.stderr))
+            }
+        }
+
+        persistTranscripts(jobID: jobID, chunks: [transcript])
+        return MinerRunResult(containerName: name, failed: false)
     }
 
     private struct SlotOutcome: Sendable {

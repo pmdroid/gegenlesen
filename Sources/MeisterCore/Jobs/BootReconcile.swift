@@ -1,3 +1,5 @@
+import Foundation
+
 public struct BootReconcile: Sendable {
     public var log: (@Sendable (String, [String: String]) -> Void)?
 
@@ -31,7 +33,11 @@ public struct BootReconcile: Sendable {
         var requeued = 0
         for id in queued {
             do {
-                try await jobs.pushReview(id)
+                if FileManager.default.fileExists(atPath: store.blobs.mineSpecURL(jobID: id.rawValue).path) {
+                    try await jobs.pushMine(id)
+                } else {
+                    try await jobs.pushReview(id)
+                }
                 requeued += 1
             } catch {
                 log?("boot reconcile requeue failed", ["job_id": id.rawValue, "error": "\(error)"])

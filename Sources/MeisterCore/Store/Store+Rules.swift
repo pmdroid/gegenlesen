@@ -101,6 +101,42 @@ extension Store {
         return rule
     }
 
+    public func appendSourcePRRefs(id: RuleID, refs: [String], at now: Date = Date()) throws -> Rule? {
+        guard var rule = try rule(id: id) else { return nil }
+        var seen = Set(rule.sourcePRRefs)
+        var changed = false
+        for ref in refs where !ref.isEmpty && !seen.contains(ref) {
+            rule.sourcePRRefs.append(ref)
+            seen.insert(ref)
+            changed = true
+        }
+        if changed || rule.updatedAt != now {
+            rule.updatedAt = now
+            try updateRule(rule)
+        }
+        return rule
+    }
+
+    public func ftsTop1Rule(matching title: String) throws -> Rule? {
+        let phrase = ftsPhrase(title)
+        guard !phrase.isEmpty else { return nil }
+        return try read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT rules.* FROM rules
+                    JOIN rules_fts ON rules_fts.rowid = rules.rowid
+                    WHERE rules_fts MATCH ?
+                      AND rules.deleted_at IS NULL
+                    ORDER BY rank
+                    LIMIT 1
+                    """,
+                arguments: [phrase]
+            )
+            return row.map(Rule.init(row:))
+        }
+    }
+
     public func insertFindings(_ drafts: [FindingDraft], jobID: JobID, now: Date = Date()) throws -> [Finding] {
         guard !drafts.isEmpty else { return [] }
         return try write { db in
@@ -293,6 +329,13 @@ private let ruleJSONEncoder: JSONEncoder = {
     encoder.outputFormatting = [.sortedKeys]
     return encoder
 }()
+
+private func ftsPhrase(_ title: String) -> String {
+    let cleaned = title.replacingOccurrences(of: "\"", with: " ")
+    let normalized = Normalize.whitespace(cleaned)
+    guard !normalized.isEmpty else { return "" }
+    return "\"" + normalized + "\""
+}
 
 private func encodeJSON<T: Encodable>(_ value: T) -> String {
     guard let data = try? ruleJSONEncoder.encode(value),

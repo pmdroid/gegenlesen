@@ -1,6 +1,13 @@
 public protocol ReviewJobQueuing: Sendable {
     func pushReview(_ id: JobID) async throws
     func cancel(_ id: JobID) async
+    func pushMine(_ id: JobID) async throws
+}
+
+extension ReviewJobQueuing {
+    public func pushMine(_ id: JobID) async throws {
+        try await pushReview(id)
+    }
 }
 
 public struct NoopJobQueue: ReviewJobQueuing {
