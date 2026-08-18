@@ -157,9 +157,15 @@ meister/
   var/                         # sqlite, blobs, workspaces (gitignored)
 ```
 
-## Run (once PR 1 exists)
+## Run
+
+Use the Xcode toolchain (`Command Line Tools` cannot import Swift Testing / XCTest, and mixing toolchains poisons `.build`).
 
 ```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift build
+scripts/dev.sh                      # API :8080 + Vite; creates meister-egress
+# or:
 swift run MeisterAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
 cd frontend && npm run dev          # proxies /api → :8080
 scripts/build-runner.sh             # meister/opencode-runner:0.1.0

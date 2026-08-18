@@ -4,6 +4,10 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
+if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app/Contents/Developer ]]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
 if command -v docker >/dev/null 2>&1; then
   docker network inspect meister-egress >/dev/null 2>&1 \
     || docker network create meister-egress

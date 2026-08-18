@@ -198,7 +198,6 @@ public struct ReviewPipeline: Sendable {
         }
         if try await stopped(jobID) { return }
 
-        let workspace = Workspace(root: workspaceURL)
         let matcher = FindingMatcher(jobID: jobID)
         let carried = incrementalScope
             ? matcher.carryForward(
@@ -250,7 +249,7 @@ public struct ReviewPipeline: Sendable {
             )
         }
 
-        let carriedParents = Set(carried.compactMap(\.parentFindingID))
+        let carriedParents = Set(carried.compactMap { (finding: Finding) in finding.parentFindingID })
         var unmatchedDet = 0
         var detFindings: [Finding] = []
         let now = Date()
@@ -355,7 +354,6 @@ public struct ReviewPipeline: Sendable {
             return
         }
 
-        let workspace = Workspace(root: workspaceURL)
         let commandIDs = JudgeMerge.commandRuleIDs(from: rules)
         let stored = try await store.findings(jobID: jobID)
         let mechanical = JudgeHandoff.stampMechanical(stored, commandRuleIDs: commandIDs)
@@ -413,7 +411,7 @@ public struct ReviewPipeline: Sendable {
         if try await stopped(jobID) { return }
 
         let merged = JudgeMerge.merge(candidates: candidates, judge: outcome)
-        let byID = Dictionary(uniqueKeysWithValues: merged.map { ($0.id, $0) })
+        let byID = Dictionary(uniqueKeysWithValues: merged.map { (finding: Finding) in (finding.id, finding) })
         let persisted = mechanical.map { finding in
             byID[finding.id] ?? finding
         }
@@ -491,10 +489,12 @@ public struct ReviewPipeline: Sendable {
             endLine: draft.endLine,
             snippet: draft.snippet,
             agentRationale: draft.rationale,
+            judgeVerdict: draft.requiresJudge ? nil : .keep,
             confidence: draft.confidence,
             lifecycle: .new,
             suggestedPatch: draft.suggestedPatch,
             fingerprint: Fingerprint.sha256(ruleID: draft.ruleID, path: draft.filePath, snippet: draft.snippet),
+            evidenceOK: draft.requiresJudge ? draft.evidenceOK : true,
             createdAt: now
         )
     }
