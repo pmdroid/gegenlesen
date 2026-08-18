@@ -210,10 +210,42 @@ public actor RecordingDocker: DockerExecuting {
     }
 }
 
+public enum DockerPath: Sendable {
+    public static let fallback = "/usr/bin/docker"
+
+    public static let wellKnown = [
+        "/usr/local/bin/docker",
+        "/usr/bin/docker",
+        "/opt/homebrew/bin/docker",
+    ]
+
+    public static func resolve(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        wellKnown: [String] = DockerPath.wellKnown
+    ) -> String {
+        if let override = environment["MEISTER_DOCKER"], !override.isEmpty {
+            return override
+        }
+        for path in wellKnown where fileManager.isExecutableFile(atPath: path) {
+            return path
+        }
+        if let path = environment["PATH"] {
+            for directory in path.split(separator: ":") {
+                let candidate = "\(directory)/docker"
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+        }
+        return fallback
+    }
+}
+
 public struct DockerCLI: DockerExecuting {
     public var dockerPath: String
 
-    public init(dockerPath: String = "/usr/bin/docker") {
+    public init(dockerPath: String = DockerPath.resolve()) {
         self.dockerPath = dockerPath
     }
 

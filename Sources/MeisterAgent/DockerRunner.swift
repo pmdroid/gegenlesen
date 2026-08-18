@@ -13,7 +13,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
 
     public let dockerPath: String
 
-    public init(dockerPath: String = "/usr/bin/docker") {
+    public init(dockerPath: String = DockerPath.resolve()) {
         self.dockerPath = dockerPath
     }
 
