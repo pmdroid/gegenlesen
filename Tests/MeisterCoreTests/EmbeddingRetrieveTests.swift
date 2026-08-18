@@ -94,6 +94,44 @@ struct EmbeddingRetrieveTests {
     }
 
     @Test
+    func nilEmbedderKeepsPriorBlobsAndCapDoesNotDropUnvisited() async throws {
+        try await withTempDir("arch-keep") { root in
+            try writeFile("a.swift", "aaa\n", in: root)
+            try writeFile("b.swift", "bbb\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                _ = try await ArchitectureIndexJob(
+                    store: store,
+                    embedder: HashEmbeddingClient(dimensions: 16),
+                    skipAgent: true
+                ).run(workspace: Workspace(root: root), jobID: nil)
+                let before = try await store.chunks(kind: .file)
+                #expect(before.count == 2)
+                #expect(before.allSatisfy { $0.embedding != nil })
+
+                _ = try await ArchitectureIndexJob(
+                    store: store,
+                    embedder: nil,
+                    skipAgent: true
+                ).run(workspace: Workspace(root: root), jobID: nil)
+                let afterNil = try await store.chunks(kind: .file)
+                #expect(afterNil.count == 2)
+                #expect(afterNil.allSatisfy { $0.embedding != nil })
+
+                _ = try await ArchitectureIndexJob(
+                    store: store,
+                    embedder: nil,
+                    maxChunks: 1,
+                    skipAgent: true
+                ).run(workspace: Workspace(root: root), jobID: nil)
+                let afterCap = try await store.chunks(kind: .file)
+                #expect(afterCap.count == 2)
+                #expect(afterCap.allSatisfy { $0.embedding != nil })
+            }
+        }
+    }
+
+    @Test
     func architectureIndexAndContextPackUseTempWorkspace() async throws {
         try await withTempDir("arch-index") { root in
             try writeFile("Package.swift", "// swift-tools-version: 6.0\n", in: root)

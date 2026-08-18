@@ -64,7 +64,13 @@ public struct ArchitectureIndexJob: Sendable {
                 )
             )
         }
-        try await upsertIncremental(kind: kind, keepRefs: [note.id], pruneMissingRefs: false, drafts: drafts)
+        try await upsertIncremental(
+            kind: kind,
+            keepRefs: [note.id],
+            completeRefs: [note.id],
+            pruneMissingRefs: false,
+            drafts: drafts
+        )
     }
 
     public func embedRule(_ rule: Rule) async throws {
@@ -76,6 +82,7 @@ public struct ArchitectureIndexJob: Sendable {
         try await upsertIncremental(
             kind: .rule,
             keepRefs: [rule.id.rawValue],
+            completeRefs: [rule.id.rawValue],
             pruneMissingRefs: false,
             drafts: [
                 ContextChunk(
@@ -98,16 +105,25 @@ public struct ArchitectureIndexJob: Sendable {
     private func indexFiles(workspace: Workspace) async throws {
         let walked = walk(workspace.root)
         var drafts: [ContextChunk] = []
+        var completeRefs = Set<String>()
+        let seenRefs = Set(walked.files.map(\.relative))
         drafts.reserveCapacity(min(walked.files.count, maxChunks))
+        var hitCap = false
         for file in walked.files {
-            if drafts.count >= maxChunks { break }
+            if hitCap { continue }
             guard let data = try? Data(contentsOf: file.url),
                   let text = String(data: data, encoding: .utf8),
                   !text.isEmpty
             else { continue }
             let sha = ContentHash.sha256(data)
-            for (ordinal, piece) in TextChunker.chunks(text).enumerated() {
-                if drafts.count >= maxChunks { break }
+            let pieces = TextChunker.chunks(text)
+            var addedAll = true
+            for (ordinal, piece) in pieces.enumerated() {
+                if drafts.count >= maxChunks {
+                    hitCap = true
+                    addedAll = false
+                    break
+                }
                 drafts.append(
                     ContextChunk(
                         id: Self.chunkID(kind: .file, ref: file.relative, ordinal: ordinal),
@@ -119,10 +135,14 @@ public struct ArchitectureIndexJob: Sendable {
                     )
                 )
             }
+            if addedAll {
+                completeRefs.insert(file.relative)
+            }
         }
         try await upsertIncremental(
             kind: .file,
-            keepRefs: Set(drafts.map(\.ref)),
+            keepRefs: seenRefs,
+            completeRefs: completeRefs,
             pruneMissingRefs: true,
             drafts: drafts
         )
@@ -131,23 +151,23 @@ public struct ArchitectureIndexJob: Sendable {
     private func upsertIncremental(
         kind: ChunkKind,
         keepRefs: Set<String>,
+        completeRefs: Set<String>,
         pruneMissingRefs: Bool,
         drafts: [ContextChunk]
     ) async throws {
         let existing = Dictionary(
             uniqueKeysWithValues: (try await store.chunks(kind: kind)).map { ($0.id, $0) }
         )
-        let modelName = embedder?.model
         var pending: [(index: Int, text: String)] = []
         var ready = drafts
         for (index, draft) in drafts.enumerated() {
-            if let prior = existing[draft.id],
-               prior.contentSHA256 == draft.contentSHA256,
-               prior.embeddingModel == modelName,
-               prior.embedding != nil {
+            if let prior = existing[draft.id] {
                 ready[index].embedding = prior.embedding
                 ready[index].embeddingModel = prior.embeddingModel
-                continue
+                let modelMatches = embedder == nil || prior.embeddingModel == embedder?.model
+                if prior.contentSHA256 == draft.contentSHA256, prior.embedding != nil, modelMatches {
+                    continue
+                }
             }
             if embedder != nil {
                 pending.append((index, draft.text))
@@ -157,9 +177,14 @@ public struct ArchitectureIndexJob: Sendable {
             do {
                 let texts = pending.map(\.text)
                 var offset = 0
+                var short = false
                 while offset < texts.count {
                     let end = min(offset + 32, texts.count)
+                    let expected = end - offset
                     let vectors = try await embedder.embed(Array(texts[offset..<end]))
+                    if vectors.count < expected {
+                        short = true
+                    }
                     for (inner, vector) in vectors.enumerated() {
                         let slot = pending[offset + inner].index
                         ready[slot].embedding = EmbeddingVector.encode(vector)
@@ -167,21 +192,18 @@ public struct ArchitectureIndexJob: Sendable {
                     }
                     offset = end
                 }
+                if short {
+                    await onWarning?("embedding_failed")
+                }
             } catch {
                 await onWarning?("embedding_failed")
-                for item in pending {
-                    if let prior = existing[ready[item.index].id] {
-                        ready[item.index].embedding = prior.embedding
-                        ready[item.index].embeddingModel = prior.embeddingModel
-                    }
-                }
             }
         }
         try await store.upsertChunks(ready)
         let newIDs = Set(ready.map(\.id))
         var stale: [String] = []
         for old in existing.values {
-            if keepRefs.contains(old.ref), !newIDs.contains(old.id) {
+            if completeRefs.contains(old.ref), !newIDs.contains(old.id) {
                 stale.append(old.id)
             } else if pruneMissingRefs, !keepRefs.contains(old.ref) {
                 stale.append(old.id)
@@ -296,6 +318,7 @@ public struct ArchitectureIndexJob: Sendable {
             }
             files.append(WalkedFile(relative: relative, url: url))
         }
+        files.sort { $0.relative < $1.relative }
         return WalkResult(files: files, modules: modules.sorted())
     }
 

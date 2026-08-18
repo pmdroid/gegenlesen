@@ -30,7 +30,7 @@ struct APIError: Error, AbortError, DebuggableError {
     }
 
     static func forbidden(_ message: String) -> APIError {
-        APIError(status: .forbidden, code: .badRequest, message: message)
+        APIError(status: .forbidden, code: .forbidden, message: message)
     }
 
     static func conflict(_ message: String) -> APIError {

@@ -52,6 +52,7 @@ export type Language =
 export type ErrorCode =
   | "bad_request"
   | "not_found"
+  | "forbidden"
   | "conflict"
   | "payload_too_large"
   | "unsupported_media_type"

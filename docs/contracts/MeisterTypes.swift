@@ -165,6 +165,7 @@ enum Language: String, Codable, Sendable {
 enum ErrorCode: String, Codable, Sendable {
     case badRequest = "bad_request"
     case notFound = "not_found"
+    case forbidden
     case conflict
     case payloadTooLarge = "payload_too_large"
     case unsupportedMediaType = "unsupported_media_type"
