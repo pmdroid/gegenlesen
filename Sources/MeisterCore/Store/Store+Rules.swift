@@ -189,7 +189,7 @@ extension Store {
 
 }
 
-private func insertRuleRow(_ rule: Rule, db: Database) throws {
+func insertRuleRow(_ rule: Rule, db: Database) throws {
     try db.execute(
         sql: """
             INSERT INTO rules (
@@ -219,7 +219,7 @@ private func insertRuleRow(_ rule: Rule, db: Database) throws {
     )
 }
 
-private func refreshRuleFTS(id: RuleID, db: Database) throws {
+func refreshRuleFTS(id: RuleID, db: Database) throws {
     guard let rowid = try Int.fetchOne(
         db,
         sql: "SELECT rowid FROM rules WHERE id = ?",

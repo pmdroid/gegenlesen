@@ -41,6 +41,58 @@ struct JobEventsResponse: Content {
     var events: [JobEventDTO]
 }
 
+struct FindingFeedbackListResponse: Content {
+    var feedback: [FindingFeedbackDTO]
+}
+
+struct FindingFeedbackRequest: Content {
+    var verdict: FeedbackVerdict?
+    var reaction: String?
+    var comment: String?
+}
+
+struct FindingFeedbackDTO: Content {
+    var id: Int
+    var findingID: FindingID
+    var jobID: JobID
+    var ts: Date
+    var verdict: FeedbackVerdict
+    var reaction: FeedbackReaction?
+    var comment: String?
+    var suggestedRuleID: RuleID?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case findingID = "finding_id"
+        case jobID = "job_id"
+        case ts, verdict, reaction, comment
+        case suggestedRuleID = "suggested_rule_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(findingID, forKey: .findingID)
+        try container.encode(jobID, forKey: .jobID)
+        try container.encode(ts, forKey: .ts)
+        try container.encode(verdict, forKey: .verdict)
+        try container.encodeNilIfNeeded(reaction, forKey: .reaction)
+        try container.encodeNilIfNeeded(comment, forKey: .comment)
+        try container.encodeNilIfNeeded(suggestedRuleID, forKey: .suggestedRuleID)
+    }
+
+    init(feedback: FindingFeedback) {
+        self.id = feedback.id
+        self.findingID = feedback.findingID
+        self.jobID = feedback.jobID
+        self.ts = feedback.ts
+        self.verdict = feedback.verdict
+        self.reaction = feedback.reaction
+        self.comment = feedback.comment
+        self.suggestedRuleID = feedback.suggestedRuleID
+    }
+}
+
 struct JobListItem: Content {
     var id: JobID
     var title: String?

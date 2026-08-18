@@ -43,4 +43,24 @@ public enum LanguageMap: Sendable {
             return .other
         }
     }
+
+    public static func pathGlob(for language: Language) -> String {
+        switch language {
+        case .swift: "**/*.swift"
+        case .typescript: "**/*.{ts,tsx}"
+        case .javascript: "**/*.{js,jsx,mjs,cjs}"
+        case .python: "**/*.py"
+        case .go: "**/*.go"
+        case .rust: "**/*.rs"
+        case .jvm: "**/*.{java,kt,kts}"
+        case .c: "**/*.{c,h,cc,cpp,hpp}"
+        case .ruby: "**/*.rb"
+        case .csharp: "**/*.cs"
+        case .shell: "**/*.{sh,bash,zsh}"
+        case .yaml: "**/*.{yml,yaml}"
+        case .json: "**/*.json"
+        case .markdown: "**/*.md"
+        case .other: "**/*"
+        }
+    }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import MeisterAgent
 import MeisterCore
 import Vapor
 
@@ -8,6 +9,8 @@ enum JobsRoute {
         app.get("api", "jobs", use: list)
         app.get("api", "jobs", ":id", use: detail)
         app.get("api", "jobs", ":id", "events", use: events)
+        app.get("api", "jobs", ":id", "transcript", use: transcript)
+        app.get("api", "jobs", ":id", "feedback", use: feedback)
         app.post("api", "jobs", ":id", "cancel", use: cancel)
     }
 
@@ -125,6 +128,41 @@ enum JobsRoute {
         let job = try await requireJob(req)
         let events = try await req.application.meisterStore.events(jobID: job.id)
         return JobEventsResponse(events: events.map(JobEventDTO.init(event:)))
+    }
+
+    static func transcript(_ req: Request) async throws -> Response {
+        let job = try await requireJob(req)
+        guard let phase = req.query[String.self, at: "phase"], !phase.isEmpty else {
+            throw APIError.badRequest("phase is required")
+        }
+        let candidates = transcriptPhases(phase)
+        guard !candidates.isEmpty else {
+            throw APIError.badRequest("invalid phase")
+        }
+        let blobs = req.application.meisterStore.blobs
+        let fm = FileManager.default
+        var url: URL?
+        for name in candidates {
+            let candidate = blobs.transcriptURL(jobID: job.id.rawValue, phase: name)
+            if fm.fileExists(atPath: candidate.path) {
+                url = candidate
+                break
+            }
+        }
+        guard let url else {
+            throw APIError.notFound("transcript not found")
+        }
+        let raw = try Data(contentsOf: url)
+        let redacted = SecretRedactor().redact(raw)
+        var headers = HTTPHeaders()
+        headers.contentType = HTTPMediaType(type: "application", subType: "x-ndjson")
+        return Response(status: .ok, headers: headers, body: .init(data: redacted))
+    }
+
+    static func feedback(_ req: Request) async throws -> FindingFeedbackListResponse {
+        let job = try await requireJob(req)
+        let rows = try await req.application.meisterStore.feedback(jobID: job.id)
+        return FindingFeedbackListResponse(feedback: rows.map(FindingFeedbackDTO.init(feedback:)))
     }
 
     static func cancel(_ req: Request) async throws -> JobDetail {
@@ -259,5 +297,16 @@ enum JobsRoute {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func transcriptPhases(_ phase: String) -> [String] {
+        switch phase {
+        case "review_a", "review_b":
+            return [phase, "review"]
+        case "review", "judge":
+            return [phase]
+        default:
+            return []
+        }
     }
 }

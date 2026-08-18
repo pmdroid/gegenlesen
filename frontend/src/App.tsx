@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { getHealth, getSettings } from "./client";
 import { ContextPage } from "./pages/Context";
+import { JobDetailPage } from "./pages/JobDetail";
 import { JobsPage } from "./pages/Jobs";
 import { LearningsPage } from "./pages/Learnings";
 import { RuleEditorPage } from "./pages/RuleEditor";
 import { RulesPage } from "./pages/Rules";
 
 export function App() {
+  const location = useLocation();
+  const jobsOn = location.pathname === "/" || location.pathname.startsWith("/jobs/");
   const health = useQuery({ queryKey: ["health"], queryFn: getHealth });
   const settings = useQuery({ queryKey: ["settings"], queryFn: getSettings });
 
@@ -24,7 +27,7 @@ export function App() {
       <div className="topbar">
         <span className="brand">MEISTER</span>
         <nav>
-          <NavLink to="/" end className={({ isActive }) => (isActive ? "on" : undefined)}>
+          <NavLink to="/" className={jobsOn ? "on" : undefined}>
             jobs
           </NavLink>
           <NavLink to="/rules" className={({ isActive }) => (isActive ? "on" : undefined)}>
@@ -41,6 +44,7 @@ export function App() {
       </div>
       <Routes>
         <Route path="/" element={<JobsPage />} />
+        <Route path="/jobs/:id" element={<JobDetailPage />} />
         <Route path="/rules" element={<RulesPage />} />
         <Route path="/rules/new" element={<RuleEditorPage />} />
         <Route path="/rules/:id" element={<RuleEditorPage />} />

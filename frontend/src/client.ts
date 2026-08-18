@@ -1,10 +1,14 @@
 import type {
+  FindingFeedback,
+  FindingFeedbackRequest,
   HealthDTO,
+  JobDetail,
   JobListResponse,
   Rule,
   RuleListResponse,
   RuleUpsert,
   SettingsDTO,
+  TranscriptPhase,
 } from "./api";
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -13,6 +17,14 @@ async function getJSON<T>(path: string): Promise<T> {
     throw new Error(`${path} ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+async function getText(path: string): Promise<string> {
+  const res = await fetch(path);
+  if (!res.ok) {
+    throw new Error(`${path} ${res.status}`);
+  }
+  return res.text();
 }
 
 async function sendJSON<T>(path: string, method: string, body?: unknown): Promise<T> {
@@ -37,6 +49,25 @@ export function getSettings(): Promise<SettingsDTO> {
 
 export function listJobs(): Promise<JobListResponse> {
   return getJSON("/api/jobs");
+}
+
+export function getJob(id: string): Promise<JobDetail> {
+  return getJSON(`/api/jobs/${id}`);
+}
+
+export function getJobFeedback(id: string): Promise<{ feedback: FindingFeedback[] }> {
+  return getJSON(`/api/jobs/${id}/feedback`);
+}
+
+export function getJobTranscript(id: string, phase: TranscriptPhase): Promise<string> {
+  return getText(`/api/jobs/${id}/transcript?phase=${phase}`);
+}
+
+export function postFindingFeedback(
+  id: string,
+  body: FindingFeedbackRequest,
+): Promise<FindingFeedback> {
+  return sendJSON(`/api/findings/${id}/feedback`, "POST", body);
 }
 
 export function listRules(query?: {

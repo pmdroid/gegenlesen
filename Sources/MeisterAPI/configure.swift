@@ -87,6 +87,7 @@ func configure(
     _ = try await RuleSeeder.upsertAbsent(from: rulesDir, into: app.meisterStore)
 
     JobsRoute.register(app)
+    FindingsRoute.register(app)
     RulesRoute.register(app)
 
     // RoutingKit does not match `/` against a lone `**`, so register the empty path too.

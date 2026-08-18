@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
 import { listJobs, listRules } from "../client";
 
@@ -74,7 +75,9 @@ export function JobsPage() {
           items.map((job) => (
             <div className="jobblock" key={job.id}>
               <div className="jobhead">
-                <span className="t">{job.title ?? job.id}</span>
+                <Link className="t" to={`/jobs/${job.id}`}>
+                  {job.title ?? job.id}
+                </Link>
                 <span className="sha">{shortSHA(job.head_sha ?? job.base_sha)}</span>
                 <span className={statusClass(job.status)}>{job.status}</span>
               </div>

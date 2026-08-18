@@ -1,0 +1,148 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { FindingsTable } from "../components/FindingsTable";
+import { TranscriptViewer } from "../components/TranscriptViewer";
+import { isTerminal, type FindingFeedbackRequest, type JobListItem, type JobStatus } from "../api";
+import { getJob, getJobFeedback, postFindingFeedback } from "../client";
+
+function shortSHA(sha: string | null): string {
+  if (!sha) return "—";
+  if (sha.length <= 15) return sha;
+  return `${sha.slice(0, 7)}..${sha.slice(-7)}`;
+}
+
+function statusClass(status: JobStatus): string {
+  if (status === "succeeded") return "st ok";
+  if (status === "failed" || status === "cancelled") return "st fail";
+  return "st run";
+}
+
+function pipelineLine(job: JobListItem): string {
+  switch (job.status) {
+    case "queued":
+      return "queued · det → A ∥ B → judge";
+    case "unpacking":
+    case "identifying":
+    case "selecting_rules":
+      return `${job.status.replace("_", " ")} · det → A ∥ B → judge`;
+    case "deterministic":
+      return "det running → A ∥ B → judge";
+    case "reviewing":
+      return "det ✓ → A running ∥ B running → judge pending";
+    case "judging":
+      return "det ✓ → A ∥ B → judge running";
+    case "succeeded":
+      return "det → A ∥ B → judge";
+    case "failed":
+      return job.error_message ? `failed · ${job.error_message}` : "failed";
+    case "cancelled":
+      return "cancelled";
+  }
+}
+
+export function JobDetailPage() {
+  const { id } = useParams();
+  const queryClient = useQueryClient();
+  const job = useQuery({
+    queryKey: ["job", id],
+    queryFn: () => getJob(id ?? ""),
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && !isTerminal(status) ? 2000 : false;
+    },
+    retry: false,
+  });
+  const feedback = useQuery({
+    queryKey: ["job", id, "feedback"],
+    queryFn: () => getJobFeedback(id ?? ""),
+    enabled: Boolean(id) && job.isSuccess,
+    refetchInterval: job.data && !isTerminal(job.data.status) ? 2000 : false,
+    retry: false,
+  });
+  const send = useMutation({
+    mutationFn: ({ findingId, body }: { findingId: string; body: FindingFeedbackRequest }) =>
+      postFindingFeedback(findingId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["job", id, "feedback"] });
+      void queryClient.invalidateQueries({ queryKey: ["rules"] });
+    },
+  });
+
+  if (!id) {
+    return (
+      <div className="page">
+        <div className="empty">Missing job id.</div>
+      </div>
+    );
+  }
+
+  if (job.isError) {
+    return (
+      <div className="page">
+        <Link to="/">← jobs</Link>
+        <div className="empty">Job not found or the API is down.</div>
+      </div>
+    );
+  }
+
+  if (!job.data) {
+    return (
+      <div className="page">
+        <div className="logline">loading {id}…</div>
+      </div>
+    );
+  }
+
+  const detail = job.data;
+  const live = !isTerminal(detail.status);
+  const events = detail.events.slice(-40);
+
+  return (
+    <div className="page">
+      <div className="pagehead">
+        <h1>{detail.title ?? detail.id}</h1>
+        <Link to="/">← jobs</Link>
+      </div>
+      <div className="jobblock">
+        <div className="jobhead">
+          <span className="t">{detail.title ?? detail.id}</span>
+          <span className="sha">{shortSHA(detail.head_sha ?? detail.base_sha)}</span>
+          <span className={statusClass(detail.status)}>{detail.status}</span>
+        </div>
+        <div className="pipe">{pipelineLine(detail)}</div>
+        <div className="pipe" style={{ borderBottom: 0 }}>
+          posted by CLI · scope: {detail.scope}
+          {detail.reviewer_a_model_id ? ` · A ${detail.reviewer_a_model_id}` : ""}
+          {detail.reviewer_b_model_id ? ` · B ${detail.reviewer_b_model_id}` : ""}
+        </div>
+      </div>
+
+      <h1>findings</h1>
+      <FindingsTable
+        findings={detail.findings}
+        feedback={feedback.data?.feedback ?? []}
+        pending={send.isPending}
+        onFeedback={(findingId, body) => send.mutate({ findingId, body })}
+      />
+      {send.isError ? <div className="formerr">could not save feedback</div> : null}
+
+      <h1>log tail</h1>
+      <div className="jobblock">
+        {events.length === 0 ? (
+          <div className="pipe" style={{ borderBottom: 0 }}>
+            no events yet
+          </div>
+        ) : (
+          events.map((event) => (
+            <div className="logline" key={event.id}>
+              {event.ts} · {event.level} · {event.message}
+            </div>
+          ))
+        )}
+      </div>
+
+      <TranscriptViewer jobId={detail.id} live={live} />
+    </div>
+  );
+}

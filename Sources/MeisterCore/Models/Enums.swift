@@ -77,6 +77,37 @@ public enum RuleProvenance: String, Codable, Sendable, Equatable {
     case handwritten, mined, suggested
 }
 
+public enum FeedbackVerdict: String, Codable, Sendable, Equatable {
+    case agree, disagree, comment, shouldBeRule = "should_be_rule"
+
+    public var isCurrentVerdict: Bool {
+        switch self {
+        case .agree, .disagree, .shouldBeRule: true
+        case .comment: false
+        }
+    }
+}
+
+public enum FeedbackReaction: String, Codable, Sendable, Equatable {
+    case thumbsUp = "thumbs_up"
+    case thumbsDown = "thumbs_down"
+
+    public static func normalize(_ raw: String) -> FeedbackReaction? {
+        switch raw {
+        case "thumbs_up", "+1", "👍": return .thumbsUp
+        case "thumbs_down", "-1", "👎": return .thumbsDown
+        default: return nil
+        }
+    }
+
+    public var verdict: FeedbackVerdict {
+        switch self {
+        case .thumbsUp: .agree
+        case .thumbsDown: .disagree
+        }
+    }
+}
+
 public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {
     case regex
     case denyApi = "deny_api"

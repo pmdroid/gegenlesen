@@ -31,7 +31,7 @@ export type RuleKind = "deterministic" | "semantic";
 export type RuleProvenance = "handwritten" | "mined" | "suggested";
 export type FileChangeStatus = "added" | "modified" | "deleted" | "renamed";
 export type EventLevel = "debug" | "info" | "warning" | "error";
-export type TranscriptPhase = "review" | "judge";
+export type TranscriptPhase = "review" | "review_a" | "review_b" | "judge";
 export type Language =
   | "swift"
   | "typescript"

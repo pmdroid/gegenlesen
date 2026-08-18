@@ -538,7 +538,7 @@ extension Job {
 }
 
 extension Finding {
-    fileprivate init(row: Row) {
+    init(row: Row) {
         let evidence: Bool?
         if let raw = row["evidence_ok"] as Int? {
             evidence = raw != 0
