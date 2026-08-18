@@ -87,6 +87,7 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 .verdict { font-size: 11px; padding: 0 6px; border-radius: 3px; }
 .verdict.kept { background: #14301a; color: #81c784; }
 .verdict.dropped { background: #2b1a10; color: #d49a5a; }
+.verdict.unavailable { background: #2b2a10; color: #d4c95a; }
 .verdict.det { background: #10222b; color: #5ab8d4; }
 pre {
   margin: 8px 0; padding: 8px 10px; background: #080a07;

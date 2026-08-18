@@ -21,8 +21,11 @@ function loc(finding: Finding): string {
 
 function verdictClass(finding: Finding): string {
   if (finding.judge_verdict === "drop") return "verdict dropped";
+  if (finding.judge_verdict === "unavailable") return "verdict unavailable";
+  if (finding.phase === "deterministic" && finding.judge_verdict !== "downgrade") {
+    return "verdict det";
+  }
   if (finding.judge_verdict) return "verdict kept";
-  if (finding.phase === "deterministic") return "verdict det";
   return "verdict det";
 }
 
@@ -30,8 +33,8 @@ function verdictLabel(finding: Finding): string {
   if (finding.judge_verdict === "drop") return "judge: dropped";
   if (finding.judge_verdict === "unavailable") return "judge: unavailable";
   if (finding.judge_verdict === "downgrade") return "judge: downgrade";
-  if (finding.judge_verdict === "keep") return "judge: kept";
   if (finding.phase === "deterministic") return "deterministic";
+  if (finding.judge_verdict === "keep") return "judge: kept";
   return finding.phase;
 }
 

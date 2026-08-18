@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { TranscriptViewer } from "../components/TranscriptViewer";
@@ -99,17 +99,10 @@ export function JobDetailPage() {
   const detail = job.data;
   const live = !isTerminal(detail.status);
   const events = detail.events.slice(-40);
-  const droppedCount = useMemo(
-    () => detail.findings.filter((finding) => finding.judge_verdict === "drop").length,
-    [detail.findings],
-  );
-  const visibleFindings = useMemo(
-    () =>
-      showDropped
-        ? detail.findings
-        : detail.findings.filter((finding) => finding.judge_verdict !== "drop"),
-    [detail.findings, showDropped],
-  );
+  const droppedCount = detail.findings.filter((finding) => finding.judge_verdict === "drop").length;
+  const visibleFindings = showDropped
+    ? detail.findings
+    : detail.findings.filter((finding) => finding.judge_verdict !== "drop");
 
   return (
     <div className="page">

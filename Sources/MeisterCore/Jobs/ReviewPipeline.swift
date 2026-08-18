@@ -234,7 +234,13 @@ public struct ReviewPipeline: Sendable {
         )
         JudgeHandoff.persistAgentBlob(workspace: workspace, blobs: store.blobs, jobID: jobID)
         let input = JudgeHandoff.inputFile(from: candidates, workspace: workspace)
-        try? JudgeHandoff.writeInput(input, workspace: workspace, blobs: store.blobs, jobID: jobID)
+        let wroteInput: Bool
+        do {
+            try JudgeHandoff.writeInput(input, workspace: workspace, blobs: store.blobs, jobID: jobID)
+            wroteInput = true
+        } catch {
+            wroteInput = false
+        }
 
         if candidates.isEmpty {
             try await store.updateFindings(mechanical)
@@ -254,7 +260,7 @@ public struct ReviewPipeline: Sendable {
 
         try await store.updateJobContainers(jobID: jobID, containerName: judgeName)
         let outcome: JudgeOutcome
-        if let judge {
+        if wroteInput, let judge {
             let judged = await judge.run(
                 JudgeRequest(
                     job: job,
@@ -266,8 +272,11 @@ public struct ReviewPipeline: Sendable {
             )
             JudgeHandoff.persistTranscript(judged.transcript, blobs: store.blobs, jobID: jobID)
             outcome = judged.outcome
-        } else {
+        } else if wroteInput {
             outcome = .containerFailed
+        } else {
+            // No judge-input on disk — merge locally so !evidence_ok still drops.
+            outcome = .verdicts(JudgeFile(verdicts: []))
         }
         if try await stopped(jobID) { return }
 
