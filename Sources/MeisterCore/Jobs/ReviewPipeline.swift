@@ -28,7 +28,7 @@ public struct ReviewPipeline: Sendable {
         maxChunks: Int = 20_000,
         embedder: (any EmbeddingClient)? = nil,
         miner: (any MinerRunning)? = nil,
-        minerModel: String = "anthropic/claude-sonnet-4-5"
+        minerModel: String = "openrouter/openai/gpt-5.6-terra"
     ) {
         self.store = store
         self.skipAgent = skipAgent

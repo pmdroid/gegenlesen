@@ -36,6 +36,19 @@ struct OpenCodeConfigTests {
     }
 
     @Test
+    func splitModelKeepsOpenRouterAuthorInModelID() {
+        let split = OpenCodeConfig.splitModel("openrouter/deepseek/deepseek-v4-flash")
+        #expect(split.providerID == "openrouter")
+        #expect(split.modelID == "deepseek/deepseek-v4-flash")
+        let gemini = OpenCodeConfig.splitModel("openrouter/google/gemini-3.7-flash")
+        #expect(gemini.providerID == "openrouter")
+        #expect(gemini.modelID == "google/gemini-3.7-flash")
+        let terra = OpenCodeConfig.splitModel("openrouter/openai/gpt-5.6-terra")
+        #expect(terra.providerID == "openrouter")
+        #expect(terra.modelID == "openai/gpt-5.6-terra")
+    }
+
+    @Test
     func bakedImagePolicyMatchesSealedKeys() throws {
         let url = repoRootFromAgentTests()
             .appendingPathComponent("docker/opencode-runner/opencode.json")

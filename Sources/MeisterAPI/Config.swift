@@ -162,10 +162,10 @@ struct MeisterConfig: Content, Sendable, Equatable {
         port: 8080,
         dataDir: "var",
         models: ModelSlots(
-            modelA: "anthropic/claude-sonnet-4-5",
-            modelB: "openai/gpt-5.2"
+            modelA: "openrouter/deepseek/deepseek-v4-flash",
+            modelB: "openrouter/google/gemini-3.7-flash"
         ),
-        judgeModel: "anthropic/claude-sonnet-4-5",
+        judgeModel: "openrouter/openai/gpt-5.6-terra",
         opencodeImage: "meister/opencode-runner:0.1.0",
         limits: .v1
     )

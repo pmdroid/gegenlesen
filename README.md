@@ -101,7 +101,7 @@ See the design for rationale. Locked defaults:
 6. One active agent job. Retries = 0.
 7. Incremental is a parent pointer + stored SHA-256s. Works without `.git`.
 8. v1 egress is an isolated Docker bridge, no published ports.
-9. Default models: `model_a = anthropic/claude-sonnet-4-5`, `model_b = openai/gpt-5.2`, `judge = model_a`.
+9. Default models (OpenRouter): `model_a = openrouter/deepseek/deepseek-v4-flash`, `model_b = openrouter/google/gemini-3.7-flash`, `judge = openrouter/openai/gpt-5.6-terra`. Set `OPENROUTER_API_KEY`.
 10. Ship 5–10 generic seed rules. House rules go in the UI.
 
 ## Quality bar
@@ -163,6 +163,7 @@ Use the Xcode toolchain (`Command Line Tools` cannot import Swift Testing / XCTe
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+export OPENROUTER_API_KEY=…         # both reviewers + judge; no Anthropic key
 swift build
 scripts/dev.sh                      # API :8080 + Vite; creates meister-egress
 # or:

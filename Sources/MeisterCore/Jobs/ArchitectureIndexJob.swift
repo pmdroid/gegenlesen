@@ -15,7 +15,7 @@ public struct ArchitectureIndexJob: Sendable {
         maxChunks: Int = 20_000,
         skipAgent: Bool = true,
         miner: (any MinerRunning)? = nil,
-        model: String = "anthropic/claude-sonnet-4-5",
+        model: String = "openrouter/openai/gpt-5.6-terra",
         onWarning: (@Sendable (String) async -> Void)? = nil
     ) {
         self.store = store

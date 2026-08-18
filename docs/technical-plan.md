@@ -684,10 +684,10 @@ See [`schemas/openapi.yaml`](../schemas/openapi.yaml) `JobDetail`. Includes `fin
   "bind": "127.0.0.1",
   "port": 8080,
   "models": {
-    "model_a": "anthropic/claude-sonnet-4-5",
-    "model_b": "openai/gpt-5.2"
+    "model_a": "openrouter/deepseek/deepseek-v4-flash",
+    "model_b": "openrouter/google/gemini-3.7-flash"
   },
-  "judge_model": "anthropic/claude-sonnet-4-5",
+  "judge_model": "openrouter/openai/gpt-5.6-terra",
   "opencode_image": "meister/opencode-runner:0.1.0",
   "limits": {
     "archive_bytes": 104857600,
