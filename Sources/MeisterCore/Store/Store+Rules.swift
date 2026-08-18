@@ -120,6 +120,8 @@ extension Store {
     public func ftsTop1Rule(matching title: String) throws -> Rule? {
         let phrase = ftsPhrase(title)
         guard !phrase.isEmpty else { return nil }
+        // Restrict MATCH to the title column so body/instruction hits cannot absorb a new rule.
+        let query = "title : \(phrase)"
         return try read { db in
             let row = try Row.fetchOne(
                 db,
@@ -131,9 +133,24 @@ extension Store {
                     ORDER BY rank
                     LIMIT 1
                     """,
-                arguments: [phrase]
+                arguments: [query]
             )
             return row.map(Rule.init(row:))
+        }
+    }
+
+    public func rulePromotedFrom(_ id: RuleID) throws -> Rule? {
+        try read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT * FROM rules
+                    WHERE promoted_from_rule_id = ?
+                      AND deleted_at IS NULL
+                    LIMIT 1
+                    """,
+                arguments: [id.rawValue]
+            ).map(Rule.init(row:))
         }
     }
 

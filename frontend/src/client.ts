@@ -87,6 +87,20 @@ export function postFindingFeedback(
   return sendJSON(`/api/findings/${id}/feedback`, "POST", body);
 }
 
+export async function listInboxRules(): Promise<Rule[]> {
+  const [suggested, mined, handwritten] = await Promise.all([
+    listRules({ provenance: "suggested" }),
+    listRules({ provenance: "mined" }),
+    listRules({ provenance: "handwritten" }),
+  ]);
+  const promoted = new Set(
+    handwritten.rules
+      .map((rule) => rule.promoted_from_rule_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  return [...suggested.rules, ...mined.rules].filter((rule) => !promoted.has(rule.id));
+}
+
 export function listRules(query?: {
   enabled?: boolean;
   kind?: string;

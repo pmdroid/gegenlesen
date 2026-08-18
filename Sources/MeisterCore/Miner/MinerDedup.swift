@@ -26,7 +26,7 @@ public enum MinerDedup: Sendable {
         }
 
         if let top = try await store.ftsTop1Rule(matching: rule.title),
-           top.pathGlobs == rule.pathGlobs {
+           PatchGlobs.equivalent(top.pathGlobs, rule.pathGlobs) {
             _ = try await store.appendSourcePRRefs(id: top.id, refs: rule.sourcePRRefs, at: now)
             return .attached(top.id)
         }

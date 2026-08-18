@@ -232,6 +232,30 @@ extension Store {
         }
     }
 
+    public func findingFeedback(jobID: JobID) throws -> [[String: String]] {
+        try read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT finding_id, ts, verdict, reaction, comment
+                    FROM finding_feedback
+                    WHERE job_id = ?
+                    ORDER BY id
+                    """,
+                arguments: [jobID.rawValue]
+            ).map { row in
+                var object: [String: String] = [
+                    "finding_id": row["finding_id"] as String? ?? "",
+                    "ts": row["ts"] as String? ?? "",
+                    "verdict": row["verdict"] as String? ?? "",
+                ]
+                if let reaction = row["reaction"] as String? { object["reaction"] = reaction }
+                if let comment = row["comment"] as String? { object["comment"] = comment }
+                return object
+            }
+        }
+    }
+
     public func findings(jobID: JobID) throws -> [Finding] {
         try read { db in
             try Row.fetchAll(

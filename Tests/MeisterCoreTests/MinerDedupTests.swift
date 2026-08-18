@@ -72,6 +72,66 @@ struct MinerDedupTests {
             #expect(extras.isEmpty)
         }
     }
+
+    @Test
+    func bodyHitOnDefaultGlobsDoesNotAttach() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let existing = Rule(
+                id: RuleID("unrelated-house-note"),
+                title: "Unrelated house note",
+                severity: .info,
+                kind: .semantic,
+                enabled: false,
+                provenance: .mined,
+                languages: [],
+                pathGlobs: ["**/*"],
+                payload: .semantic(instruction: "Corpus unique widget ban lives in the body", fewShots: []),
+                body: "Corpus unique widget ban lives in the body",
+                createdAt: now,
+                updatedAt: now
+            )
+            try await store.insertRule(existing)
+            let candidate = sampleMinedRule(
+                title: "Corpus unique widget ban",
+                globs: ["**/*"],
+                refs: ["pr-new"],
+                now: now
+            )
+            let outcome = try await MinerDedup.upsert(candidate, into: store, now: now)
+            guard case .inserted = outcome else {
+                Issue.record("expected insert, got \(outcome)")
+                return
+            }
+            let stored = try await store.rule(id: existing.id)
+            #expect(stored?.sourcePRRefs.isEmpty == true)
+        }
+    }
+
+    @Test
+    func globSetEqualityIgnoresOrder() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let existing = sampleMinedRule(
+                id: RuleID("swift-logger-style"),
+                title: "Use the project logger",
+                globs: ["**/*.swift", "!**/*Tests.swift"],
+                refs: ["seed"],
+                now: now
+            )
+            try await store.insertRule(existing)
+            let candidate = sampleMinedRule(
+                title: "project logger",
+                globs: ["!**/*Tests.swift", "**/*.swift"],
+                refs: ["pr-9"],
+                now: now
+            )
+            let outcome = try await MinerDedup.upsert(candidate, into: store, now: now)
+            #expect(outcome == .attached(existing.id))
+        }
+    }
 }
 
 private func sampleMinedRule(

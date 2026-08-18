@@ -28,7 +28,7 @@ public struct MineCorpusPipeline: Sendable {
         do {
             let items = try await loadItems(spec)
             let workspaceURL = store.blobs.workspaceURL(jobID: jobID.rawValue)
-            try stage(items: items, spec: spec, workspace: workspaceURL)
+            try await stage(items: items, spec: spec, workspace: workspaceURL)
 
             var drafts: [MinedRuleDraft]
             if skipAgent || miner == nil {
@@ -55,7 +55,11 @@ public struct MineCorpusPipeline: Sendable {
                 }
                 let minedURL = workspaceURL.appendingPathComponent(".meister/mined-rules.json")
                 if let data = try? Data(contentsOf: minedURL), !data.isEmpty {
-                    drafts = (try? MinedRulesFile.parse(data)) ?? []
+                    if let parsed = try? MinedRulesFile.parse(data) {
+                        drafts = parsed
+                    } else {
+                        drafts = try await deterministicDrafts(items: items, spec: spec)
+                    }
                 } else {
                     drafts = try await deterministicDrafts(items: items, spec: spec)
                 }
@@ -108,7 +112,7 @@ public struct MineCorpusPipeline: Sendable {
         return all.filter { wanted.contains($0.id) }
     }
 
-    private func stage(items: [CorpusItem], spec: MineJobSpec, workspace: URL) throws {
+    private func stage(items: [CorpusItem], spec: MineJobSpec, workspace: URL) async throws {
         let fm = FileManager.default
         try fm.createDirectory(
             at: workspace.appendingPathComponent(".meister", isDirectory: true),
@@ -133,12 +137,25 @@ public struct MineCorpusPipeline: Sendable {
             if fm.fileExists(atPath: patch.path) {
                 try? fm.copyItem(at: patch, to: dest.appendingPathComponent("change.patch"))
             }
+            let findings = try await store.findings(jobID: sourceID)
+            let findingsData = Self.encodeFindings(findings)
+            try findingsData.write(to: dest.appendingPathComponent("findings.json"), options: .atomic)
+            try findingsData.write(
+                to: workspace.appendingPathComponent(".meister/findings.json"),
+                options: .atomic
+            )
+            let feedback = try await store.findingFeedback(jobID: sourceID)
+            if !feedback.isEmpty,
+               let data = try? JSONSerialization.data(withJSONObject: feedback, options: [.sortedKeys]) {
+                try data.write(to: dest.appendingPathComponent("feedback.json"), options: .atomic)
+            }
         }
         let prompt = """
             Extract candidate review rules from this workspace.
             Write only `.meister/mined-rules.json` as `{"rules":[...]}`.
             Each rule must include title, path_globs, and a semantic instruction.
             Set enabled to false. Do not edit other files.
+            For job sources, read job/change.patch, job/findings.json, and job/feedback.json when present.
             """
         try prompt.write(
             to: workspace.appendingPathComponent(".meister/prompt.md"),
@@ -172,7 +189,7 @@ public struct MineCorpusPipeline: Sendable {
                     title: finding.title,
                     severity: finding.severity,
                     languages: finding.filePath.map { [LanguageMap.language(forPath: $0).rawValue] } ?? [],
-                    pathGlobs: Self.globs(for: finding.filePath),
+                    pathGlobs: finding.filePath.map { [PatchGlobs.glob(forPath: $0)] } ?? ["**/*"],
                     payload: .semantic(instruction: instruction, fewShots: []),
                     sourcePRRefs: [sourceID.rawValue],
                     body: finding.message
@@ -187,8 +204,10 @@ public struct MineCorpusPipeline: Sendable {
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: "\n")
+            let patch = (try? Data(contentsOf: store.blobs.corpusPatchURL(itemID: item.id))) ?? Data()
             return MinedRuleDraft(
                 title: resolvedTitle,
+                pathGlobs: PatchGlobs.from(patch: patch),
                 payload: .semantic(instruction: instruction, fewShots: []),
                 sourcePRRefs: [item.sourceLabel],
                 body: item.body ?? ""
@@ -229,17 +248,29 @@ public struct MineCorpusPipeline: Sendable {
         )
     }
 
-    private static func globs(for path: String?) -> [String] {
-        guard let path, let slash = path.lastIndex(of: "/") else {
-            if let path, path.contains(".") {
-                return ["**/*.\(URL(fileURLWithPath: path).pathExtension)"]
-            }
-            return ["**/*"]
+    private static func encodeFindings(_ findings: [Finding]) -> Data {
+        let rows: [[String: Any]] = findings.map { finding in
+            var row: [String: Any] = [
+                "id": finding.id.rawValue,
+                "title": finding.title,
+                "message": finding.message,
+                "severity": finding.severity.rawValue,
+                "phase": finding.phase.rawValue,
+                "lifecycle": finding.lifecycle.rawValue,
+            ]
+            if let slot = finding.reviewerSlot { row["reviewer_slot"] = slot.rawValue }
+            if let path = finding.filePath { row["file_path"] = path }
+            if let start = finding.startLine { row["start_line"] = start }
+            if let end = finding.endLine { row["end_line"] = end }
+            if let snippet = finding.snippet { row["snippet"] = snippet }
+            if let verdict = finding.judgeVerdict { row["judge_verdict"] = verdict.rawValue }
+            if let rationale = finding.judgeRationale { row["judge_rationale"] = rationale }
+            if let patch = finding.suggestedPatch { row["suggested_patch"] = patch }
+            return row
         }
-        let name = String(path[path.index(after: slash)...])
-        if let dot = name.lastIndex(of: "."), dot != name.startIndex {
-            return ["**/*\(name[dot...])"]
-        }
-        return ["**/*"]
+        return (try? JSONSerialization.data(
+            withJSONObject: ["findings": rows],
+            options: [.sortedKeys]
+        )) ?? Data("{\"findings\":[]}".utf8)
     }
 }

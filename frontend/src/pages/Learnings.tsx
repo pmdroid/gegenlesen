@@ -1,21 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import type { Rule } from "../api";
-import { deleteRule, listRules, promoteRule } from "../client";
-
-async function listInbox(): Promise<Rule[]> {
-  const [suggested, mined] = await Promise.all([
-    listRules({ provenance: "suggested" }),
-    listRules({ provenance: "mined" }),
-  ]);
-  return [...suggested.rules, ...mined.rules];
-}
+import { deleteRule, listInboxRules, promoteRule } from "../client";
 
 export function LearningsPage() {
   const queryClient = useQueryClient();
   const inbox = useQuery({
     queryKey: ["rules", "inbox"],
-    queryFn: listInbox,
+    queryFn: listInboxRules,
   });
   const accept = useMutation({
     mutationFn: (id: string) => promoteRule(id),

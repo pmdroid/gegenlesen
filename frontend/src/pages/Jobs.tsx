@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
-import { listJobs, listRules } from "../client";
+import { listInboxRules, listJobs, listRules } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -16,17 +16,12 @@ function statusClass(status: JobStatus): string {
 }
 
 function InboxRail() {
-  const suggested = useQuery({
-    queryKey: ["rules", "suggested"],
-    queryFn: () => listRules({ provenance: "suggested" }),
+  const inbox = useQuery({
+    queryKey: ["rules", "inbox"],
+    queryFn: listInboxRules,
     refetchInterval: 4000,
   });
-  const mined = useQuery({
-    queryKey: ["rules", "mined"],
-    queryFn: () => listRules({ provenance: "mined" }),
-    refetchInterval: 4000,
-  });
-  const items = [...(suggested.data?.rules ?? []), ...(mined.data?.rules ?? [])];
+  const items = inbox.data ?? [];
   if (items.length === 0) {
     return <div className="ctx">empty — accept / dismiss on /learnings</div>;
   }

@@ -187,6 +187,17 @@ paths:
           description: current reaction cleared
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/learn:
+    post:
+      operationId: learnFromJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MineAccepted" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/rules:
     get:
       operationId: listRules

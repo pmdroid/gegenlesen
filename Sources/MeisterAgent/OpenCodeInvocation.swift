@@ -330,7 +330,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
                     agent: "miner",
                     model: model,
                     prompt: prompt,
-                    filePaths: ["/workspace/.meister/prompt.md"],
+                    filePaths: [
+                        "/workspace/.meister/prompt.md",
+                        "/workspace/.meister/findings.json",
+                        "/workspace/job/findings.json",
+                        "/workspace/job/feedback.json",
+                        "/workspace/job/change.patch",
+                    ],
                     timeout: agentTimeout
                 )
                 await http.abort(baseURL: baseURL, password: password, sessionID: session)
@@ -358,9 +364,15 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, Sendable {
             } catch {
                 return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
             }
-            if let result = try? await docker.run(fallback) {
-                transcript.append(SecretRedactor().redact(result.stdout))
-                transcript.append(SecretRedactor().redact(result.stderr))
+            guard let result = try? await docker.run(fallback) else {
+                persistTranscripts(jobID: jobID, chunks: [transcript])
+                return MinerRunResult(containerName: name, failed: true, errorMessage: "miner_failed")
+            }
+            transcript.append(SecretRedactor().redact(result.stdout))
+            transcript.append(SecretRedactor().redact(result.stderr))
+            if result.timedOut || result.exitCode != 0 {
+                persistTranscripts(jobID: jobID, chunks: [transcript])
+                return MinerRunResult(containerName: name, failed: true, errorMessage: "miner_failed")
             }
         }
 

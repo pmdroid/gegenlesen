@@ -67,23 +67,43 @@ struct OpenCodeInvocationTests {
             image: "meister/opencode-runner:0.1.0",
             runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
         )
-        let request = try invocation.minerDockerRequest(
-            jobID: JobID("job-9"),
-            workspace: URL(fileURLWithPath: "/tmp/ws"),
-            hostPort: 41235,
-            password: "secret",
-            model: "anthropic/claude-sonnet-4-5",
-            fallbackRun: true
-        )
-        let args = request.dockerCLIArguments()
-        #expect(args.contains("meister-mine-job-9"))
-        #expect(args.contains("meister-egress"))
-        #expect(args.contains("--agent"))
-        #expect(args.contains("miner"))
-        #expect(request.injectProviderKeys)
-        let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
-        let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
-        #expect(object["default_agent"] as? String == "miner")
+        for fallback in [false, true] {
+            let request = try invocation.minerDockerRequest(
+                jobID: JobID("job-9"),
+                workspace: URL(fileURLWithPath: "/tmp/ws"),
+                hostPort: 41235,
+                password: "secret",
+                model: "anthropic/claude-sonnet-4-5",
+                fallbackRun: fallback
+            )
+            let args = request.dockerCLIArguments()
+            #expect(args.contains("meister-mine-job-9"))
+            #expect(args.contains("meister-egress"))
+            #expect(args.contains("1000:1000"))
+            #expect(args.contains("--read-only"))
+            #expect(args.contains("/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m"))
+            #expect(args.contains("/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m"))
+            #expect(args.contains("/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+            #expect(args.contains("ALL"))
+            #expect(args.contains("no-new-privileges"))
+            #expect(args.contains("ANTHROPIC_API_KEY"))
+            #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })
+            #expect(args.contains("OPENCODE_SERVER_PASSWORD"))
+            #expect(!args.contains { $0.contains("OPENCODE_SERVER_PASSWORD=") })
+            #expect(!args.contains("secret"))
+            #expect(request.injectProviderKeys)
+            let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
+            let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+            #expect(object["default_agent"] as? String == "miner")
+            if fallback {
+                #expect(args.contains("--agent"))
+                #expect(args.contains("miner"))
+                #expect(args.contains("run"))
+            } else {
+                #expect(args.contains("serve"))
+                #expect(args.contains("127.0.0.1:41235:4096"))
+            }
+        }
     }
 
     @Test

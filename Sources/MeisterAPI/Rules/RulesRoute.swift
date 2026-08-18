@@ -92,6 +92,9 @@ enum RulesRoute {
         if existing.provenance == .handwritten {
             throw APIError.conflict("rule is already handwritten")
         }
+        if try await req.application.meisterStore.rulePromotedFrom(existing.id) != nil {
+            throw APIError.conflict("rule already promoted")
+        }
         let now = Date()
         let newID = try await uniqueID(base: RuleID(existing.id.rawValue + "-handwritten"), store: req.application.meisterStore)
         let copy = Rule(

@@ -41,12 +41,19 @@ enum CorpusRoute {
                 throw APIError.payloadTooLarge("item exceeds archive_bytes")
             }
             let name = part.filename
+            if isZipName(name) || isZipMagic(part.data) {
+                throw APIError.unsupportedMediaType("zip archives are not accepted")
+            }
             if isArchiveName(name) || isGzipMagic(part.data) {
-                _ = try await ingest.persistArchive(
-                    archive: part.data,
-                    filename: name,
-                    store: store
-                )
+                do {
+                    _ = try await ingest.persistArchive(
+                        archive: part.data,
+                        filename: name,
+                        store: store
+                    )
+                } catch let error as ArchiveError {
+                    throw mapArchive(error)
+                }
                 accepted += 1
                 continue
             }
@@ -155,8 +162,29 @@ enum CorpusRoute {
         return lower.hasSuffix(".tar.gz") || lower.hasSuffix(".tgz") || lower.hasSuffix(".tar")
     }
 
+    private static func isZipName(_ filename: String) -> Bool {
+        filename.lowercased().hasSuffix(".zip")
+    }
+
     private static func isGzipMagic(_ data: Data) -> Bool {
         data.count >= 2 && data[0] == 0x1F && data[1] == 0x8B
+    }
+
+    private static func isZipMagic(_ data: Data) -> Bool {
+        data.count >= 2 && data[0] == 0x50 && data[1] == 0x4B
+    }
+
+    private static func mapArchive(_ error: ArchiveError) -> APIError {
+        switch error {
+        case .zipRejected:
+            return .unsupportedMediaType("zip archives are not accepted")
+        case .unsafePath, .unsafeSymlink, .hardlink, .pathTooLong, .setidBit, .unsupportedEntry:
+            return .badRequest(String(describing: error))
+        case .tooManyFiles, .archiveTooLarge, .fileTooLarge:
+            return .payloadTooLarge(String(describing: error))
+        case .readFailed, .writeFailed, .chownFailed:
+            return .unprocessable(String(describing: error))
+        }
     }
 
     private static func encoded<T: Content>(_ body: T, status: HTTPResponseStatus, on req: Request) throws -> Response {

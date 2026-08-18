@@ -52,6 +52,16 @@ struct CorpusRouteTests {
     }
 
     @Test
+    func zipArchiveIsRejected() async throws {
+        try await withMeisterApp { app in
+            var bytes = Data([0x50, 0x4B, 0x03, 0x04])
+            bytes.append(contentsOf: [UInt8](repeating: 0, count: 20))
+            let res = try await postCorpus(app, files: [("hist.tar.gz", bytes)])
+            #expect(res.status == .unsupportedMediaType)
+        }
+    }
+
+    @Test
     func unknownCorpusItemIsNotFound() async throws {
         try await withMeisterApp { app in
             try await app.testing().test(.GET, "/api/corpus/11111111-1111-4111-8111-111111111111") {

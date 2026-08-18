@@ -643,6 +643,7 @@ Multipart parser abort size = `archive_bytes + 1 MiB`. Do not buffer then reject
 | `POST` | `/api/jobs/:id/cancel` | — | `200 JobDetail` |
 | `GET` | `/api/jobs/:id/feedback` | — | `200 { "feedback": [FindingFeedback] }` |
 | `POST` | `/api/findings/:id/feedback` | `{ verdict, comment? }` or `{ reaction }` | `201` row, `200` reused `should_be_rule`, `204` reaction cleared |
+| `POST` | `/api/jobs/:id/learn` | — | `202 { "job_id": "…" }` |
 | `GET` | `/api/rules` | `enabled` `kind` `provenance` | `200 { "rules": [Rule] }` |
 | `GET` | `/api/rules/:id` | — | `200 Rule` |
 | `POST` | `/api/rules` | `RuleUpsert` | `201 Rule` |

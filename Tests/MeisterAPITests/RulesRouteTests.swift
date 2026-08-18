@@ -107,7 +107,10 @@ struct RulesRouteTests {
                 #expect(body["id"] as? String != "mined-eval")
             }
             try await app.testing().test(.POST, "/api/rules/mined-eval/promote") { res async throws in
-                #expect(res.status == .created)
+                #expect(res.status == .conflict)
+                let body = try jsonObject(res)
+                let error = try #require(body["error"] as? [String: Any])
+                #expect(error["code"] as? String == "conflict")
             }
             try await app.testing().test(.POST, "/api/rules/mined-eval-handwritten/promote") { res async throws in
                 #expect(res.status == .conflict)
