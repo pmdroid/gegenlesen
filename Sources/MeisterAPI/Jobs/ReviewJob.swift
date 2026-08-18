@@ -1,6 +1,7 @@
 import Foundation
 import Jobs
 import Logging
+import MeisterAgent
 import MeisterCore
 import MeisterDeterministic
 import Vapor
@@ -32,7 +33,14 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let handles: QueueHandles
     private var task: Task<Void, Never>?
 
-    init(store: Store, config: MeisterConfig, logger: Logger) {
+    init(
+        store: Store,
+        config: MeisterConfig,
+        logger: Logger,
+        docker: any DockerExecuting,
+        skipAgent: Bool,
+        workingDirectory: String
+    ) {
         let memory = MemoryQueue()
         var service = JobService(
             memory,
@@ -41,6 +49,20 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         )
         let identifyTimeout = Duration.seconds(config.limits.identifyTimeoutSec)
         let handles = QueueHandles()
+        let runnerConfig = URL(fileURLWithPath: workingDirectory, isDirectory: true)
+            .appendingPathComponent("docker/opencode-runner", isDirectory: true)
+        let schemasDirectory = URL(fileURLWithPath: workingDirectory, isDirectory: true)
+            .appendingPathComponent("schemas", isDirectory: true)
+        let hostEnv = ProcessInfo.processInfo.environment
+        let providerEnv: [String: String] = {
+            var env: [String: String] = [:]
+            for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
+                if let value = hostEnv[key], !value.isEmpty {
+                    env[key] = value
+                }
+            }
+            return env
+        }()
         service.registerJob(
             parameters: ReviewJobParameters.self,
             retryStrategy: .dontRetry
@@ -48,10 +70,26 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             do {
                 try await ReviewPipeline(
                     store: store,
-                    skipAgent: true,
+                    skipAgent: skipAgent,
                     identifyTimeout: identifyTimeout,
                     deterministicTimeout: Duration.seconds(config.limits.deterministicTimeoutSec),
-                    deterministic: DeterministicEngine()
+                    deterministic: DeterministicEngine(),
+                    reviewer: OpenCodeInvocation(
+                        docker: docker,
+                        image: config.opencodeImage,
+                        runnerConfig: runnerConfig,
+                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                        providerEnv: providerEnv,
+                        schemasDirectory: schemasDirectory,
+                        transcriptWriter: { jobID, data in
+                            let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "review")
+                            try? FileManager.default.createDirectory(
+                                at: url.deletingLastPathComponent(),
+                                withIntermediateDirectories: true
+                            )
+                            try? data.write(to: url, options: .atomic)
+                        }
+                    )
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

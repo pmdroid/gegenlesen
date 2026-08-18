@@ -11,6 +11,26 @@ public struct Workspace: Sendable {
         guard let relative = try? ArchivePath.normalizedRelative(filePath), !relative.isEmpty else {
             return nil
         }
-        return ArchivePath.containedURL(root: root, relative: relative)
+        if Self.isRenamedOpenCodeConfig(relative) {
+            let quarantined = ".meister/quarantine/" + relative
+            if let url = ArchivePath.containedURL(root: root, relative: quarantined),
+               FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        guard let url = ArchivePath.containedURL(root: root, relative: relative) else {
+            return nil
+        }
+        if FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        return nil
+    }
+
+    public static func isRenamedOpenCodeConfig(_ relative: String) -> Bool {
+        relative == "opencode.json"
+            || relative == "opencode.jsonc"
+            || relative == ".opencode"
+            || relative.hasPrefix(".opencode/")
     }
 }

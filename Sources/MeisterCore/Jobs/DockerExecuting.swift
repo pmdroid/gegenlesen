@@ -7,8 +7,33 @@ public struct DockerRequest: Sendable {
     public var env: [String: String]
     public var network: String?
     public var workdir: String
+    public var publishLoopback: (hostPort: Int, containerPort: Int)?
+    public var user: String?
+    public var readOnly: Bool
+    public var tmpfs: [String]
+    public var binds: [Bind]
+    public var cpus: String?
+    public var memory: String?
+    public var pidsLimit: Int?
+    public var capDropAll: Bool
+    public var noNewPrivileges: Bool
+    public var ulimitNproc: String?
+    public var ulimitNofile: String?
     public var timeout: Duration
     public var injectProviderKeys: Bool
+    public var remove: Bool
+
+    public struct Bind: Sendable, Equatable {
+        public var source: String
+        public var dest: String
+        public var readOnly: Bool
+
+        public init(source: String, dest: String, readOnly: Bool = false) {
+            self.source = source
+            self.dest = dest
+            self.readOnly = readOnly
+        }
+    }
 
     public init(
         name: String,
@@ -17,8 +42,21 @@ public struct DockerRequest: Sendable {
         env: [String: String] = [:],
         network: String? = nil,
         workdir: String = "/",
+        publishLoopback: (hostPort: Int, containerPort: Int)? = nil,
+        user: String? = nil,
+        readOnly: Bool = false,
+        tmpfs: [String] = [],
+        binds: [Bind] = [],
+        cpus: String? = nil,
+        memory: String? = nil,
+        pidsLimit: Int? = nil,
+        capDropAll: Bool = false,
+        noNewPrivileges: Bool = false,
+        ulimitNproc: String? = nil,
+        ulimitNofile: String? = nil,
         timeout: Duration = .seconds(60),
-        injectProviderKeys: Bool = false
+        injectProviderKeys: Bool = false,
+        remove: Bool = true
     ) {
         self.name = name
         self.image = image
@@ -26,8 +64,77 @@ public struct DockerRequest: Sendable {
         self.env = env
         self.network = network
         self.workdir = workdir
+        self.publishLoopback = publishLoopback
+        self.user = user
+        self.readOnly = readOnly
+        self.tmpfs = tmpfs
+        self.binds = binds
+        self.cpus = cpus
+        self.memory = memory
+        self.pidsLimit = pidsLimit
+        self.capDropAll = capDropAll
+        self.noNewPrivileges = noNewPrivileges
+        self.ulimitNproc = ulimitNproc
+        self.ulimitNofile = ulimitNofile
         self.timeout = timeout
         self.injectProviderKeys = injectProviderKeys
+        self.remove = remove
+    }
+
+    public func dockerCLIArguments() -> [String] {
+        var args: [String] = ["run"]
+        if remove { args.append("--rm") }
+        args += ["--name", name]
+        if let publishLoopback {
+            args += ["-p", "127.0.0.1:\(publishLoopback.hostPort):\(publishLoopback.containerPort)"]
+        }
+        if let network {
+            args += ["--network", network]
+        }
+        args += ["--workdir", workdir]
+        if let user {
+            args += ["--user", user]
+        }
+        if readOnly {
+            args.append("--read-only")
+        }
+        for spec in tmpfs {
+            args += ["--tmpfs", spec]
+        }
+        for bind in binds {
+            var mount = "type=bind,src=\(bind.source),dst=\(bind.dest)"
+            if bind.readOnly {
+                mount += ",readonly"
+            }
+            args += ["--mount", mount]
+        }
+        if let cpus {
+            args += ["--cpus", cpus]
+        }
+        if let memory {
+            args += ["--memory", memory]
+        }
+        if let pidsLimit {
+            args += ["--pids-limit", "\(pidsLimit)"]
+        }
+        if capDropAll {
+            args += ["--cap-drop", "ALL"]
+        }
+        if noNewPrivileges {
+            args += ["--security-opt", "no-new-privileges"]
+        }
+        if let ulimitNproc {
+            args += ["--ulimit", "nproc=\(ulimitNproc)"]
+        }
+        if let ulimitNofile {
+            args += ["--ulimit", "nofile=\(ulimitNofile)"]
+        }
+        for (key, value) in env.keys.sorted().map({ ($0, env[$0]!) }) {
+            args += ["-e", "\(key)=\(value)"]
+        }
+        args.append(image)
+        args.append(contentsOf: argv)
+        return args
     }
 }
 
@@ -74,11 +181,16 @@ public struct NoopDocker: DockerExecuting {
 public actor RecordingDocker: DockerExecuting {
     public private(set) var removedPrefixes: [String] = []
     public private(set) var killed: [String] = []
+    public private(set) var requests: [DockerRequest] = []
+    public var result: DockerResult
 
-    public init() {}
+    public init(result: DockerResult = DockerResult(exitCode: 1)) {
+        self.result = result
+    }
 
     public func run(_ request: DockerRequest) async throws -> DockerResult {
-        DockerResult(exitCode: 1)
+        requests.append(request)
+        return result
     }
 
     public func kill(containerName: String) async {

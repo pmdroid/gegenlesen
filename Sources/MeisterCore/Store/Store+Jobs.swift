@@ -344,6 +344,77 @@ extension Store {
         }
     }
 
+    public func updateJobContainers(
+        jobID: JobID,
+        containerName: String? = nil,
+        containerNameA: String? = nil,
+        containerNameB: String? = nil
+    ) throws {
+        try write { db in
+            try db.execute(
+                sql: """
+                    UPDATE jobs SET
+                      container_name = COALESCE(?, container_name),
+                      container_name_a = COALESCE(?, container_name_a),
+                      container_name_b = COALESCE(?, container_name_b),
+                      updated_at = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    containerName,
+                    containerNameA,
+                    containerNameB,
+                    ISO8601Dates.string(from: Date()),
+                    jobID.rawValue,
+                ]
+            )
+        }
+    }
+
+    public func insertParsedFindings(_ findings: [Finding]) throws {
+        guard !findings.isEmpty else { return }
+        try write { db in
+            for finding in findings {
+                try db.execute(
+                    sql: """
+                        INSERT INTO findings (
+                          id, job_id, rule_id, phase, reviewer_slot, severity,
+                          title, message, file_path, start_line, end_line, snippet,
+                          agent_rationale, judge_verdict, judge_severity, judge_rationale,
+                          confidence, lifecycle, parent_finding_id, suggested_patch,
+                          fingerprint, evidence_ok, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                    arguments: [
+                        finding.id.rawValue,
+                        finding.jobID.rawValue,
+                        finding.ruleID?.rawValue,
+                        finding.phase.rawValue,
+                        finding.reviewerSlot?.rawValue,
+                        finding.severity.rawValue,
+                        finding.title,
+                        finding.message,
+                        finding.filePath,
+                        finding.startLine,
+                        finding.endLine,
+                        finding.snippet,
+                        finding.agentRationale,
+                        finding.judgeVerdict?.rawValue,
+                        finding.judgeSeverity?.rawValue,
+                        finding.judgeRationale,
+                        finding.confidence,
+                        finding.lifecycle.rawValue,
+                        finding.parentFindingID?.rawValue,
+                        finding.suggestedPatch,
+                        finding.fingerprint,
+                        finding.evidenceOK.map { $0 ? 1 : 0 },
+                        ISO8601Dates.string(from: finding.createdAt),
+                    ]
+                )
+            }
+        }
+    }
+
     public func failProcessRestarted() throws -> Int {
         let now = ISO8601Dates.string(from: Date())
         return try write { db in

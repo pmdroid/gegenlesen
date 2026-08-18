@@ -12,7 +12,8 @@ func configure(
     config: MeisterConfig,
     allowRemote: Bool? = nil,
     docker: (any DockerExecuting)? = nil,
-    startQueue: Bool = true
+    startQueue: Bool = true,
+    skipAgent: Bool? = nil
 ) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
@@ -34,9 +35,17 @@ func configure(
     let dataDir = URL(fileURLWithPath: config.dataDir, isDirectory: true)
     app.meisterStore = try Store.open(dataDir: dataDir)
 
-    let runtime = JobRuntime(store: app.meisterStore, config: config, logger: app.logger)
-    app.meisterJobs = runtime
     app.meisterDocker = docker ?? DockerCLI()
+    let skip = skipAgent ?? (ProcessInfo.processInfo.environment["MEISTER_SKIP_AGENT"] == "1")
+    let runtime = JobRuntime(
+        store: app.meisterStore,
+        config: config,
+        logger: app.logger,
+        docker: app.meisterDocker,
+        skipAgent: skip,
+        workingDirectory: app.directory.workingDirectory
+    )
+    app.meisterJobs = runtime
     app.lifecycle.use(JobRuntimeLifecycle())
     if startQueue {
         runtime.start()

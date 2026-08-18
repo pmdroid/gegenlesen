@@ -6,19 +6,22 @@ public struct ReviewPipeline: Sendable {
     public var identifyTimeout: Duration
     public var deterministicTimeout: Duration
     public var deterministic: (any DeterministicRunning)?
+    public var reviewer: (any ReviewerRunning)?
 
     public init(
         store: Store,
         skipAgent: Bool = true,
         identifyTimeout: Duration = .seconds(60),
         deterministicTimeout: Duration = .seconds(30),
-        deterministic: (any DeterministicRunning)? = nil
+        deterministic: (any DeterministicRunning)? = nil,
+        reviewer: (any ReviewerRunning)? = nil
     ) {
         self.store = store
         self.skipAgent = skipAgent
         self.identifyTimeout = identifyTimeout
         self.deterministicTimeout = deterministicTimeout
         self.deterministic = deterministic
+        self.reviewer = reviewer
     }
 
     public func run(jobID: JobID) async throws {
@@ -155,6 +158,54 @@ public struct ReviewPipeline: Sendable {
             level: .info,
             message: skipAgent ? "succeeded" : "reviewing"
         )
+        if skipAgent { return }
+        if try await stopped(jobID) { return }
+
+        guard let job = try await store.job(id: jobID) else { return }
+        guard let reviewer else {
+            _ = try await store.apply(
+                jobID: jobID,
+                event: .reviewFailed("reviewer_unavailable"),
+                errorMessage: "reviewer_unavailable"
+            )
+            return
+        }
+
+        let review = await reviewer.run(
+            AgentReviewRequest(
+                job: job,
+                workspace: Workspace(root: workspaceURL),
+                files: files,
+                rules: rules,
+                newWork: newWork
+            )
+        )
+        try await store.updateJobContainers(
+            jobID: jobID,
+            containerName: review.containerName,
+            containerNameA: review.containerNameA,
+            containerNameB: review.containerNameB
+        )
+        if !review.findings.isEmpty {
+            try await store.insertParsedFindings(review.findings)
+        }
+        if review.failed {
+            _ = try await store.apply(
+                jobID: jobID,
+                event: .reviewFailed(review.errorMessage ?? "reviewer_failed"),
+                errorMessage: review.errorMessage ?? "reviewer_failed"
+            )
+            try await store.appendEvent(jobID: jobID, level: .error, message: "review_failed")
+            return
+        }
+        _ = try await store.apply(
+            jobID: jobID,
+            event: .reviewOK(validFindingCount: review.findings.count)
+        )
+        if let after = try await store.job(id: jobID), after.status == .judging {
+            _ = try await store.apply(jobID: jobID, event: .judgeFinished)
+        }
+        try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
     }
 
     private func stopped(_ jobID: JobID) async throws -> Bool {

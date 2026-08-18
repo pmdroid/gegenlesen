@@ -11,6 +11,7 @@ let package = Package(
         .executable(name: "meister", targets: ["MeisterCLI"]),
         .library(name: "MeisterCore", targets: ["MeisterCore"]),
         .library(name: "MeisterDeterministic", targets: ["MeisterDeterministic"]),
+        .library(name: "MeisterAgent", targets: ["MeisterAgent"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
@@ -50,11 +51,22 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
+        .target(
+            name: "MeisterAgent",
+            dependencies: [
+                .target(name: "MeisterCore"),
+            ],
+            path: "Sources/MeisterAgent",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
         .executableTarget(
             name: "MeisterAPI",
             dependencies: [
                 .target(name: "MeisterCore"),
                 .target(name: "MeisterDeterministic"),
+                .target(name: "MeisterAgent"),
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Jobs", package: "swift-jobs"),
@@ -80,6 +92,13 @@ let package = Package(
                 .target(name: "MeisterCore"),
                 .target(name: "MeisterDeterministic"),
                 .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+        .testTarget(
+            name: "MeisterAgentTests",
+            dependencies: [
+                .target(name: "MeisterAgent"),
+                .target(name: "MeisterCore"),
             ]
         ),
         .testTarget(

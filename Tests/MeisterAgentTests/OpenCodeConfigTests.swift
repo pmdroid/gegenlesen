@@ -1,0 +1,54 @@
+import Foundation
+import Testing
+@testable import MeisterAgent
+
+@Suite
+struct OpenCodeConfigTests {
+    @Test
+    func policySealsMcpAndPluginAndDeniesSources() throws {
+        let json = OpenCodeConfig.policyJSON(model: "anthropic/claude-sonnet-4-5")
+        let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let mcp = try #require(object["mcp"] as? [String: Any])
+        #expect(mcp.isEmpty)
+        let plugin = try #require(object["plugin"] as? [Any])
+        #expect(plugin.isEmpty)
+        #expect(object["share"] as? String == "disabled")
+        #expect(object["subagent_depth"] as? Int == 0)
+        #expect(object["model"] as? String == "anthropic/claude-sonnet-4-5")
+
+        let permission = try #require(object["permission"] as? [String: Any])
+        let edit = try #require(permission["edit"] as? [String: String])
+        #expect(edit["*"] == "deny")
+        #expect(edit[".meister/findings.json"] == "allow")
+        #expect(edit[".meister/findings-model_a.json"] == "allow")
+        #expect(edit[".meister/findings-model_b.json"] == "allow")
+        #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
+
+        let bash = try #require(permission["bash"] as? [String: String])
+        #expect(bash["*"] == "deny")
+        #expect(bash["git diff*"] == "allow")
+        #expect(bash["rg *"] == "allow")
+        #expect(bash["curl *"] == nil)
+
+        let read = try #require(permission["read"] as? [String: String])
+        #expect(read["*"] == "allow")
+        #expect(read["*.env"] == "deny")
+    }
+
+    @Test
+    func bakedImagePolicyMatchesSealedKeys() throws {
+        let url = repoRootFromAgentTests()
+            .appendingPathComponent("docker/opencode-runner/opencode.json")
+        let data = try Data(contentsOf: url)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let mcp = try #require(object["mcp"] as? [String: Any])
+        #expect(mcp.isEmpty)
+        let plugin = try #require(object["plugin"] as? [Any])
+        #expect(plugin.isEmpty)
+        let permission = try #require(object["permission"] as? [String: Any])
+        let edit = try #require(permission["edit"] as? [String: String])
+        #expect(edit["*"] == "deny")
+        #expect(edit[".meister/findings.json"] == "allow")
+        #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
+    }
+}

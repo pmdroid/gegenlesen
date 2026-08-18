@@ -1,0 +1,4 @@
+{"type":"text","text":"calling provider with ANTHROPIC_API_KEY=sk-ant-api03-SUPERSECRETVALUE0001"}
+{"type":"tool","name":"bash","command":"echo OPENAI_API_KEY=sk-proj-openai-secret-aaaa"}
+{"type":"message","content":"token sk-live-abcdefghijklmnopqrstuvwxyz012345 leaked"}
+{"type":"env","OPENROUTER_API_KEY":"sk-or-v1-openrouter-secret-bbbb"}
