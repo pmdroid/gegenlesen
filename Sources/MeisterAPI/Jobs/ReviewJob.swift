@@ -28,7 +28,7 @@ actor QueueHandles {
 final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let memory: MemoryQueue
     let service: JobService<MemoryQueue>
-    let handles = QueueHandles()
+    let handles: QueueHandles
     private var task: Task<Void, Never>?
 
     init(store: Store, config: MeisterConfig, logger: Logger) {
@@ -39,15 +39,22 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             options: .init(processor: .init(numWorkers: 1))
         )
         let identifyTimeout = Duration.seconds(config.limits.identifyTimeoutSec)
+        let handles = QueueHandles()
         service.registerJob(
             parameters: ReviewJobParameters.self,
             retryStrategy: .dontRetry
         ) { params, _ in
-            try await ReviewPipeline(
-                store: store,
-                skipAgent: true,
-                identifyTimeout: identifyTimeout
-            ).run(jobID: params.jobID)
+            do {
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    identifyTimeout: identifyTimeout
+                ).run(jobID: params.jobID)
+            } catch {
+                _ = await handles.remove(params.jobID)
+                throw error
+            }
+            _ = await handles.remove(params.jobID)
         }
         service.registerJob(
             parameters: WorkspaceGCJobParameters.self,
@@ -58,6 +65,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         service.addScheduledJob(WorkspaceGCJobParameters(), schedule: .hourly())
         self.memory = memory
         self.service = service
+        self.handles = handles
     }
 
     func start() {

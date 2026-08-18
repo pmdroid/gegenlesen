@@ -41,10 +41,7 @@ export function JobsPage() {
   const jobs = useQuery({
     queryKey: ["jobs"],
     queryFn: listJobs,
-    refetchInterval: (query) => {
-      const items = query.state.data?.jobs ?? [];
-      return items.some((job) => !isTerminal(job.status)) ? 2000 : false;
-    },
+    refetchInterval: 2000,
   });
 
   const items = jobs.data?.jobs ?? [];
@@ -88,7 +85,7 @@ export function JobsPage() {
         <div className="rule">
           <span className="rn">—</span>
           <br />
-          <span className="rk">CRUD lands in a later PR</span>
+          <span className="rk">rule editor is not available yet</span>
         </div>
         <h3>Context notes (/context)</h3>
         <div className="ctx">User notes will list here.</div>

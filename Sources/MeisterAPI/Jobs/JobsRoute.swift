@@ -16,6 +16,7 @@ enum JobsRoute {
         let parsed = try parseMultipart(req, archiveLimit: limits.archiveBytes)
         let meta = try decodeMeta(parsed.meta)
 
+        var parentHeadSHA: String?
         if meta.scope == .incremental {
             guard let parentID = meta.parentJobID, !parentID.rawValue.isEmpty else {
                 throw APIError.badRequest("incremental requires parent_job_id")
@@ -33,6 +34,7 @@ enum JobsRoute {
                     details: ["parent_job_id": parentID.rawValue]
                 )
             }
+            parentHeadSHA = nonempty(try await req.application.meisterStore.job(id: parentID)?.headSHA)
         }
 
         let active = try await req.application.meisterStore.activeArchiveBytes()
@@ -71,7 +73,8 @@ enum JobsRoute {
             baseSHA: nonempty(meta.baseSHA),
             headSHA: nonempty(meta.headSHA),
             baseRef: nonempty(meta.baseRef),
-            headRef: nonempty(meta.headRef)
+            headRef: nonempty(meta.headRef),
+            parentHeadSHA: parentHeadSHA
         )
         try JSONEncoder().encode(identify).write(to: blobs.identifyMetaURL(jobID: id.rawValue))
 

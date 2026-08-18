@@ -82,6 +82,8 @@ struct HealthTests {
 func withMeisterApp(
     workingDirectory: String? = nil,
     mutate: (inout MeisterConfig) -> Void = { _ in },
+    startQueue: Bool = false,
+    docker: any DockerExecuting = NoopDocker(),
     _ body: (Application) async throws -> Void
 ) async throws {
     let dataDir = FileManager.default.temporaryDirectory
@@ -96,7 +98,7 @@ func withMeisterApp(
         var config = MeisterConfig.example
         config.dataDir = dataDir.path
         mutate(&config)
-        try await configure(app, config: config)
+        try await configure(app, config: config, docker: docker, startQueue: startQueue)
         try await body(app)
     }
 }

@@ -201,7 +201,7 @@ struct JobsRouteTests {
 
     @Test
     func skipAgentPipelineReachesSucceeded() async throws {
-        try await withMeisterApp { app in
+        try await withMeisterApp(startQueue: true) { app in
             let archive = try packedTinyRepo()
             let created = try await postJob(
                 app,
@@ -230,7 +230,7 @@ struct JobsRouteTests {
 
     @Test
     func identifyFailureIsNoChangeSet() async throws {
-        try await withMeisterApp { app in
+        try await withMeisterApp(startQueue: true) { app in
             let archive = try tinyTarGz()
             let created = try await postJob(
                 app,
