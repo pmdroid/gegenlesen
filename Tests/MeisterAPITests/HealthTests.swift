@@ -1,0 +1,84 @@
+import Foundation
+import Testing
+import VaporTesting
+@testable import MeisterAPI
+
+@Suite
+struct HealthTests {
+    @Test
+    func health() async throws {
+        try await withMeisterApp { app in
+            try await app.testing().test(.GET, "/api/health") { res async in
+                #expect(res.status == .ok)
+                #expect(res.body.string == #"{"ok":true,"version":"0.1.0"}"#)
+            }
+        }
+    }
+
+    @Test
+    func settingsFromExampleConfig() async throws {
+        try await withMeisterApp { app in
+            try await app.testing().test(.GET, "/api/settings") { res async throws in
+                #expect(res.status == .ok)
+                let settings = try res.content.decode(SettingsDTO.self)
+                #expect(settings == MeisterConfig.example.settingsDTO)
+                #expect(!res.body.string.contains("API_KEY"))
+            }
+        }
+    }
+
+    @Test
+    func refuseNonLoopbackBind() async throws {
+        try await withApp { app in
+            var config = MeisterConfig.example
+            config.bind = "0.0.0.0"
+            do {
+                try await configure(app, config: config)
+                if !BindPolicy.allowRemoteFromEnvironment() {
+                    Issue.record("configure should refuse 0.0.0.0")
+                }
+            } catch is BindRefused {
+                // expected when MEISTER_ALLOW_REMOTE is not 1
+            }
+        }
+    }
+
+    @Test
+    func spaFallbackServesIndex() async throws {
+        let fm = FileManager.default
+        let tmp = fm.temporaryDirectory.appendingPathComponent("meister-spa-\(UUID().uuidString)")
+        let dist = tmp.appendingPathComponent("frontend/dist")
+        try fm.createDirectory(at: dist, withIntermediateDirectories: true)
+        try "<html>ledger</html>".write(
+            to: dist.appendingPathComponent("index.html"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? fm.removeItem(at: tmp) }
+
+        try await withMeisterApp(workingDirectory: tmp.path) { app in
+            try await app.testing().test(.GET, "/jobs/demo") { res async in
+                #expect(res.status == .ok)
+                #expect(res.body.string.contains("ledger"))
+            }
+            try await app.testing().test(.GET, "/api/missing") { res async in
+                #expect(res.status == .notFound)
+            }
+        }
+    }
+}
+
+func withMeisterApp(
+    workingDirectory: String? = nil,
+    _ body: (Application) async throws -> Void
+) async throws {
+    try await withApp { app in
+        if let workingDirectory {
+            app.directory.workingDirectory = workingDirectory.hasSuffix("/")
+                ? workingDirectory
+                : workingDirectory + "/"
+        }
+        try await configure(app, config: .example)
+        try await body(app)
+    }
+}
