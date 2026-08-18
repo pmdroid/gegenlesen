@@ -8,6 +8,9 @@ public struct ReviewPipeline: Sendable {
     public var deterministic: (any DeterministicRunning)?
     public var reviewer: (any ReviewerRunning)?
     public var judge: (any JudgeRunning)?
+    public var ruleTokenBudget: Int
+    public var retrieveK: Int
+    public var embedder: (any EmbeddingClient)?
 
     public init(
         store: Store,
@@ -16,7 +19,10 @@ public struct ReviewPipeline: Sendable {
         deterministicTimeout: Duration = .seconds(30),
         deterministic: (any DeterministicRunning)? = nil,
         reviewer: (any ReviewerRunning)? = nil,
-        judge: (any JudgeRunning)? = nil
+        judge: (any JudgeRunning)? = nil,
+        ruleTokenBudget: Int = 6000,
+        retrieveK: Int = 12,
+        embedder: (any EmbeddingClient)? = nil
     ) {
         self.store = store
         self.skipAgent = skipAgent
@@ -25,6 +31,9 @@ public struct ReviewPipeline: Sendable {
         self.deterministic = deterministic
         self.reviewer = reviewer
         self.judge = judge
+        self.ruleTokenBudget = ruleTokenBudget
+        self.retrieveK = retrieveK
+        self.embedder = embedder
     }
 
     public func run(jobID: JobID) async throws {
@@ -131,15 +140,34 @@ public struct ReviewPipeline: Sendable {
         if try await stopped(jobID) { return }
 
         let files = try await store.jobFiles(id: jobID)
+        let workspace = Workspace(root: workspaceURL)
+        do {
+            try await ArchitectureIndexJob(
+                store: store,
+                embedder: embedder,
+                skipAgent: skipAgent
+            ).run(workspace: workspace, jobID: jobID)
+        } catch {
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .warning,
+                message: "architecture_index_failed"
+            )
+        }
+        if try await stopped(jobID) { return }
+
         let rules: [Rule]
         do {
-            rules = try await store.listRules(RuleListFilter(enabled: true))
-            let selected = RuleSelector().select(rules: rules, files: files)
+            rules = try await selectAndPack(
+                jobID: jobID,
+                files: files,
+                workspace: workspace
+            )
             try await store.appendEvent(
                 jobID: jobID,
                 level: .info,
                 message: "selecting_rules",
-                payloadJSON: #"{"count":\#(selected.count)}"#
+                payloadJSON: #"{"count":\#(rules.count)}"#
             )
             _ = try await store.apply(jobID: jobID, event: .rulesOK)
         } catch {
@@ -458,6 +486,82 @@ public struct ReviewPipeline: Sendable {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func selectAndPack(
+        jobID: JobID,
+        files: [JobFile],
+        workspace: Workspace
+    ) async throws -> [Rule] {
+        let enabled = try await store.listRules(RuleListFilter(enabled: true))
+        let job = try await store.job(id: jobID)
+        let patch = loadPatchText(jobID: jobID, workspace: workspace)
+        let tokens = RetrievalQuery.tokens(
+            paths: files.map(\.path),
+            patch: patch,
+            title: job?.title
+        )
+        let ftsQuery = RetrievalQuery.ftsQuery(tokens: tokens)
+        let ftsScores = (try? await store.ftsBM25Scores(query: ftsQuery)) ?? [:]
+        let selected = RuleSelector().select(rules: enabled, files: files, ftsScores: ftsScores)
+        let deterministic = selected.filter { !$0.rule.payload.isSemantic }.map(\.rule)
+        let semantic = selected.filter { $0.rule.payload.isSemantic }.map(\.rule)
+        let budgeted = PromptBudget(tokenBudget: ruleTokenBudget).apply(semantic)
+        try await writeContextPack(
+            jobID: jobID,
+            files: files,
+            workspace: workspace,
+            title: job?.title,
+            patch: patch
+        )
+        return deterministic + budgeted
+    }
+
+    private func writeContextPack(
+        jobID: JobID,
+        files: [JobFile],
+        workspace: Workspace,
+        title: String?,
+        patch: Data?
+    ) async throws {
+        let notes = try await store.listContextNotes()
+        var hits: [ContextRetrieveHit] = []
+        let queryText = RetrievalQuery.tokens(paths: files.map(\.path), patch: patch, title: title)
+            .joined(separator: " ")
+        if let embedder {
+            do {
+                if let vector = try await embedder.embed([queryText]).first {
+                    hits = try await store.retrieveChunks(query: vector, k: retrieveK)
+                }
+            } catch {
+                try await store.appendEvent(
+                    jobID: jobID,
+                    level: .warning,
+                    message: "embedding_failed"
+                )
+            }
+        }
+        if hits.isEmpty {
+            let always = notes.filter(\.alwaysInclude)
+            if !always.isEmpty {
+                for note in always {
+                    hits.append(
+                        contentsOf: (try? await store.chunks(
+                            kind: note.kind == .architecture ? .architecture : .user,
+                            ref: note.id
+                        ))?.map { ContextRetrieveHit(chunk: $0, score: 1) } ?? []
+                    )
+                }
+            }
+        }
+        try ContextPack.write(workspace: workspace, notes: notes, hits: hits)
+    }
+
+    private func loadPatchText(jobID: JobID, workspace: Workspace) -> Data? {
+        if let multipart = loadMultipartPatch(jobID: jobID) { return multipart }
+        let embedded = workspace.root.appendingPathComponent(".meister/diff.patch")
+        guard FileManager.default.fileExists(atPath: embedded.path) else { return nil }
+        return try? Data(contentsOf: embedded)
     }
 
     private func stopped(_ jobID: JobID) async throws -> Bool {

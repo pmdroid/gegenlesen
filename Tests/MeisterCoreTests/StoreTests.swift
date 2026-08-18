@@ -92,6 +92,29 @@ struct StoreTests {
     }
 
     @Test
+    func insertRuleMapsColumnsIntoFTS() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            try await store.insertRule(
+                Rule(
+                    id: RuleID("ban-eval"),
+                    title: "Ban eval",
+                    severity: .error,
+                    kind: .semantic,
+                    languages: ["javascript"],
+                    pathGlobs: ["**/*.js"],
+                    payload: .semantic(instruction: "Do not call eval", fewShots: []),
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+            let scores = try await store.ftsBM25Scores(query: "\"eval\"")
+            #expect(scores[RuleID("ban-eval")] != nil)
+        }
+    }
+
+    @Test
     func foreignKeysRejectOrphanJobFiles() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)

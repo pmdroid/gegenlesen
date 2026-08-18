@@ -117,6 +117,31 @@ extension Store {
         return rule
     }
 
+    public func ftsBM25Scores(query: String) throws -> [RuleID: Double] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [:] }
+        return try read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT rules.id AS id, bm25(rules_fts) AS score
+                    FROM rules
+                    JOIN rules_fts ON rules_fts.rowid = rules.rowid
+                    WHERE rules_fts MATCH ?
+                      AND rules.deleted_at IS NULL
+                    """,
+                arguments: [trimmed]
+            )
+            var scores: [RuleID: Double] = [:]
+            for row in rows {
+                guard let id = row["id"] as String? else { continue }
+                let bm25 = (row["score"] as Double?) ?? 0
+                scores[RuleID(id)] = -bm25
+            }
+            return scores
+        }
+    }
+
     public func ftsTop1Rule(matching title: String) throws -> Rule? {
         let phrase = ftsPhrase(title)
         guard !phrase.isEmpty else { return nil }

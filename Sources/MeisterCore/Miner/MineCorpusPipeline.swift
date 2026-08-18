@@ -69,6 +69,7 @@ public struct MineCorpusPipeline: Sendable {
             let now = Date()
             var inserted = 0
             var attached = 0
+            var insertedRules: [Rule] = []
             for draft in drafts {
                 let rule = Self.rule(
                     from: draft,
@@ -77,12 +78,17 @@ public struct MineCorpusPipeline: Sendable {
                     now: now
                 )
                 switch try await MinerDedup.upsert(rule, into: store, now: now) {
-                case .inserted:
+                case .inserted(let id):
                     inserted += 1
+                    if let stored = try await store.rule(id: id) {
+                        insertedRules.append(stored)
+                    }
                 case .attached:
                     attached += 1
                 }
             }
+
+            try await fillInbox(spec: spec, inserted: insertedRules, workspace: workspaceURL, now: now)
 
             try await store.markCorpusMined(ids: items.map(\.id), at: now)
             try await store.appendEvent(
@@ -211,6 +217,67 @@ public struct MineCorpusPipeline: Sendable {
                 payload: .semantic(instruction: instruction, fewShots: []),
                 sourcePRRefs: [item.sourceLabel],
                 body: item.body ?? ""
+            )
+        }
+    }
+
+    private func fillInbox(
+        spec: MineJobSpec,
+        inserted: [Rule],
+        workspace: URL,
+        now: Date
+    ) async throws {
+        let sourceID = spec.sourceJobID
+        for rule in inserted {
+            let payload = #"{"rule_id":"\#(rule.id.rawValue)"}"#
+            try await store.insertLearning(
+                Learning(
+                    jobID: sourceID,
+                    kind: .rule,
+                    title: rule.title,
+                    body: rule.body.isEmpty ? PromptBudget.render(rule) : rule.body,
+                    payloadJSON: payload,
+                    createdAt: now
+                )
+            )
+        }
+
+        if spec.source == .job, let sourceID {
+            let sourceWorkspace = store.blobs.workspaceURL(jobID: sourceID.rawValue)
+            let indexRoot = FileManager.default.fileExists(atPath: sourceWorkspace.path)
+                ? sourceWorkspace
+                : workspace
+            do {
+                try await ArchitectureIndexJob(
+                    store: store,
+                    skipAgent: skipAgent
+                ).run(workspace: Workspace(root: indexRoot), jobID: sourceID)
+            } catch {
+                try await store.appendEvent(
+                    jobID: sourceID,
+                    level: .warning,
+                    message: "architecture_index_failed"
+                )
+            }
+
+            let findings = try await store.findings(jobID: sourceID)
+            let job = try await store.job(id: sourceID)
+            let title = job?.title ?? sourceID.rawValue
+            let body: String
+            if findings.isEmpty {
+                body = "Suggested house note from job \(title)."
+            } else {
+                body = findings.map { "- \($0.title): \($0.message)" }.joined(separator: "\n")
+            }
+            try await store.insertLearning(
+                Learning(
+                    jobID: sourceID,
+                    kind: .context,
+                    title: "Notes from \(title)",
+                    body: body,
+                    payloadJSON: #"{"kind":"context"}"#,
+                    createdAt: now
+                )
             )
         }
     }

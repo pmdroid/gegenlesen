@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
-import { listInboxRules, listJobs, listRules } from "../client";
+import { listContextNotes, listJobs, listLearnings, listRules } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -17,22 +17,46 @@ function statusClass(status: JobStatus): string {
 
 function InboxRail() {
   const inbox = useQuery({
-    queryKey: ["rules", "inbox"],
-    queryFn: listInboxRules,
+    queryKey: ["learnings", "pending"],
+    queryFn: () => listLearnings({ status: "pending" }),
     refetchInterval: 4000,
   });
-  const items = inbox.data ?? [];
+  const items = inbox.data?.learnings ?? [];
   if (items.length === 0) {
     return <div className="ctx">empty — accept / dismiss on /learnings</div>;
   }
   return (
     <>
-      {items.slice(0, 8).map((rule) => (
-        <div className="learn" key={rule.id}>
+      {items.slice(0, 8).map((item) => (
+        <div className="learn" key={item.id}>
           <Link to={`/learnings`} className="rn">
-            {rule.title}
+            {item.title}
           </Link>
-          <div className="rk">{rule.provenance}</div>
+          <div className="rk">{item.kind}</div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ContextRail() {
+  const notes = useQuery({
+    queryKey: ["context"],
+    queryFn: listContextNotes,
+    refetchInterval: 4000,
+  });
+  const items = notes.data?.notes ?? [];
+  if (items.length === 0) {
+    return <div className="ctx">User notes live on /context. Nothing auto-applies.</div>;
+  }
+  return (
+    <>
+      {items.slice(0, 8).map((note) => (
+        <div className="ctx" key={note.id}>
+          <Link to="/context" className="rn">
+            {note.title}
+          </Link>
+          <div className="rk">{note.kind}</div>
         </div>
       ))}
     </>
@@ -153,7 +177,7 @@ export function JobsPage() {
           ))
         )}
         <h3>Context notes (/context)</h3>
-        <div className="ctx">User notes will list here.</div>
+        <ContextRail />
         <h3>Learnings inbox</h3>
         <InboxRail />
         <div className="neverapply">nothing auto-applies — accept writes, dismiss deletes</div>

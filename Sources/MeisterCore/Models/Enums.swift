@@ -108,6 +108,22 @@ public enum FeedbackReaction: String, Codable, Sendable, Equatable {
     }
 }
 
+public enum ContextNoteKind: String, Codable, Sendable, Equatable {
+    case user, architecture
+}
+
+public enum ChunkKind: String, Codable, Sendable, Equatable {
+    case file, architecture, user, rule
+}
+
+public enum LearningKind: String, Codable, Sendable, Equatable {
+    case rule, architecture, context
+}
+
+public enum LearningStatus: String, Codable, Sendable, Equatable {
+    case pending, accepted, dismissed
+}
+
 public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {
     case regex
     case denyApi = "deny_api"

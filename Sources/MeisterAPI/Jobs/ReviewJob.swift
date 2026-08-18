@@ -103,7 +103,13 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         image: config.opencodeImage
                     ),
                     reviewer: invocation,
-                    judge: invocation
+                    judge: invocation,
+                    ruleTokenBudget: config.limits.ruleTokenBudget,
+                    retrieveK: config.embeddings.retrieveK,
+                    embedder: EmbeddingClientFactory.fromEnvironment(
+                        model: config.embeddings.model,
+                        dimensions: config.embeddings.dimensions
+                    )
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

@@ -15,6 +15,54 @@ struct ModelSlots: Content, Sendable, Equatable {
     }
 }
 
+struct EmbeddingsConfig: Content, Sendable, Equatable {
+    var model: String
+    var dimensions: Int
+    var maxChunks: Int
+    var retrieveK: Int
+
+    enum CodingKeys: String, CodingKey {
+        case model, dimensions
+        case maxChunks = "max_chunks"
+        case retrieveK = "retrieve_k"
+    }
+
+    static let v1 = EmbeddingsConfig(
+        model: "openai/text-embedding-3-small",
+        dimensions: 1536,
+        maxChunks: 20_000,
+        retrieveK: 12
+    )
+
+    init(
+        model: String = EmbeddingsConfig.v1.model,
+        dimensions: Int = EmbeddingsConfig.v1.dimensions,
+        maxChunks: Int = EmbeddingsConfig.v1.maxChunks,
+        retrieveK: Int = EmbeddingsConfig.v1.retrieveK
+    ) {
+        self.model = model
+        self.dimensions = dimensions
+        self.maxChunks = maxChunks
+        self.retrieveK = retrieveK
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? Self.v1.model
+        dimensions = try container.decodeIfPresent(Int.self, forKey: .dimensions) ?? Self.v1.dimensions
+        maxChunks = try container.decodeIfPresent(Int.self, forKey: .maxChunks) ?? Self.v1.maxChunks
+        retrieveK = try container.decodeIfPresent(Int.self, forKey: .retrieveK) ?? Self.v1.retrieveK
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(model, forKey: .model)
+        try container.encode(dimensions, forKey: .dimensions)
+        try container.encode(maxChunks, forKey: .maxChunks)
+        try container.encode(retrieveK, forKey: .retrieveK)
+    }
+}
+
 struct Limits: Content, Sendable, Equatable {
     var archiveBytes: Int
     var queuedArchiveBytes: Int
@@ -52,6 +100,7 @@ struct MeisterConfig: Content, Sendable, Equatable {
     var models: ModelSlots
     var judgeModel: String
     var opencodeImage: String
+    var embeddings: EmbeddingsConfig
     var limits: Limits
 
     enum CodingKeys: String, CodingKey {
@@ -60,7 +109,52 @@ struct MeisterConfig: Content, Sendable, Equatable {
         case models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
+        case embeddings
         case limits
+    }
+
+    init(
+        bind: String,
+        port: Int,
+        dataDir: String,
+        models: ModelSlots,
+        judgeModel: String,
+        opencodeImage: String,
+        embeddings: EmbeddingsConfig = .v1,
+        limits: Limits
+    ) {
+        self.bind = bind
+        self.port = port
+        self.dataDir = dataDir
+        self.models = models
+        self.judgeModel = judgeModel
+        self.opencodeImage = opencodeImage
+        self.embeddings = embeddings
+        self.limits = limits
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bind = try container.decode(String.self, forKey: .bind)
+        port = try container.decode(Int.self, forKey: .port)
+        dataDir = try container.decode(String.self, forKey: .dataDir)
+        models = try container.decode(ModelSlots.self, forKey: .models)
+        judgeModel = try container.decode(String.self, forKey: .judgeModel)
+        opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
+        embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
+        limits = try container.decode(Limits.self, forKey: .limits)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bind, forKey: .bind)
+        try container.encode(port, forKey: .port)
+        try container.encode(dataDir, forKey: .dataDir)
+        try container.encode(models, forKey: .models)
+        try container.encode(judgeModel, forKey: .judgeModel)
+        try container.encode(opencodeImage, forKey: .opencodeImage)
+        try container.encode(embeddings, forKey: .embeddings)
+        try container.encode(limits, forKey: .limits)
     }
 
     static let example = MeisterConfig(
@@ -122,6 +216,12 @@ struct MeisterConfig: Content, Sendable, Equatable {
         }
         if let value = environment["MEISTER_JUDGE_MODEL"], !value.isEmpty {
             next.judgeModel = value
+        }
+        if let value = environment["MEISTER_EMBEDDING_MODEL"], !value.isEmpty {
+            next.embeddings.model = value
+        }
+        if let value = environment["MEISTER_RULE_TOKEN_BUDGET"], let budget = Int(value) {
+            next.limits.ruleTokenBudget = budget
         }
         return next
     }

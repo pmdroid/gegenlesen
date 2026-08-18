@@ -90,6 +90,9 @@ func configure(
     FindingsRoute.register(app)
     RulesRoute.register(app)
     CorpusRoute.register(app)
+    ContextRoute.register(app)
+    LearningsRoute.register(app)
+    MetricsRoute.register(app)
 
     // RoutingKit does not match `/` against a lone `**`, so register the empty path too.
     let spa: @Sendable (Request) async throws -> Response = { req in

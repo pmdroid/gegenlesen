@@ -31,6 +31,54 @@ struct RuleSelectorTests {
     }
 
     @Test
+    func ranksSemanticByGlobLanguageHandwrittenAndFTS() {
+        let catchAll = sampleRule(
+            id: "catch-all",
+            languages: ["*"],
+            globs: ["**/*"],
+            payload: .semantic(instruction: "generic", fewShots: [])
+        )
+        var mined = catchAll
+        mined.id = RuleID("mined-generic")
+        mined.provenance = .mined
+        mined.title = "Mined generic"
+        var specific = sampleRule(
+            id: "swift-logger",
+            languages: ["swift"],
+            globs: ["Sources/**/*.swift"],
+            payload: .semantic(instruction: "use the project logger", fewShots: [])
+        )
+        specific.provenance = .handwritten
+        specific.title = "Use project logger"
+        let files = [jobFile("Sources/A.swift", .swift)]
+        let selected = RuleSelector().select(
+            rules: [mined, specific],
+            files: files,
+            ftsScores: [specific.id: 4, mined.id: 0.1]
+        )
+        #expect(selected.map { $0.rule.id.rawValue } == ["swift-logger", "mined-generic"])
+        #expect(selected[0].score > selected[1].score)
+        #expect(selected[0].score == 3 + 2 + 4 + 1)
+    }
+
+    @Test
+    func deterministicAlwaysSelectedWithoutScoreBudget() {
+        let det = sampleRule(id: "regex-secret", globs: ["**/*"])
+        var sem = sampleRule(
+            id: "semantic-house",
+            languages: ["swift"],
+            globs: ["**/*.swift"],
+            payload: .semantic(instruction: "house", fewShots: [])
+        )
+        sem.provenance = .mined
+        let files = [jobFile("Sources/A.swift", .swift)]
+        let selected = RuleSelector().select(rules: [sem, det], files: files)
+        #expect(selected.first?.rule.id.rawValue == "regex-secret")
+        #expect(selected.first?.score == 0)
+        #expect(selected.contains { $0.rule.id.rawValue == "semantic-house" })
+    }
+
+    @Test
     func disabledAndDeletedAreSkipped() {
         let disabled = sampleRule(id: "off", enabled: false)
         var deleted = sampleRule(id: "gone")

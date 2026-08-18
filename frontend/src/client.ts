@@ -1,9 +1,15 @@
 import type {
   FindingFeedback,
   FindingFeedbackRequest,
+  ContextNote,
+  ContextNoteUpsert,
   HealthDTO,
   JobDetail,
   JobListResponse,
+  Learning,
+  LearningKind,
+  LearningListResponse,
+  LearningStatus,
   Rule,
   RuleListResponse,
   RuleUpsert,
@@ -140,4 +146,39 @@ export function enableRule(id: string): Promise<Rule> {
 
 export function disableRule(id: string): Promise<Rule> {
   return sendJSON(`/api/rules/${id}/disable`, "POST");
+}
+
+export function listContextNotes(): Promise<{ notes: ContextNote[] }> {
+  return getJSON("/api/context");
+}
+
+export function createContextNote(body: ContextNoteUpsert): Promise<ContextNote> {
+  return sendJSON("/api/context", "POST", body);
+}
+
+export function updateContextNote(id: string, body: ContextNoteUpsert): Promise<ContextNote> {
+  return sendJSON(`/api/context/${id}`, "PUT", body);
+}
+
+export function deleteContextNote(id: string): Promise<ContextNote> {
+  return sendJSON(`/api/context/${id}`, "DELETE");
+}
+
+export function listLearnings(query?: {
+  status?: LearningStatus;
+  kind?: LearningKind;
+}): Promise<LearningListResponse> {
+  const params = new URLSearchParams();
+  if (query?.status) params.set("status", query.status);
+  if (query?.kind) params.set("kind", query.kind);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return getJSON(`/api/learnings${suffix}`);
+}
+
+export function acceptLearning(id: string): Promise<Learning> {
+  return sendJSON(`/api/learnings/${id}/accept`, "POST");
+}
+
+export function dismissLearning(id: string): Promise<Learning> {
+  return sendJSON(`/api/learnings/${id}/dismiss`, "POST");
 }
