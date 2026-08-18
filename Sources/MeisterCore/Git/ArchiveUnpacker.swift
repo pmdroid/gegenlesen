@@ -19,6 +19,12 @@ private func posixFchmod(_ fd: Int32, _ mode: mode_t) -> Int32 { Darwin.fchmod(f
 private func posixLchown(_ path: UnsafePointer<CChar>, _ uid: uid_t, _ gid: gid_t) -> Int32 {
     Darwin.lchown(path, uid, gid)
 }
+private func posixLseek(_ fd: Int32, _ offset: off_t, _ whence: Int32) -> off_t {
+    Darwin.lseek(fd, offset, whence)
+}
+private func posixFtruncate(_ fd: Int32, _ length: off_t) -> Int32 {
+    Darwin.ftruncate(fd, length)
+}
 #else
 private func posixOpen(_ path: UnsafePointer<CChar>, _ oflag: Int32, _ mode: mode_t) -> Int32 {
     Glibc.open(path, oflag, mode)
@@ -30,6 +36,12 @@ private func posixClose(_ fd: Int32) -> Int32 { Glibc.close(fd) }
 private func posixFchmod(_ fd: Int32, _ mode: mode_t) -> Int32 { Glibc.fchmod(fd, mode) }
 private func posixLchown(_ path: UnsafePointer<CChar>, _ uid: uid_t, _ gid: gid_t) -> Int32 {
     Glibc.lchown(path, uid, gid)
+}
+private func posixLseek(_ fd: Int32, _ offset: off_t, _ whence: Int32) -> off_t {
+    Glibc.lseek(fd, offset, whence)
+}
+private func posixFtruncate(_ fd: Int32, _ length: off_t) -> Int32 {
+    Glibc.ftruncate(fd, length)
 }
 #endif
 
@@ -115,8 +127,22 @@ public struct ArchiveUnpacker: Sendable {
             throw ArchiveError.unsafePath("")
         }
         let pathname = String(cString: rawPath)
+        fileCount += 1
+        if fileCount > Self.maxFileCount {
+            throw ArchiveError.tooManyFiles
+        }
+
+        let rawSize = meister_archive_size(handle)
+        let declared: Int64 = rawSize > 0 ? rawSize : 0
+        if declared > Int64(Self.maxRegularFileBytes) {
+            throw ArchiveError.fileTooLarge(pathname)
+        }
+        if uncompressed > Int64(Self.maxUncompressedBytes) - declared {
+            throw ArchiveError.archiveTooLarge
+        }
+
         if ArchivePath.isSkippedEntry(pathname) {
-            try sink(handle)
+            try consumeData(handle, fd: nil, path: pathname, uncompressed: &uncompressed)
             return
         }
 
@@ -152,35 +178,16 @@ public struct ArchiveUnpacker: Sendable {
             )
         }
 
-        fileCount += 1
-        if fileCount > Self.maxFileCount {
-            throw ArchiveError.tooManyFiles
-        }
-
-        let declared: Int64 = meister_archive_size_is_set(handle) != 0 ? meister_archive_size(handle) : 0
-        if kind == .file {
-            if declared > Int64(Self.maxRegularFileBytes) {
-                throw ArchiveError.fileTooLarge(relative)
-            }
-            if uncompressed > Int64(Self.maxUncompressedBytes) - declared {
-                throw ArchiveError.archiveTooLarge
-            }
-        }
-
         if write {
-            try writeEntry(handle, kind: kind, relative: relative, workspace: workspace)
+            try writeEntry(
+                handle,
+                kind: kind,
+                relative: relative,
+                workspace: workspace,
+                uncompressed: &uncompressed
+            )
         } else {
-            let read = try sink(handle)
-            let expanded = max(declared, read)
-            if kind == .file {
-                if expanded > Int64(Self.maxRegularFileBytes) {
-                    throw ArchiveError.fileTooLarge(relative)
-                }
-                if uncompressed > Int64(Self.maxUncompressedBytes) - expanded {
-                    throw ArchiveError.archiveTooLarge
-                }
-                uncompressed += expanded
-            }
+            try consumeData(handle, fd: nil, path: relative, uncompressed: &uncompressed)
         }
     }
 
@@ -192,7 +199,8 @@ public struct ArchiveUnpacker: Sendable {
         _ handle: OpaquePointer,
         kind: EntryKind,
         relative: String,
-        workspace: URL
+        workspace: URL,
+        uncompressed: inout Int64
     ) throws {
         guard let dest = ArchivePath.containedURL(root: workspace, relative: relative) else {
             throw ArchiveError.unsafePath(relative)
@@ -202,7 +210,7 @@ public struct ArchiveUnpacker: Sendable {
         case .directory:
             try fm.createDirectory(at: dest, withIntermediateDirectories: true)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
-            try sink(handle)
+            try consumeData(handle, fd: nil, path: relative, uncompressed: &uncompressed)
         case .symlink:
             let parent = dest.deletingLastPathComponent()
             try fm.createDirectory(at: parent, withIntermediateDirectories: true)
@@ -211,17 +219,22 @@ public struct ArchiveUnpacker: Sendable {
                 try fm.removeItem(at: dest)
             }
             try fm.createSymbolicLink(atPath: dest.path, withDestinationPath: target)
-            try sink(handle)
+            try consumeData(handle, fd: nil, path: relative, uncompressed: &uncompressed)
         case .file:
             let parent = dest.deletingLastPathComponent()
             try fm.createDirectory(at: parent, withIntermediateDirectories: true)
-            try writeRegularFile(handle, to: dest)
+            try writeRegularFile(handle, to: dest, path: relative, uncompressed: &uncompressed)
         }
     }
 
     @discardableResult
-    private func sink(_ handle: OpaquePointer) throws -> Int64 {
-        var total: Int64 = 0
+    private func consumeData(
+        _ handle: OpaquePointer,
+        fd: Int32?,
+        path: String,
+        uncompressed: inout Int64
+    ) throws -> Int64 {
+        var expanded: Int64 = 0
         while true {
             var buf: UnsafeRawPointer?
             var size: Int = 0
@@ -230,19 +243,55 @@ public struct ArchiveUnpacker: Sendable {
                 meister_archive_read_data_block(handle, bufPtr, &size, &offset)
             }
             if status == 0 {
-                return total
+                if let fd, posixFtruncate(fd, off_t(expanded)) != 0 {
+                    throw ArchiveError.writeFailed(path)
+                }
+                if uncompressed > Int64(Self.maxUncompressedBytes) - expanded {
+                    throw ArchiveError.archiveTooLarge
+                }
+                uncompressed += expanded
+                return expanded
             }
             if status < 0 {
                 throw ArchiveError.readFailed(cError(handle))
             }
-            if total > Int64.max - Int64(size) {
+            let end = offset + Int64(size)
+            if end < offset {
                 throw ArchiveError.archiveTooLarge
             }
-            total += Int64(size)
+            if end > expanded {
+                expanded = end
+            }
+            if expanded > Int64(Self.maxRegularFileBytes) {
+                throw ArchiveError.fileTooLarge(path)
+            }
+            if uncompressed > Int64(Self.maxUncompressedBytes) - expanded {
+                throw ArchiveError.archiveTooLarge
+            }
+            guard let fd, let buf, size > 0 else {
+                continue
+            }
+            if posixLseek(fd, off_t(offset), SEEK_SET) < 0 {
+                throw ArchiveError.writeFailed(path)
+            }
+            var written = 0
+            let bytes = buf.assumingMemoryBound(to: UInt8.self)
+            while written < size {
+                let n = posixWrite(fd, bytes.advanced(by: written), size - written)
+                if n < 0 {
+                    throw ArchiveError.writeFailed(path)
+                }
+                written += n
+            }
         }
     }
 
-    private func writeRegularFile(_ handle: OpaquePointer, to dest: URL) throws {
+    private func writeRegularFile(
+        _ handle: OpaquePointer,
+        to dest: URL,
+        path: String,
+        uncompressed: inout Int64
+    ) throws {
         let fd = dest.path.withCString { path in
             posixOpen(path, O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0o644)
         }
@@ -251,33 +300,7 @@ public struct ArchiveUnpacker: Sendable {
         }
         defer { _ = posixClose(fd) }
         _ = posixFchmod(fd, 0o644)
-
-        while true {
-            var buf: UnsafeRawPointer?
-            var size: Int = 0
-            var offset: Int64 = 0
-            let status = withUnsafeMutablePointer(to: &buf) { bufPtr in
-                meister_archive_read_data_block(handle, bufPtr, &size, &offset)
-            }
-            if status == 0 {
-                return
-            }
-            if status < 0 {
-                throw ArchiveError.readFailed(cError(handle))
-            }
-            guard let buf, size > 0 else {
-                continue
-            }
-            var written = 0
-            let bytes = buf.assumingMemoryBound(to: UInt8.self)
-            while written < size {
-                let n = posixWrite(fd, bytes.advanced(by: written), size - written)
-                if n < 0 {
-                    throw ArchiveError.writeFailed(dest.path)
-                }
-                written += n
-            }
-        }
+        try consumeData(handle, fd: fd, path: path, uncompressed: &uncompressed)
     }
 
     private func applyOwnership(_ workspace: URL) throws {

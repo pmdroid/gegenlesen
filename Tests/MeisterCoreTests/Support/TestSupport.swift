@@ -19,9 +19,7 @@ func runIsolated(
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
     process.currentDirectoryURL = cwd
-    var env = GitRunner.isolatedEnvironment()
-    env["PATH"] = "/usr/bin:/bin"
-    env["HOME"] = cwd.appendingPathComponent(".home").path
+    var env = GitRunner.isolatedEnvironment(home: cwd.appendingPathComponent(".home").path)
     env["COPYFILE_DISABLE"] = "1"
     extraEnv.forEach { env[$0.key] = $0.value }
     process.environment = env

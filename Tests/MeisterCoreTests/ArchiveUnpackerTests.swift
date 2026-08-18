@@ -133,6 +133,26 @@ struct ArchiveUnpackerTests {
     }
 
     @Test
+    func skippedAppleDoubleStillCountsTowardSizeCaps() throws {
+        try withTempDir("meister-unpack-skip-bomb") { dir in
+            let header = ustarHeader(name: "._payload", size: ArchiveUnpacker.maxRegularFileBytes + 1)
+            let archive = dir.appendingPathComponent("skip-bomb.tar")
+            try ustarArchive(header).write(to: archive)
+            do {
+                try ArchiveUnpacker().unpack(
+                    archive: archive,
+                    into: dir.appendingPathComponent("out")
+                )
+                Issue.record("expected oversized AppleDouble entry to be rejected")
+            } catch ArchiveError.fileTooLarge(let path) {
+                #expect(path.contains("._payload"))
+            } catch ArchiveError.archiveTooLarge {
+                // declared or expanded size exceeded the running cap
+            }
+        }
+    }
+
+    @Test
     func darwinChownFailureDoesNotFailExtract() throws {
         try withTempDir("meister-unpack-chown") { dir in
             let tree = dir.appendingPathComponent("tree")

@@ -159,9 +159,13 @@ public struct ChangeSetIdentifier: Sendable {
         do {
             let head = try resolveHead(git: git)
             let base = try resolveBase(git: git, head: head)
-            let patch = try git.run(["diff", "--no-color", "--find-renames", base, head])
+            let patch = try git.run([
+                "diff", "--no-ext-diff", "--no-color", "--find-renames", base, head,
+            ])
             try writePatch(Data(patch.utf8))
-            let nameStatus = try git.run(["diff", "--name-status", "--find-renames", base, head])
+            let nameStatus = try git.run([
+                "diff", "--no-ext-diff", "--name-status", "--find-renames", base, head,
+            ])
             var files = NameStatus.parse(nameStatus, jobID: jobID)
             try enrich(files: &files)
             return ChangeSet(
@@ -184,6 +188,7 @@ public struct ChangeSetIdentifier: Sendable {
         }
         let git = GitRunner(workspace: workspace, deadline: deadline)
         if !hasGitDirectory {
+            try removeNonDirectoryGit()
             try git.run(["init"])
         }
         let startsWithFrom = patch.starts(with: Data("From ".utf8))
@@ -214,11 +219,24 @@ public struct ChangeSetIdentifier: Sendable {
         var isDir: ObjCBool = false
         let git = workspace.appendingPathComponent(".git")
         return FileManager.default.fileExists(atPath: git.path, isDirectory: &isDir)
+            && isDir.boolValue
+    }
+
+    private func removeNonDirectoryGit() throws {
+        let git = workspace.appendingPathComponent(".git")
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: git.path, isDirectory: &isDir) else {
+            return
+        }
+        if !isDir.boolValue {
+            try FileManager.default.removeItem(at: git)
+        }
     }
 
     private func fetchBundle(deadline: Date) throws {
         let git = GitRunner(workspace: workspace, deadline: deadline)
         if !hasGitDirectory {
+            try removeNonDirectoryGit()
             try git.run(["init"])
         }
         let bundle = ".meister/history.bundle"
@@ -231,19 +249,32 @@ public struct ChangeSetIdentifier: Sendable {
 
     private func checkoutHead(deadline: Date) throws {
         let git = GitRunner(workspace: workspace, deadline: deadline)
+        var candidates: [String] = []
         if let sha = firstNonEmpty([meta.headSHA, readMeisterFile("head_sha")]) {
-            _ = try? git.run(["checkout", "--force", sha])
-            return
+            candidates.append(sha)
         }
         if let refs = try? git.run([
             "for-each-ref", "--format=%(refname)", "refs/bundle/heads",
         ]) {
-            if let first = refs.split(whereSeparator: \.isNewline).first, !first.isEmpty {
-                _ = try? git.run(["checkout", "--force", String(first)])
-                return
+            for line in refs.split(whereSeparator: \.isNewline) where !line.isEmpty {
+                candidates.append(String(line))
             }
         }
-        _ = try? git.run(["checkout", "--force", "refs/heads/bundle-head"])
+        candidates.append("refs/heads/bundle-head")
+
+        var lastError: Error?
+        var seen = Set<String>()
+        for ref in candidates where seen.insert(ref).inserted {
+            do {
+                _ = try git.run(["checkout", "--force", ref])
+                return
+            } catch let error as IdentifyError where error == .timeout {
+                throw error
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? IdentifyError(errorMessage: "checkout failed")
     }
 
     private func resolveHead(git: GitRunner) throws -> String {
@@ -303,20 +334,37 @@ public struct ChangeSetIdentifier: Sendable {
     }
 
     private func enrich(files: inout [JobFile]) throws {
+        let ws = Workspace(root: workspace)
         let fm = FileManager.default
         for index in files.indices {
             files[index].language = LanguageMap.language(forPath: files[index].path)
             if files[index].status == .deleted {
                 continue
             }
-            let url = workspace.appendingPathComponent(files[index].path)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else {
+            guard let url = ws.resolveForRead(files[index].path) else {
                 continue
             }
-            files[index].sha256 = try ContentHash.sha256(fileAt: url)
-            files[index].bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            let resolved = url.resolvingSymlinksInPath()
+            guard Self.isContained(resolved, root: workspace) else {
+                continue
+            }
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: resolved.path, isDirectory: &isDir), !isDir.boolValue else {
+                continue
+            }
+            files[index].sha256 = try ContentHash.sha256(fileAt: resolved)
+            files[index].bytes = try resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize
         }
+    }
+
+    private static func isContained(_ url: URL, root: URL) -> Bool {
+        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        if path == rootPath {
+            return true
+        }
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        return path.hasPrefix(prefix)
     }
 }
 
@@ -430,6 +478,14 @@ enum NameStatus {
 struct GitRunner: Sendable {
     var workspace: URL
     var deadline: Date
+    var home: URL
+
+    init(workspace: URL, deadline: Date) {
+        self.workspace = workspace
+        self.deadline = deadline
+        self.home = workspace.appendingPathComponent(".meister/.git-home", isDirectory: true)
+        try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    }
 
     @discardableResult
     func run(_ arguments: [String]) throws -> String {
@@ -440,14 +496,25 @@ struct GitRunner: Sendable {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = [
+        var gitArgs = [
             "-c", "user.name=meister",
             "-c", "user.email=meister@localhost",
             "-c", "init.defaultBranch=main",
             "-c", "safe.directory=*",
-        ] + arguments
+            "-c", "core.hooksPath=/nonexistent",
+            "-c", "core.fsmonitor=",
+            "-c", "core.pager=cat",
+            "-c", "init.templateDir=",
+        ]
+        if arguments.first == "init" {
+            gitArgs.append(contentsOf: ["init", "--template="])
+            gitArgs.append(contentsOf: arguments.dropFirst())
+        } else {
+            gitArgs.append(contentsOf: arguments)
+        }
+        process.arguments = gitArgs
         process.currentDirectoryURL = workspace
-        process.environment = GitRunner.isolatedEnvironment()
+        process.environment = GitRunner.isolatedEnvironment(home: home.path)
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -474,26 +541,25 @@ struct GitRunner: Sendable {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    static func isolatedEnvironment() -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
-        for key in [
-            "GIT_DIR",
-            "GIT_WORK_TREE",
-            "GIT_INDEX_FILE",
-            "GIT_OBJECT_DIRECTORY",
-            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-            "GIT_PREFIX",
-        ] {
-            env.removeValue(forKey: key)
+    static func isolatedEnvironment(home: String = "/var/empty") -> [String: String] {
+        var env: [String: String] = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": home,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_AUTHOR_NAME": "meister",
+            "GIT_AUTHOR_EMAIL": "meister@localhost",
+            "GIT_COMMITTER_NAME": "meister",
+            "GIT_COMMITTER_EMAIL": "meister@localhost",
+        ]
+        let host = ProcessInfo.processInfo.environment
+        for key in ["DEVELOPER_DIR", "SDKROOT"] {
+            if let value = host[key], !value.isEmpty {
+                env[key] = value
+            }
         }
-        env["GIT_CONFIG_NOSYSTEM"] = "1"
-        env["GIT_CONFIG_GLOBAL"] = "/dev/null"
-        env["GIT_TERMINAL_PROMPT"] = "0"
-        env["GIT_OPTIONAL_LOCKS"] = "0"
-        env["GIT_AUTHOR_NAME"] = "meister"
-        env["GIT_AUTHOR_EMAIL"] = "meister@localhost"
-        env["GIT_COMMITTER_NAME"] = "meister"
-        env["GIT_COMMITTER_EMAIL"] = "meister@localhost"
         return env
     }
 }

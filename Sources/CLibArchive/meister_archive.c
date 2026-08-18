@@ -14,6 +14,7 @@ int archive_read_support_filter_none(struct archive *);
 int archive_read_support_format_tar(struct archive *);
 int archive_read_support_format_gnutar(struct archive *);
 int archive_read_open_filename(struct archive *, const char *, size_t);
+int archive_read_set_options(struct archive *, const char *);
 int archive_read_next_header(struct archive *, struct archive_entry **);
 int archive_read_data_block(struct archive *, const void **, size_t *, int64_t *);
 int archive_read_close(struct archive *);
@@ -53,6 +54,7 @@ meister_archive *meister_archive_open(const char *path, int gzip) {
     }
     archive_read_support_format_tar(handle->archive);
     archive_read_support_format_gnutar(handle->archive);
+    archive_read_set_options(handle->archive, "!mac-ext");
     if (archive_read_open_filename(handle->archive, path, 10240) != ARCHIVE_OK) {
         archive_read_free(handle->archive);
         free(handle);

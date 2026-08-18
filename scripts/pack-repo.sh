@@ -18,12 +18,11 @@ git archive HEAD | tar -x -C "$WORKDIR"
 printf '%s' "$BASE" > "$WORKDIR/.meister/base_sha"
 printf '%s' "$HEAD" > "$WORKDIR/.meister/head_sha"
 
-# Required change-set. Do not `|| true`.
+# Empty patch is allowed only when BASE equals HEAD, or a usable bundle is kept.
 git diff --no-color --find-renames "$BASE" "$HEAD" \
   > "$WORKDIR/.meister/diff.patch"
 
-# Optional self-contained bundle (both tips, no A..B prerequisite).
-# Omit if git fails or the file exceeds 40 MiB — the diff is enough for full review.
+# Optional bundle; drop if git fails or the file exceeds 40 MiB.
 if git bundle create "$WORKDIR/.meister/history.bundle" "$BASE" "$HEAD" 2>/dev/null; then
   size=$(wc -c < "$WORKDIR/.meister/history.bundle")
   if [ "$size" -gt 41943040 ]; then

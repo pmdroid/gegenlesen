@@ -140,6 +140,60 @@ struct ChangeSetTests {
     }
 
     @Test
+    func gitfileIsNotInPlaceHistory() throws {
+        try withTempDir("meister-id-gitfile") { dir in
+            let host = dir.appendingPathComponent("host")
+            try FileManager.default.createDirectory(at: host, withIntermediateDirectories: true)
+            try git(["init"], cwd: host)
+            try writeFile("secret.swift", "leaked\n", in: host)
+            try git(["add", "secret.swift"], cwd: host)
+            try git(["commit", "-m", "host"], cwd: host)
+
+            let workspace = dir.appendingPathComponent("ws")
+            try writeFile("only.txt", "x\n", in: workspace)
+            try writeFile(".git", "gitdir: \(host.path)\n", in: workspace)
+
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            #expect(throws: IdentifyError.noChangeSet) {
+                try ChangeSetIdentifier(
+                    workspace: workspace,
+                    blobs: blobs,
+                    jobID: JobID("job-gitfile")
+                ).identify()
+            }
+        }
+    }
+
+    @Test
+    func enrichIgnoresPathsOutsideWorkspace() throws {
+        try withTempDir("meister-id-escape") { dir in
+            let secret = dir.appendingPathComponent("secret.txt")
+            try "outside-secret\n".write(to: secret, atomically: true, encoding: .utf8)
+            let workspace = dir.appendingPathComponent("ws")
+            try writeFile(
+                ".meister/diff.patch",
+                """
+                diff --git a/../secret.txt b/../secret.txt
+                new file mode 100644
+                --- /dev/null
+                +++ b/../secret.txt
+                @@ -0,0 +1 @@
+                +outside-secret
+                """,
+                in: workspace
+            )
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            let changeSet = try ChangeSetIdentifier(
+                workspace: workspace,
+                blobs: blobs,
+                jobID: JobID("job-escape")
+            ).identify()
+            #expect(changeSet.source == .embeddedDiff)
+            #expect(changeSet.files.allSatisfy { $0.sha256 == nil })
+        }
+    }
+
+    @Test
     func appliesMultipartUnifiedDiff() throws {
         try withTempDir("meister-id-multi") { dir in
             let workspace = dir.appendingPathComponent("ws")
