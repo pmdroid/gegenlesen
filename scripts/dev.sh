@@ -4,6 +4,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
+if command -v docker >/dev/null 2>&1; then
+  docker network inspect meister-egress >/dev/null 2>&1 \
+    || docker network create meister-egress
+fi
+
 swift run MeisterAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080 &
 api_pid=$!
 fe_pid=""

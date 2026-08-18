@@ -22,6 +22,8 @@ public struct DockerRequest: Sendable {
     public var timeout: Duration
     public var injectProviderKeys: Bool
     public var remove: Bool
+    /// Names passed as `-e NAME` only; values stay in the docker CLI process environment.
+    public var passThroughEnv: [String]
 
     public struct Bind: Sendable, Equatable {
         public var source: String
@@ -56,7 +58,8 @@ public struct DockerRequest: Sendable {
         ulimitNofile: String? = nil,
         timeout: Duration = .seconds(60),
         injectProviderKeys: Bool = false,
-        remove: Bool = true
+        remove: Bool = true,
+        passThroughEnv: [String] = []
     ) {
         self.name = name
         self.image = image
@@ -79,6 +82,7 @@ public struct DockerRequest: Sendable {
         self.timeout = timeout
         self.injectProviderKeys = injectProviderKeys
         self.remove = remove
+        self.passThroughEnv = passThroughEnv
     }
 
     public func dockerCLIArguments() -> [String] {
@@ -129,8 +133,12 @@ public struct DockerRequest: Sendable {
         if let ulimitNofile {
             args += ["--ulimit", "nofile=\(ulimitNofile)"]
         }
-        for (key, value) in env.keys.sorted().map({ ($0, env[$0]!) }) {
-            args += ["-e", "\(key)=\(value)"]
+        let pass = Set(passThroughEnv)
+        for key in pass.sorted() {
+            args += ["-e", key]
+        }
+        for key in env.keys.sorted() where !pass.contains(key) {
+            args += ["-e", "\(key)=\(env[key] ?? "")"]
         }
         args.append(image)
         args.append(contentsOf: argv)

@@ -76,6 +76,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     deterministic: DeterministicEngine(),
                     reviewer: OpenCodeInvocation(
                         docker: docker,
+                        http: OpenCodeHTTPClient(),
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
@@ -153,7 +154,7 @@ extension Application {
     }
 
     var meisterDocker: any DockerExecuting {
-        get { storage[JobDockerKey.self] ?? DockerCLI() }
+        get { storage[JobDockerKey.self] ?? DockerRunner() }
         set { storage[JobDockerKey.self] = newValue }
     }
 }

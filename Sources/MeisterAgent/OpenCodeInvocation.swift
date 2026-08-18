@@ -16,7 +16,7 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
 
     public init(
         docker: any DockerExecuting,
-        http: any OpenCodeHTTPClienting = UnhealthyOpenCodeHTTP(),
+        http: any OpenCodeHTTPClienting = OpenCodeHTTPClient(),
         image: String,
         runnerConfig: URL,
         cpus: String = ProcessInfo.processInfo.environment["MEISTER_DOCKER_CPUS"] ?? "2",
@@ -46,6 +46,9 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
         let nameB = Self.containerName(jobID: jobID, slot: .modelB)
         let judgeName = "meister-judge-\(jobID.rawValue)"
         do {
+            if let runner = docker as? DockerRunner {
+                try runner.ensureEgressNetwork()
+            }
             try Quarantine.run(workspace: request.workspace)
             try DockerRunner.chownWorkspace(request.workspace.root)
             try PromptRenderer(schemasDirectory: schemasDirectory).write(
@@ -98,8 +101,7 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
     }
 
     public static func containerName(jobID: JobID, slot: ReviewerSlot) -> String {
-        let suffix = slot == .modelA ? "a" : "b"
-        return "meister-review-\(jobID.rawValue)-\(suffix)"
+        ReviewContainers.slot(jobID, slot)
     }
 
     public func reviewDockerRequest(
@@ -110,8 +112,9 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
         password: String,
         model: String,
         fallbackRun: Bool
-    ) -> DockerRequest {
-        let policy = OpenCodeConfig.policyJSON(model: model, defaultAgent: "reviewer")
+    ) throws -> DockerRequest {
+        let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: "reviewer")
+        let permission = try OpenCodeConfig.permissionJSON()
         var env: [String: String] = [
             "HOME": "/home/meister",
             "OPENCODE_DISABLE_AUTOUPDATE": "true",
@@ -120,7 +123,7 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
             "OPENCODE_DISABLE_CLAUDE_CODE": "true",
             "OPENCODE_CONFIG": "/home/meister/.config/opencode/opencode.json",
             "OPENCODE_CONFIG_CONTENT": policy,
-            "OPENCODE_PERMISSION": OpenCodeConfig.permissionJSON(),
+            "OPENCODE_PERMISSION": permission,
             "OPENCODE_SERVER_PASSWORD": password,
             "OPENCODE_SERVER_USERNAME": "opencode",
         ]
@@ -169,7 +172,13 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
             ulimitNofile: "1024:1024",
             timeout: agentTimeout,
             injectProviderKeys: true,
-            remove: true
+            remove: true,
+            passThroughEnv: [
+                "ANTHROPIC_API_KEY",
+                "OPENAI_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENCODE_SERVER_PASSWORD",
+            ]
         )
     }
 
@@ -185,28 +194,44 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
         model: String,
         known: Set<RuleID>
     ) async -> SlotOutcome {
+        if await request.isCancelled?() == true {
+            return SlotOutcome(findings: [], valid: false, transcript: Data())
+        }
         let password = Self.randomPassword()
-        let port: Int
+        let lease: LoopbackPortLease
         do {
-            port = try DockerRunner.allocateLoopbackPort()
+            lease = try DockerRunner.allocateLoopbackPort()
         } catch {
             return SlotOutcome(findings: [], valid: false, transcript: Data())
         }
-        let serve = reviewDockerRequest(
-            jobID: request.job.id,
-            slot: slot,
-            workspace: request.workspace.root,
-            hostPort: port,
-            password: password,
-            model: model,
-            fallbackRun: false
-        )
+        let serve: DockerRequest
+        do {
+            serve = try reviewDockerRequest(
+                jobID: request.job.id,
+                slot: slot,
+                workspace: request.workspace.root,
+                hostPort: lease.port,
+                password: password,
+                model: model,
+                fallbackRun: false
+            )
+        } catch {
+            lease.release()
+            return SlotOutcome(findings: [], valid: false, transcript: Data())
+        }
+        let port = lease.port
         let serveTask = Task {
-            try await docker.run(serve)
+            lease.release()
+            return try await docker.run(serve)
         }
         let baseURL = URL(string: "http://127.0.0.1:\(port)")!
         let healthy = await http.waitUntilHealthy(baseURL: baseURL, password: password, timeout: healthTimeout)
         var transcript = Data()
+        if await request.isCancelled?() == true {
+            await docker.kill(containerName: serve.name)
+            _ = try? await serveTask.value
+            return SlotOutcome(findings: [], valid: false, transcript: Data())
+        }
         if healthy {
             do {
                 let session = try await http.createSession(
@@ -227,7 +252,8 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
                     filePaths: [
                         "/workspace/.meister/rules.json",
                         "/workspace/.meister/diff.patch",
-                    ]
+                    ],
+                    timeout: agentTimeout
                 )
                 await http.abort(baseURL: baseURL, password: password, sessionID: session)
             } catch {
@@ -241,15 +267,20 @@ public struct OpenCodeInvocation: ReviewerRunning, Sendable {
         } else {
             await docker.kill(containerName: serve.name)
             _ = try? await serveTask.value
-            let fallback = reviewDockerRequest(
-                jobID: request.job.id,
-                slot: slot,
-                workspace: request.workspace.root,
-                hostPort: port,
-                password: password,
-                model: model,
-                fallbackRun: true
-            )
+            let fallback: DockerRequest
+            do {
+                fallback = try reviewDockerRequest(
+                    jobID: request.job.id,
+                    slot: slot,
+                    workspace: request.workspace.root,
+                    hostPort: port,
+                    password: password,
+                    model: model,
+                    fallbackRun: true
+                )
+            } catch {
+                return SlotOutcome(findings: [], valid: false, transcript: transcript)
+            }
             if let result = try? await docker.run(fallback) {
                 transcript.append(SecretRedactor().redact(result.stdout))
                 transcript.append(SecretRedactor().redact(result.stderr))

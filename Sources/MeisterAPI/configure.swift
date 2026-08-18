@@ -1,4 +1,5 @@
 import Foundation
+import MeisterAgent
 import MeisterCore
 import Vapor
 
@@ -35,8 +36,15 @@ func configure(
     let dataDir = URL(fileURLWithPath: config.dataDir, isDirectory: true)
     app.meisterStore = try Store.open(dataDir: dataDir)
 
-    app.meisterDocker = docker ?? DockerCLI()
+    app.meisterDocker = docker ?? DockerRunner()
     let skip = skipAgent ?? (ProcessInfo.processInfo.environment["MEISTER_SKIP_AGENT"] == "1")
+    if let runner = app.meisterDocker as? DockerRunner {
+        do {
+            try runner.ensureEgressNetwork()
+        } catch {
+            if !skip { throw error }
+        }
+    }
     let runtime = JobRuntime(
         store: app.meisterStore,
         config: config,

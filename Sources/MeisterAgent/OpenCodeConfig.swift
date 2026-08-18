@@ -1,5 +1,9 @@
 import Foundation
 
+public enum OpenCodeConfigError: Error, Sendable, Equatable {
+    case jsonEncode
+}
+
 public enum OpenCodeConfig: Sendable {
     public static let findingsAllowlist = [
         ".meister/findings.json",
@@ -16,8 +20,8 @@ public enum OpenCodeConfig: Sendable {
         return object
     }
 
-    public static func policyJSON(model: String, defaultAgent: String = "reviewer") -> String {
-        jsonString(policyObject(model: model, defaultAgent: defaultAgent))
+    public static func policyJSON(model: String, defaultAgent: String = "reviewer") throws -> String {
+        try jsonString(policyObject(model: model, defaultAgent: defaultAgent))
     }
 
     public static func permissionObject() -> [String: Any] {
@@ -55,8 +59,8 @@ public enum OpenCodeConfig: Sendable {
         ]
     }
 
-    public static func permissionJSON() -> String {
-        jsonString(permissionObject())
+    public static func permissionJSON() throws -> String {
+        try jsonString(permissionObject())
     }
 
     public static func splitModel(_ model: String) -> (providerID: String, modelID: String) {
@@ -102,8 +106,16 @@ public enum OpenCodeConfig: Sendable {
         ]
     }
 
-    static func jsonString(_ object: Any) -> String {
-        let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-        return String(data: data, encoding: .utf8)!
+    static func jsonString(_ object: Any) throws -> String {
+        let data: Data
+        do {
+            data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        } catch {
+            throw OpenCodeConfigError.jsonEncode
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw OpenCodeConfigError.jsonEncode
+        }
+        return text
     }
 }

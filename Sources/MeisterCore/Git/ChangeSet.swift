@@ -369,7 +369,7 @@ public struct ChangeSetIdentifier: Sendable {
 }
 
 extension Duration {
-    var timeInterval: TimeInterval {
+    public var timeInterval: TimeInterval {
         let components = self.components
         return TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1e18
     }

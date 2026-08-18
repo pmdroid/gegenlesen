@@ -6,13 +6,22 @@ public struct AgentReviewRequest: Sendable {
     public var files: [JobFile]
     public var rules: [Rule]
     public var newWork: Bool
+    public var isCancelled: (@Sendable () async -> Bool)?
 
-    public init(job: Job, workspace: Workspace, files: [JobFile], rules: [Rule], newWork: Bool) {
+    public init(
+        job: Job,
+        workspace: Workspace,
+        files: [JobFile],
+        rules: [Rule],
+        newWork: Bool,
+        isCancelled: (@Sendable () async -> Bool)? = nil
+    ) {
         self.job = job
         self.workspace = workspace
         self.files = files
         self.rules = rules
         self.newWork = newWork
+        self.isCancelled = isCancelled
     }
 }
 

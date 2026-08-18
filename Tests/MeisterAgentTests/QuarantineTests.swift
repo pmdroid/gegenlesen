@@ -58,4 +58,19 @@ struct QuarantineTests {
             #expect(!fm.fileExists(atPath: root.appendingPathComponent(".opencode").path))
         }
     }
+
+    @Test
+    func directorySymlinkIsCopiedNotWalked() throws {
+        try withTempDir("quarantine-symlink") { root in
+            try writeFile("Sources/A.swift", "ok\n", in: root)
+            try FileManager.default.createSymbolicLink(
+                atPath: root.appendingPathComponent(".opencode").path,
+                withDestinationPath: "."
+            )
+            try Quarantine.run(workspace: Workspace(root: root))
+            let fm = FileManager.default
+            #expect(fm.fileExists(atPath: root.appendingPathComponent(".opencode.meister-disabled").path))
+            #expect(!fm.fileExists(atPath: root.appendingPathComponent(".opencode").path))
+        }
+    }
 }

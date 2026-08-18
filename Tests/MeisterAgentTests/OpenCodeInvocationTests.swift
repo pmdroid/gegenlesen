@@ -12,7 +12,7 @@ struct OpenCodeInvocationTests {
             image: "meister/opencode-runner:0.1.0",
             runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
         )
-        let request = invocation.reviewDockerRequest(
+        let request = try invocation.reviewDockerRequest(
             jobID: JobID("job-1"),
             slot: .modelA,
             workspace: URL(fileURLWithPath: "/tmp/ws"),
@@ -53,6 +53,11 @@ struct OpenCodeInvocationTests {
         #expect(request.env["OPENCODE_AUTO_SHARE"] == "false")
         #expect(request.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] == "true")
         #expect(request.env["OPENCODE_DISABLE_CLAUDE_CODE"] == "true")
+        #expect(args.contains("OPENCODE_SERVER_PASSWORD"))
+        #expect(!args.contains { $0.contains("OPENCODE_SERVER_PASSWORD=") })
+        #expect(!args.contains("secret"))
+        #expect(args.contains("ANTHROPIC_API_KEY"))
+        #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })
     }
 
     @Test
@@ -104,6 +109,34 @@ struct OpenCodeInvocationTests {
                 #expect((object["mcp"] as? [String: Any])?.isEmpty == true)
                 #expect((object["plugin"] as? [Any])?.isEmpty == true)
             }
+        }
+    }
+
+    @Test
+    func missingFindingsFilesFailWhenNewWork() async throws {
+        try await withTempDir("invoke-none") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let invocation = OpenCodeInvocation(
+                docker: NoopDocker(),
+                http: UnhealthyOpenCodeHTTP(),
+                image: "meister/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == true)
+            #expect(result.validFileCount == 0)
+            #expect(result.errorMessage == "reviewer_no_findings_file")
         }
     }
 }

@@ -11,16 +11,19 @@ public protocol OpenCodeHTTPClienting: Sendable {
         agent: String,
         model: String,
         prompt: String,
-        filePaths: [String]
+        filePaths: [String],
+        timeout: Duration
     ) async throws
     func abort(baseURL: URL, password: String, sessionID: String) async
 }
 
 public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
     public var username: String
+    public var shortTimeout: TimeInterval
 
-    public init(username: String = "opencode") {
+    public init(username: String = "opencode", shortTimeout: TimeInterval = 10) {
         self.username = username
+        self.shortTimeout = shortTimeout
     }
 
     public func waitUntilHealthy(baseURL: URL, password: String, timeout: Duration) async -> Bool {
@@ -28,7 +31,13 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
         let url = baseURL.appending(path: "global/health")
         while ContinuousClock.now < deadline {
             if Task.isCancelled { return false }
-            if let (data, response) = try? await request(url: url, method: "GET", password: password, body: nil),
+            if let (data, response) = try? await request(
+                url: url,
+                method: "GET",
+                password: password,
+                body: nil,
+                timeout: shortTimeout
+            ),
                (response as? HTTPURLResponse)?.statusCode == 200,
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                object["healthy"] as? Bool == true {
@@ -42,7 +51,13 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
     public func createSession(baseURL: URL, password: String, title: String) async throws -> String {
         let url = baseURL.appending(path: "session")
         let payload = try JSONSerialization.data(withJSONObject: ["title": title])
-        let (data, _) = try await request(url: url, method: "POST", password: password, body: payload)
+        let (data, _) = try await request(
+            url: url,
+            method: "POST",
+            password: password,
+            body: payload,
+            timeout: shortTimeout
+        )
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         if let id = object?["id"] as? String { return id }
         if let nested = object?["session"] as? [String: Any], let id = nested["id"] as? String {
@@ -58,7 +73,8 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
         agent: String,
         model: String,
         prompt: String,
-        filePaths: [String]
+        filePaths: [String],
+        timeout: Duration
     ) async throws {
         let url = baseURL.appending(path: "session").appending(path: sessionID).appending(path: "message")
         let split = OpenCodeConfig.splitModel(model)
@@ -75,25 +91,38 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             "parts": parts,
         ]
         let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await request(url: url, method: "POST", password: password, body: payload)
+        _ = try await request(
+            url: url,
+            method: "POST",
+            password: password,
+            body: payload,
+            timeout: timeout.timeInterval
+        )
     }
 
     public func abort(baseURL: URL, password: String, sessionID: String) async {
         let url = baseURL.appending(path: "session").appending(path: sessionID).appending(path: "abort")
-        _ = try? await request(url: url, method: "POST", password: password, body: Data("{}".utf8))
+        _ = try? await request(
+            url: url,
+            method: "POST",
+            password: password,
+            body: Data("{}".utf8),
+            timeout: shortTimeout
+        )
         let delete = baseURL.appending(path: "session").appending(path: sessionID)
-        _ = try? await request(url: delete, method: "DELETE", password: password, body: nil)
+        _ = try? await request(url: delete, method: "DELETE", password: password, body: nil, timeout: shortTimeout)
     }
 
     private func request(
         url: URL,
         method: String,
         password: String,
-        body: Data?
+        body: Data?,
+        timeout: TimeInterval
     ) async throws -> (Data, URLResponse) {
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout
         let token = Data("\(username):\(password)".utf8).base64EncodedString()
         request.setValue("Basic \(token)", forHTTPHeaderField: "Authorization")
         if let body {
@@ -122,7 +151,8 @@ public struct UnhealthyOpenCodeHTTP: OpenCodeHTTPClienting {
         agent: String,
         model: String,
         prompt: String,
-        filePaths: [String]
+        filePaths: [String],
+        timeout: Duration
     ) async throws {
         throw URLError(.cannotConnectToHost)
     }

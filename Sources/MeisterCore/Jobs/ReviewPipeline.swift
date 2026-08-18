@@ -171,21 +171,30 @@ public struct ReviewPipeline: Sendable {
             return
         }
 
+        let nameA = ReviewContainers.slot(jobID, .modelA)
+        let nameB = ReviewContainers.slot(jobID, .modelB)
+        let judgeName = ReviewContainers.judge(jobID)
+        try await store.updateJobContainers(
+            jobID: jobID,
+            containerName: judgeName,
+            containerNameA: nameA,
+            containerNameB: nameB
+        )
+        if try await stopped(jobID) { return }
+
         let review = await reviewer.run(
             AgentReviewRequest(
                 job: job,
                 workspace: Workspace(root: workspaceURL),
                 files: files,
                 rules: rules,
-                newWork: newWork
+                newWork: newWork,
+                isCancelled: {
+                    (try? await store.job(id: jobID))?.status.isTerminal ?? true
+                }
             )
         )
-        try await store.updateJobContainers(
-            jobID: jobID,
-            containerName: review.containerName,
-            containerNameA: review.containerNameA,
-            containerNameB: review.containerNameB
-        )
+        if try await stopped(jobID) { return }
         if !review.findings.isEmpty {
             try await store.insertParsedFindings(review.findings)
         }

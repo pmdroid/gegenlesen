@@ -6,7 +6,7 @@ import Testing
 struct OpenCodeConfigTests {
     @Test
     func policySealsMcpAndPluginAndDeniesSources() throws {
-        let json = OpenCodeConfig.policyJSON(model: "anthropic/claude-sonnet-4-5")
+        let json = try OpenCodeConfig.policyJSON(model: "anthropic/claude-sonnet-4-5")
         let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         let mcp = try #require(object["mcp"] as? [String: Any])
         #expect(mcp.isEmpty)

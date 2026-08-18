@@ -39,7 +39,7 @@ struct OpenCodeCLIProbeTests {
                 at: root.appendingPathComponent("Sources"),
                 withIntermediateDirectories: true
             )
-            let policy = OpenCodeConfig.policyJSON(model: "anthropic/claude-sonnet-4-5")
+            let policy = try OpenCodeConfig.policyJSON(model: "anthropic/claude-sonnet-4-5")
             let baked = repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner/opencode.json")
             let bakedJSON = try String(contentsOf: baked, encoding: .utf8)
             #expect(bakedJSON.contains(#""mcp": {}"#) || bakedJSON.contains(#""mcp":{}"#))

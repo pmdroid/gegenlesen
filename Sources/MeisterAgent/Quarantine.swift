@@ -23,7 +23,7 @@ public enum Quarantine: Sendable {
             let dest = quarantineRoot.appendingPathComponent(name)
             try? fm.removeItem(at: dest)
             try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try copyRecursively(from: source, to: dest)
+            try fm.copyItem(at: source, to: dest)
         }
 
         try renameLoadable(root: root, name: "opencode.json")
@@ -38,23 +38,5 @@ public enum Quarantine: Sendable {
         let dest = root.appendingPathComponent(name + ".meister-disabled")
         try? fm.removeItem(at: dest)
         try fm.moveItem(at: source, to: dest)
-    }
-
-    private static func copyRecursively(from source: URL, to dest: URL) throws {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        _ = fm.fileExists(atPath: source.path, isDirectory: &isDir)
-        if isDir.boolValue {
-            try fm.createDirectory(at: dest, withIntermediateDirectories: true)
-            let children = try fm.contentsOfDirectory(atPath: source.path)
-            for child in children {
-                try copyRecursively(
-                    from: source.appendingPathComponent(child),
-                    to: dest.appendingPathComponent(child)
-                )
-            }
-        } else {
-            try fm.copyItem(at: source, to: dest)
-        }
     }
 }

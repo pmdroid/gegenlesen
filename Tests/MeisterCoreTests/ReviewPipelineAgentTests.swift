@@ -5,16 +5,43 @@ import Testing
 @Suite
 struct ReviewPipelineAgentTests {
     @Test
-    func skipAgentStillSucceedsWithoutReviewer() async throws {
+    func skipAgentPackedRepoSucceedsWithoutReviewer() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
-            let job = queuedJob()
-            try await store.insertJob(job)
-            try Data("not-a-tar".utf8).write(to: store.blobs.archiveURL(jobID: job.id.rawValue))
-            let pipeline = ReviewPipeline(store: store, skipAgent: true)
-            try await pipeline.run(jobID: job.id)
-            let after = try await store.job(id: job.id)
-            #expect(after?.status == .failed)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(store: store, skipAgent: true, reviewer: nil)
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                #expect(after.containerNameA == nil)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(!findings.contains { $0.phase == .agent })
+            }
+        }
+    }
+
+    @Test
+    func noValidFindingsFileFailsWhenNewWork() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: EmptyReviewer()
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "reviewer_no_findings_file")
+                #expect(after.containerNameA == "meister-review-\(job.id.rawValue)-a")
+            }
         }
     }
 
@@ -24,23 +51,7 @@ struct ReviewPipelineAgentTests {
             let store = try Store.open(dataDir: dir)
             let workspace = store.blobs.workspaceURL(jobID: "will-replace")
             _ = workspace
-            try await withTempDir("pipe-agent") { repo in
-                try writeFile("Sources/A.swift", "print(2)\n", in: repo)
-                try writeFile(
-                    ".meister/diff.patch",
-                    """
-                    diff --git a/Sources/A.swift b/Sources/A.swift
-                    new file mode 100644
-                    --- /dev/null
-                    +++ b/Sources/A.swift
-                    @@ -0,0 +1 @@
-                    +print(2)
-                    """,
-                    in: repo
-                )
-                let archive = dir.appendingPathComponent("change.tar.gz")
-                try gzipTarCreate(from: repo, to: archive)
-
+            try await withPackedRepo(dir: dir) { archive in
                 let job = queuedJob()
                 try await store.insertJob(job)
                 try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
@@ -59,6 +70,20 @@ struct ReviewPipelineAgentTests {
                 #expect(findings.contains { $0.phase == .agent && $0.reviewerSlot == .modelA })
             }
         }
+    }
+}
+
+struct EmptyReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        AgentReviewResult(
+            findings: [],
+            validFileCount: 0,
+            failed: request.newWork,
+            errorMessage: request.newWork ? "reviewer_no_findings_file" : nil,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
     }
 }
 
@@ -86,6 +111,27 @@ struct FakeReviewer: ReviewerRunning {
             containerNameB: "meister-review-\(request.job.id.rawValue)-b",
             containerName: "meister-judge-\(request.job.id.rawValue)"
         )
+    }
+}
+
+private func withPackedRepo(dir: URL, _ body: (URL) async throws -> Void) async throws {
+    try await withTempDir("pipe-pack") { repo in
+        try writeFile("Sources/A.swift", "print(2)\n", in: repo)
+        try writeFile(
+            ".meister/diff.patch",
+            """
+            diff --git a/Sources/A.swift b/Sources/A.swift
+            new file mode 100644
+            --- /dev/null
+            +++ b/Sources/A.swift
+            @@ -0,0 +1 @@
+            +print(2)
+            """,
+            in: repo
+        )
+        let archive = dir.appendingPathComponent("change-\(UUID().uuidString).tar.gz")
+        try gzipTarCreate(from: repo, to: archive)
+        try await body(archive)
     }
 }
 
