@@ -13,6 +13,8 @@ public struct FindingDraft: Sendable, Equatable {
     public var rationale: String?
     public var confidence: Double?
     public var suggestedPatch: String?
+    /// Command JSONL is untrusted argv output and must go to the judge (not auto-keep).
+    public var requiresJudge: Bool
 
     public init(
         ruleID: RuleID? = nil,
@@ -26,7 +28,8 @@ public struct FindingDraft: Sendable, Equatable {
         snippet: String,
         rationale: String? = nil,
         confidence: Double? = nil,
-        suggestedPatch: String? = nil
+        suggestedPatch: String? = nil,
+        requiresJudge: Bool = false
     ) {
         self.ruleID = ruleID
         self.phase = phase
@@ -40,6 +43,7 @@ public struct FindingDraft: Sendable, Equatable {
         self.rationale = rationale
         self.confidence = confidence
         self.suggestedPatch = suggestedPatch
+        self.requiresJudge = requiresJudge
     }
 }
 
@@ -74,6 +78,18 @@ public protocol DeterministicRunning: Sendable {
         files: [JobFile],
         workspace: Workspace,
         rules: [Rule],
-        timeout: Duration
+        timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)?
     ) async -> DeterministicRunResult
+}
+
+extension DeterministicRunning {
+    public func run(
+        files: [JobFile],
+        workspace: Workspace,
+        rules: [Rule],
+        timeout: Duration
+    ) async -> DeterministicRunResult {
+        await run(files: files, workspace: workspace, rules: rules, timeout: timeout, isCancelled: nil)
+    }
 }

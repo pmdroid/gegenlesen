@@ -136,11 +136,15 @@ public struct ReviewPipeline: Sendable {
                 files: files,
                 workspace: Workspace(root: workspaceURL),
                 rules: rules,
-                timeout: deterministicTimeout
+                timeout: deterministicTimeout,
+                isCancelled: { [store, jobID] in
+                    (try? await store.job(id: jobID))?.status.isTerminal ?? true
+                }
             )
         } else {
             result = DeterministicRunResult(drafts: [], timedOut: false)
         }
+        if try await stopped(jobID) { return }
         if result.timedOut {
             _ = try await store.apply(jobID: jobID, event: .deterministicTimeout)
             try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")

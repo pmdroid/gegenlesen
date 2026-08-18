@@ -12,6 +12,10 @@ public enum ReviewContainers: Sendable {
         "meister-cmd-\(jobID.rawValue)-\(ruleID.rawValue)"
     }
 
+    public static func commandPrefix(_ jobID: JobID) -> String {
+        "meister-cmd-\(jobID.rawValue)-"
+    }
+
     public static func all(_ jobID: JobID) -> [String] {
         [
             slot(jobID, .modelA),

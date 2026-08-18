@@ -140,6 +140,7 @@ struct DeterministicEngineTests {
             #expect(result.drafts[0].phase == .deterministic)
             #expect(result.drafts[0].ruleID?.rawValue == "cmd")
             #expect(result.drafts[0].title == "cmd hit")
+            #expect(result.drafts[0].requiresJudge)
             #expect(result.warnings.contains { $0.message == "command_jsonl_invalid" })
 
             let requests = await docker.requests
@@ -159,6 +160,39 @@ struct DeterministicEngineTests {
             #expect(request.name == "meister-cmd-job-cmd-cmd")
             #expect(args.contains("1000:1000"))
             #expect(args.contains("--read-only"))
+            #expect(request.binds.first?.readOnly == true)
+        }
+    }
+
+    @Test
+    func plantedPasswdSymlinkIsNotReadByNextChecker() async throws {
+        try await withTempDir("det-symlink") { root in
+            try writeFile("ok.swift", "let safe = 1\n", in: root)
+            let link = root.appendingPathComponent("evil.swift")
+            try FileManager.default.createSymbolicLink(
+                atPath: link.path,
+                withDestinationPath: "/etc/passwd"
+            )
+            let job = JobID("job-link")
+            let files = [
+                JobFile(jobID: job, path: "ok.swift", status: .modified, language: .swift),
+                JobFile(jobID: job, path: "evil.swift", status: .modified, language: .swift),
+            ]
+            let rule = sampleRule(
+                id: "has-root",
+                payload: .regex(pattern: "root", flags: nil, message: "passwd leak")
+            )
+            let result = await DeterministicEngine().run(
+                files: files,
+                workspace: Workspace(root: root),
+                rules: [rule],
+                timeout: .seconds(5)
+            )
+            #expect(result.drafts.isEmpty)
+            #expect(Workspace(root: root).resolveForRead("evil.swift") == nil)
+            #expect(Workspace(root: root).readRegularFile("evil.swift") == nil)
+            Workspace(root: root).removeEscapingSymlinks()
+            #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) == nil)
         }
     }
 

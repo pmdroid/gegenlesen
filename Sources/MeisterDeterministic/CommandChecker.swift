@@ -22,7 +22,10 @@ public struct CommandChecker: Sendable {
     public static let maxTimeoutSec = 20
     public static let maxFindings = 200
     public static let maxSnippetBytes = 4096
+    public static let maxRationaleBytes = 4000
+    public static let maxSuggestedPatchBytes = 20_000
     public static let maxLogBytes = 4096
+    public static let maxStdoutBytes = 1_048_576
 
     public var docker: any CommandRunning
     public var image: String
@@ -36,9 +39,13 @@ public struct CommandChecker: Sendable {
         jobID: JobID,
         workspace: Workspace,
         rule: Rule,
-        timeout: Duration
+        timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)? = nil
     ) async -> CommandCheckOutcome {
         guard case .command(let argv, let timeoutSec) = rule.payload else {
+            return CommandCheckOutcome()
+        }
+        if await isCancelled?() == true {
             return CommandCheckOutcome()
         }
         if argv.isEmpty {
@@ -66,9 +73,14 @@ public struct CommandChecker: Sendable {
         do {
             result = try await docker.run(request)
         } catch {
+            workspace.removeEscapingSymlinks()
             return CommandCheckOutcome(warnings: [
                 Self.ruleError(ruleID: rule.id, stderr: String(describing: error)),
             ])
+        }
+        workspace.removeEscapingSymlinks()
+        if await isCancelled?() == true {
+            return CommandCheckOutcome()
         }
         if result.timedOut, timeout <= dockerTimeout {
             return CommandCheckOutcome(timedOut: true)
@@ -79,13 +91,19 @@ public struct CommandChecker: Sendable {
                 Self.ruleError(ruleID: rule.id, stderr: stderr),
             ])
         }
-        let parsed = Self.parseJSONL(stdout: result.stdout, workspace: workspace, rule: rule)
+        let stdout = result.stdout.count > Self.maxStdoutBytes
+            ? Data(result.stdout.prefix(Self.maxStdoutBytes))
+            : result.stdout
+        let parsed = Self.parseJSONL(stdout: stdout, workspace: workspace, rule: rule)
         var warnings: [DeterministicWarning] = []
         if parsed.invalid > 0 {
             warnings.append(
                 DeterministicWarning(
                     message: "command_jsonl_invalid",
-                    payloadJSON: #"{"rule_id":"\#(rule.id.rawValue)","invalid":\#(parsed.invalid)}"#
+                    payloadJSON: Self.payloadJSON([
+                        "rule_id": rule.id.rawValue,
+                        "invalid": parsed.invalid,
+                    ])
                 )
             )
         }
@@ -116,7 +134,8 @@ public struct CommandChecker: Sendable {
         argv: [String],
         timeout: Duration
     ) -> DockerRequest {
-        DockerRequest(
+        let capped = min(timeout, .seconds(Int64(maxTimeoutSec)))
+        return DockerRequest(
             name: name,
             image: image,
             argv: argv,
@@ -128,14 +147,14 @@ public struct CommandChecker: Sendable {
             workdir: "/workspace",
             user: "1000:1000",
             readOnly: true,
-            tmpfs: ["/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"],
-            binds: [.init(source: workspace.path, dest: "/workspace")],
+            tmpfs: ["/tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=64m"],
+            binds: [.init(source: workspace.path, dest: "/workspace", readOnly: true)],
             cpus: "1",
             memory: "512m",
             pidsLimit: 64,
             capDropAll: true,
             noNewPrivileges: true,
-            timeout: timeout,
+            timeout: capped,
             injectProviderKeys: false
         )
     }
@@ -169,6 +188,10 @@ public struct CommandChecker: Sendable {
     public static func redact(_ text: String) -> String {
         var result = text
         result = result.replacing(
+            #/-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/#,
+            with: { _ in "[REDACTED]" }
+        )
+        result = result.replacing(
             #/(ANTHROPIC_API_KEY|OPENAI_API_KEY|OPENROUTER_API_KEY)\s*[:=]\s*["']?[^\s"',}]+["']?/#,
             with: { match in
                 "\(match.output.1)=[REDACTED]"
@@ -183,12 +206,23 @@ public struct CommandChecker: Sendable {
     }
 
     private static func ruleError(ruleID: RuleID, stderr: String) -> DeterministicWarning {
-        let redacted = redact(stderr)
-        let escaped = jsonEscape(redacted)
-        return DeterministicWarning(
+        DeterministicWarning(
             message: "command_error",
-            payloadJSON: #"{"rule_id":"\#(ruleID.rawValue)","stderr":"\#(escaped)"}"#
+            payloadJSON: payloadJSON([
+                "rule_id": ruleID.rawValue,
+                "stderr": redact(stderr),
+            ])
         )
+    }
+
+    static func payloadJSON(_ object: [String: Any]) -> String? {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        return text
     }
 
     private static func draft(
@@ -215,9 +249,12 @@ public struct CommandChecker: Sendable {
         if snippet.utf8.count > maxSnippetBytes {
             snippet = String(decoding: Data(snippet.utf8.prefix(maxSnippetBytes)), as: UTF8.self)
         }
-        let rationale = object["rationale"] as? String
-        let confidence = object["confidence"] as? Double
-        let suggested = object["suggested_patch"] as? String
+        let rationale = truncate(object["rationale"] as? String, maxBytes: maxRationaleBytes)
+        var confidence = object["confidence"] as? Double
+        if let value = confidence, value < 0 || value > 1 {
+            confidence = nil
+        }
+        let suggested = truncate(object["suggested_patch"] as? String, maxBytes: maxSuggestedPatchBytes)
         return FindingDraft(
             ruleID: rule.id,
             phase: .deterministic,
@@ -230,8 +267,17 @@ public struct CommandChecker: Sendable {
             snippet: snippet,
             rationale: rationale,
             confidence: confidence,
-            suggestedPatch: suggested
+            suggestedPatch: suggested,
+            requiresJudge: true
         )
+    }
+
+    private static func truncate(_ text: String?, maxBytes: Int) -> String? {
+        guard var text else { return nil }
+        if text.utf8.count > maxBytes {
+            text = String(decoding: Data(text.utf8.prefix(maxBytes)), as: UTF8.self)
+        }
+        return text
     }
 
     private static func boundedString(_ value: Any?, min: Int, max: Int) -> String? {
@@ -244,14 +290,5 @@ public struct CommandChecker: Sendable {
         if let number = value as? Int { return number }
         if let number = value as? NSNumber { return number.intValue }
         return nil
-    }
-
-    private static func jsonEscape(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
     }
 }

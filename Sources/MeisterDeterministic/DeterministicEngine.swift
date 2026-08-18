@@ -27,7 +27,8 @@ public struct DeterministicEngine: DeterministicRunning {
         files: [JobFile],
         workspace: Workspace,
         rules: [Rule],
-        timeout: Duration
+        timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)? = nil
     ) async -> DeterministicRunResult {
         let deadline = ContinuousClock.now + timeout
         if ContinuousClock.now >= deadline {
@@ -38,6 +39,9 @@ public struct DeterministicEngine: DeterministicRunning {
         var warnings: [DeterministicWarning] = []
         let jobID = files.first?.jobID ?? JobID("unknown")
         for item in selected {
+            if await isCancelled?() == true {
+                return DeterministicRunResult(drafts: drafts, timedOut: false, warnings: warnings)
+            }
             if ContinuousClock.now >= deadline {
                 return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
             }
@@ -50,7 +54,8 @@ public struct DeterministicEngine: DeterministicRunning {
                     jobID: jobID,
                     workspace: workspace,
                     rule: item.rule,
-                    timeout: remaining
+                    timeout: remaining,
+                    isCancelled: isCancelled
                 )
                 warnings.append(contentsOf: outcome.warnings)
                 drafts.append(contentsOf: outcome.drafts.prefix(perFileCap))
@@ -116,14 +121,8 @@ public struct DeterministicEngine: DeterministicRunning {
         }
         let bytes: Data
         if needsBytes(rule.payload) {
-            guard let url = workspace.resolveForRead(file.path),
-                  FileManager.default.isReadableFile(atPath: url.path)
-            else { return .skip }
-            do {
-                bytes = try Data(contentsOf: url)
-            } catch {
-                return .skip
-            }
+            guard let data = workspace.readRegularFile(file.path) else { return .skip }
+            bytes = data
         } else {
             bytes = Data()
         }

@@ -180,6 +180,7 @@ enum JobsRoute {
         for name in names {
             await docker.kill(containerName: name)
         }
+        await docker.removeAll(prefix: ReviewContainers.commandPrefix(job.id))
         try await req.application.meisterStore.appendEvent(jobID: job.id, level: .info, message: "cancelled")
         guard let updated = try await req.application.meisterStore.job(id: job.id) else {
             throw APIError.notFound()

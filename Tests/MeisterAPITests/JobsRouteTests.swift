@@ -140,6 +140,30 @@ struct JobsRouteTests {
     }
 
     @Test
+    func cancelRemovesCommandContainersByPrefix() async throws {
+        let docker = RecordingDocker()
+        try await withMeisterApp(docker: docker) { app in
+            let job = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: Date(),
+                updatedAt: Date(),
+                status: .deterministic,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j"
+            )
+            try await app.meisterStore.insertJob(job)
+            try await app.testing().test(.POST, "/api/jobs/\(job.id.rawValue)/cancel") {
+                res async throws in
+                #expect(res.status == .ok)
+            }
+            let prefixes = await docker.removedPrefixes
+            #expect(prefixes.contains(ReviewContainers.commandPrefix(job.id)))
+        }
+    }
+
+    @Test
     func cancelTerminalConflicts() async throws {
         try await withMeisterApp { app in
             let job = Job(
