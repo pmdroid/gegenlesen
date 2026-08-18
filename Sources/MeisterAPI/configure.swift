@@ -1,4 +1,5 @@
 import Foundation
+import MeisterCore
 import Vapor
 
 func configure(_ app: Application) async throws {
@@ -20,10 +21,8 @@ func configure(
     app.http.server.configuration.hostname = config.bind
     app.http.server.configuration.port = config.port
 
-    try FileManager.default.createDirectory(
-        atPath: config.dataDir,
-        withIntermediateDirectories: true
-    )
+    let dataDir = URL(fileURLWithPath: config.dataDir, isDirectory: true)
+    app.meisterStore = try Store.open(dataDir: dataDir)
 
     let publicDirectory = spaPublicDirectory(workingDirectory: app.directory.workingDirectory)
     if FileManager.default.fileExists(atPath: publicDirectory) {
@@ -65,4 +64,20 @@ func spaPublicDirectory(workingDirectory: String) -> String {
         root.append("/")
     }
     return root + "frontend/dist/"
+}
+
+private struct MeisterStoreKey: StorageKey {
+    typealias Value = Store
+}
+
+extension Application {
+    var meisterStore: Store {
+        get {
+            guard let value = storage[MeisterStoreKey.self] else {
+                fatalError("Store missing; call configure(_:config:) first")
+            }
+            return value
+        }
+        set { storage[MeisterStoreKey.self] = newValue }
+    }
 }

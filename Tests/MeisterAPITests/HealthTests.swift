@@ -1,4 +1,5 @@
 import Foundation
+import MeisterCore
 import Testing
 import VaporTesting
 @testable import MeisterAPI
@@ -13,6 +14,15 @@ struct HealthTests {
                 let body = try res.content.decode(HealthDTO.self)
                 #expect(body == HealthDTO(ok: true, version: "0.1.0"))
             }
+        }
+    }
+
+    @Test
+    func configureOpensSQLiteStore() async throws {
+        try await withMeisterApp { app in
+            let identifiers = try await app.meisterStore.appliedMigrationIdentifiers()
+            #expect(identifiers == [Migrations.v1Initial])
+            #expect(!(try await app.meisterStore.tableExists("settings")))
         }
     }
 
@@ -72,13 +82,18 @@ func withMeisterApp(
     workingDirectory: String? = nil,
     _ body: (Application) async throws -> Void
 ) async throws {
+    let dataDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("meister-api-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dataDir) }
     try await withApp { app in
         if let workingDirectory {
             app.directory.workingDirectory = workingDirectory.hasSuffix("/")
                 ? workingDirectory
                 : workingDirectory + "/"
         }
-        try await configure(app, config: .example)
+        var config = MeisterConfig.example
+        config.dataDir = dataDir.path
+        try await configure(app, config: config)
         try await body(app)
     }
 }
