@@ -17,9 +17,18 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "CLibArchive",
+            path: "Sources/CLibArchive",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedLibrary("archive"),
+            ]
+        ),
+        .target(
             name: "MeisterCore",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
+                "CLibArchive",
             ],
             path: "Sources/MeisterCore",
             swiftSettings: [
