@@ -89,8 +89,7 @@ public struct DeterministicEngine: DeterministicRunning {
         checker: any DeterministicChecker,
         deadline: ContinuousClock.Instant
     ) async -> FileCheckOutcome {
-        let remaining = deadline - ContinuousClock.now
-        if remaining <= .zero {
+        if ContinuousClock.now >= deadline {
             return .timedOut
         }
         let bytes: Data
@@ -107,6 +106,10 @@ public struct DeterministicEngine: DeterministicRunning {
             bytes = Data()
         }
         if ContinuousClock.now >= deadline {
+            return .timedOut
+        }
+        let remaining = deadline - ContinuousClock.now
+        if remaining <= .zero {
             return .timedOut
         }
 
