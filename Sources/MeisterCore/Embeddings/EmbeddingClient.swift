@@ -26,12 +26,7 @@ public struct HTTPEmbeddingClient: EmbeddingClient {
     public var endpoint: URL
     public var apiKey: String
 
-    public init(
-        model: String,
-        dimensions: Int,
-        endpoint: URL = URL(string: "https://api.openai.com/v1/embeddings")!,
-        apiKey: String
-    ) {
+    public init(model: String, dimensions: Int, endpoint: URL, apiKey: String) {
         self.model = model
         self.dimensions = dimensions
         self.endpoint = endpoint
@@ -44,7 +39,11 @@ public struct HTTPEmbeddingClient: EmbeddingClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let body: [String: Any] = ["model": model, "input": texts]
+        let body: [String: Any] = [
+            "model": model,
+            "input": texts,
+            "dimensions": dimensions,
+        ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -71,16 +70,94 @@ public enum EmbeddingError: Error, Sendable {
     case badResponse
 }
 
+public struct EmbeddingTarget: Sendable, Equatable {
+    public var model: String
+    public var endpoint: URL
+    public var apiKey: String
+
+    public init(model: String, endpoint: URL, apiKey: String) {
+        self.model = model
+        self.endpoint = endpoint
+        self.apiKey = apiKey
+    }
+}
+
 public enum EmbeddingClientFactory: Sendable {
+    public static let openAIEndpoint = URL(string: "https://api.openai.com/v1/embeddings")!
+    public static let openRouterEndpoint = URL(string: "https://openrouter.ai/api/v1/embeddings")!
+
+    public static func resolveTarget(
+        model: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EmbeddingTarget? {
+        let resolved = environment["MEISTER_EMBEDDING_MODEL"].flatMap { $0.isEmpty ? nil : $0 } ?? model
+        let override = environment["MEISTER_EMBEDDING_URL"].flatMap { URL(string: $0) }
+        let openAIKey = nonempty(environment["OPENAI_API_KEY"])
+        let openRouterKey = nonempty(environment["OPENROUTER_API_KEY"])
+
+        if let override {
+            let host = override.host?.lowercased() ?? ""
+            if host.contains("openrouter.ai"), let key = openRouterKey {
+                return EmbeddingTarget(model: resolved, endpoint: override, apiKey: key)
+            }
+            if let key = openAIKey ?? openRouterKey {
+                return EmbeddingTarget(
+                    model: host.contains("api.openai.com") ? stripOpenAIPrefix(resolved) : resolved,
+                    endpoint: override,
+                    apiKey: key
+                )
+            }
+            return nil
+        }
+
+        if resolved.hasPrefix("openrouter/"), let key = openRouterKey {
+            return EmbeddingTarget(
+                model: String(resolved.dropFirst("openrouter/".count)),
+                endpoint: openRouterEndpoint,
+                apiKey: key
+            )
+        }
+        if let key = openRouterKey, resolved.contains("/"), !resolved.hasPrefix("openai/") {
+            return EmbeddingTarget(model: resolved, endpoint: openRouterEndpoint, apiKey: key)
+        }
+        if let key = openAIKey {
+            return EmbeddingTarget(
+                model: stripOpenAIPrefix(resolved),
+                endpoint: openAIEndpoint,
+                apiKey: key
+            )
+        }
+        if let key = openRouterKey {
+            return EmbeddingTarget(model: resolved, endpoint: openRouterEndpoint, apiKey: key)
+        }
+        return nil
+    }
+
     public static func fromEnvironment(
         model: String,
         dimensions: Int,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> (any EmbeddingClient)? {
-        let resolved = environment["MEISTER_EMBEDDING_MODEL"].flatMap { $0.isEmpty ? nil : $0 } ?? model
-        if let key = environment["OPENAI_API_KEY"], !key.isEmpty {
-            return HTTPEmbeddingClient(model: resolved, dimensions: dimensions, apiKey: key)
+        guard let target = resolveTarget(model: model, environment: environment) else {
+            return nil
         }
-        return nil
+        return HTTPEmbeddingClient(
+            model: target.model,
+            dimensions: dimensions,
+            endpoint: target.endpoint,
+            apiKey: target.apiKey
+        )
+    }
+
+    public static func stripOpenAIPrefix(_ model: String) -> String {
+        if model.hasPrefix("openai/") {
+            return String(model.dropFirst("openai/".count))
+        }
+        return model
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
     }
 }

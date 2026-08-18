@@ -161,12 +161,19 @@ extension Store {
         }
     }
 
-    public func chunks(kind: ChunkKind, ref: String) throws -> [ContextChunk] {
+    public func chunks(kind: ChunkKind, ref: String? = nil) throws -> [ContextChunk] {
         try read { db in
-            try Row.fetchAll(
+            if let ref {
+                return try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM context_chunks WHERE kind = ? AND ref = ? ORDER BY ordinal, id",
+                    arguments: [kind.rawValue, ref]
+                ).map(ContextChunk.init(row:))
+            }
+            return try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM context_chunks WHERE kind = ? AND ref = ? ORDER BY ordinal, id",
-                arguments: [kind.rawValue, ref]
+                sql: "SELECT * FROM context_chunks WHERE kind = ? ORDER BY ref, ordinal, id",
+                arguments: [kind.rawValue]
             ).map(ContextChunk.init(row:))
         }
     }
@@ -183,6 +190,15 @@ extension Store {
                     sql: "DELETE FROM context_chunks WHERE kind = ?",
                     arguments: [kind.rawValue]
                 )
+            }
+        }
+    }
+
+    public func deleteChunks(ids: [String]) throws {
+        guard !ids.isEmpty else { return }
+        try write { db in
+            for id in ids {
+                try db.execute(sql: "DELETE FROM context_chunks WHERE id = ?", arguments: [id])
             }
         }
     }
@@ -212,10 +228,10 @@ extension Store {
             let notes = try listContextNotes()
             let alwaysIDs = Set(notes.filter(\.alwaysInclude).map(\.id))
             if !alwaysIDs.isEmpty {
-                var already = Set(selected.map(\.chunk.ref))
-                for chunk in all where alwaysIDs.contains(chunk.ref) && !already.contains(chunk.ref) {
+                var already = Set(selected.map(\.chunk.id))
+                for chunk in all where alwaysIDs.contains(chunk.ref) && !already.contains(chunk.id) {
                     selected.append(ContextRetrieveHit(chunk: chunk, score: 1))
-                    already.insert(chunk.ref)
+                    already.insert(chunk.id)
                 }
             }
         }

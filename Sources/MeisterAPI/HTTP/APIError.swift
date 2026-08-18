@@ -29,6 +29,10 @@ struct APIError: Error, AbortError, DebuggableError {
         APIError(status: .notFound, code: .notFound, message: message)
     }
 
+    static func forbidden(_ message: String) -> APIError {
+        APIError(status: .forbidden, code: .badRequest, message: message)
+    }
+
     static func conflict(_ message: String) -> APIError {
         APIError(status: .conflict, code: .conflict, message: message)
     }

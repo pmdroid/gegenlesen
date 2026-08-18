@@ -31,17 +31,13 @@ public struct PromptBudget: Sendable, Equatable {
     }
 
     public static func render(_ rule: Rule) -> String {
-        var parts = [rule.title, rule.body]
+        var parts = [rule.title]
         switch rule.payload {
         case .semantic(let instruction, let fewShots):
             parts.append(instruction)
             parts.append(contentsOf: fewShots)
         default:
             break
-        }
-        for example in rule.examples {
-            parts.append(example.excerpt)
-            if let note = example.note { parts.append(note) }
         }
         return parts.joined(separator: "\n")
     }
@@ -50,9 +46,6 @@ public struct PromptBudget: Sendable, Equatable {
         var next = rule
         if case .semantic(let instruction, let fewShots) = rule.payload, !fewShots.isEmpty {
             next.payload = .semantic(instruction: instruction, fewShots: [])
-        }
-        if !next.examples.isEmpty {
-            next.examples = []
         }
         return next
     }

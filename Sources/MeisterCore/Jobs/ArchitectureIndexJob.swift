@@ -5,125 +5,257 @@ public struct ArchitectureIndexJob: Sendable {
     public var embedder: (any EmbeddingClient)?
     public var maxChunks: Int
     public var skipAgent: Bool
+    public var miner: (any MinerRunning)?
+    public var model: String
+    public var onWarning: (@Sendable (String) async -> Void)?
 
     public init(
         store: Store,
         embedder: (any EmbeddingClient)? = nil,
         maxChunks: Int = 20_000,
-        skipAgent: Bool = true
+        skipAgent: Bool = true,
+        miner: (any MinerRunning)? = nil,
+        model: String = "anthropic/claude-sonnet-4-5",
+        onWarning: (@Sendable (String) async -> Void)? = nil
     ) {
         self.store = store
         self.embedder = embedder
         self.maxChunks = maxChunks
         self.skipAgent = skipAgent
+        self.miner = miner
+        self.model = model
+        self.onWarning = onWarning
+    }
+
+    public static func chunkID(kind: ChunkKind, ref: String, ordinal: Int) -> String {
+        "\(kind.rawValue):\(ref):\(ordinal)"
     }
 
     @discardableResult
     public func run(workspace: Workspace, jobID: JobID?) async throws -> String {
-        let walked = walk(workspace.root)
-        var chunks: [ContextChunk] = []
-        chunks.reserveCapacity(min(walked.files.count, maxChunks))
-        for file in walked.files {
-            if chunks.count >= maxChunks { break }
-            guard let data = try? Data(contentsOf: file.url),
-                  let text = String(data: data, encoding: .utf8),
-                  !text.isEmpty
-            else { continue }
-            let sha = ContentHash.sha256(data)
-            for (ordinal, piece) in TextChunker.chunks(text).enumerated() {
-                if chunks.count >= maxChunks { break }
-                var embedding: Data?
-                var model: String?
-                if let embedder, let vector = try? await embedder.embed([piece]).first {
-                    embedding = EmbeddingVector.encode(vector)
-                    model = embedder.model
-                }
-                chunks.append(
-                    ContextChunk(
-                        kind: .file,
-                        ref: file.relative,
-                        ordinal: ordinal,
-                        text: piece,
-                        embedding: embedding,
-                        embeddingModel: model,
-                        contentSHA256: sha
-                    )
-                )
-            }
+        try await indexFiles(workspace: workspace)
+        var draft = renderDraft(modules: walk(workspace.root).modules, skipAgent: skipAgent)
+        if !skipAgent, let miner, let jobID {
+            draft = await draftFromMiner(workspace: workspace, jobID: jobID, fallback: draft)
         }
-        try await store.deleteChunks(kind: .file)
-        try await store.upsertChunks(chunks)
-
-        let draft = renderDraft(modules: walked.modules, skipAgent: skipAgent)
         let dest = workspace.root.appendingPathComponent(".meister/architecture-draft.md")
         try FileManager.default.createDirectory(
             at: dest.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try draft.write(to: dest, atomically: true, encoding: .utf8)
-
-        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
-        if pending.isEmpty {
-            try await store.insertLearning(
-                Learning(
-                    jobID: jobID,
-                    kind: .architecture,
-                    title: "Architecture card",
-                    body: draft,
-                    payloadJSON: #"{"kind":"architecture"}"#
-                )
-            )
-        }
+        try await upsertArchitectureLearning(draft: draft, jobID: jobID)
         return draft
     }
 
     public func embedNote(_ note: ContextNote) async throws {
         let kind: ChunkKind = note.kind == .architecture ? .architecture : .user
-        try await store.deleteChunks(kind: kind, ref: note.id)
         let pieces = TextChunker.chunks("\(note.title)\n\n\(note.body)")
-        var chunks: [ContextChunk] = []
+        var drafts: [ContextChunk] = []
         for (ordinal, piece) in pieces.enumerated() {
-            var embedding: Data?
-            var model: String?
-            if let embedder, let vector = try? await embedder.embed([piece]).first {
-                embedding = EmbeddingVector.encode(vector)
-                model = embedder.model
-            }
-            chunks.append(
+            drafts.append(
                 ContextChunk(
+                    id: Self.chunkID(kind: kind, ref: note.id, ordinal: ordinal),
                     kind: kind,
                     ref: note.id,
                     ordinal: ordinal,
                     text: piece,
-                    embedding: embedding,
-                    embeddingModel: model,
                     contentSHA256: ContentHash.sha256(Data(piece.utf8))
                 )
             )
         }
-        try await store.upsertChunks(chunks)
+        try await upsertIncremental(kind: kind, keepRefs: [note.id], pruneMissingRefs: false, drafts: drafts)
     }
 
     public func embedRule(_ rule: Rule) async throws {
-        guard rule.enabled, rule.payload.isSemantic else { return }
-        let text = PromptBudget.render(rule)
-        var embedding: Data?
-        var model: String?
-        if let embedder, let vector = try? await embedder.embed([text]).first {
-            embedding = EmbeddingVector.encode(vector)
-            model = embedder.model
+        if !rule.enabled || !rule.payload.isSemantic || rule.deletedAt != nil {
+            try await store.deleteChunks(kind: .rule, ref: rule.id.rawValue)
+            return
         }
-        try await store.deleteChunks(kind: .rule, ref: rule.id.rawValue)
-        try await store.upsertChunks([
-            ContextChunk(
-                kind: .rule,
-                ref: rule.id.rawValue,
-                text: text,
-                embedding: embedding,
-                embeddingModel: model,
-                contentSHA256: ContentHash.sha256(Data(text.utf8))
-            ),
-        ])
+        let text = PromptBudget.render(rule)
+        try await upsertIncremental(
+            kind: .rule,
+            keepRefs: [rule.id.rawValue],
+            pruneMissingRefs: false,
+            drafts: [
+                ContextChunk(
+                    id: Self.chunkID(kind: .rule, ref: rule.id.rawValue, ordinal: 0),
+                    kind: .rule,
+                    ref: rule.id.rawValue,
+                    text: text,
+                    contentSHA256: ContentHash.sha256(Data(text.utf8))
+                ),
+            ]
+        )
+    }
+
+    public func embedEnabledRules(_ rules: [Rule]) async throws {
+        for rule in rules {
+            try await embedRule(rule)
+        }
+    }
+
+    private func indexFiles(workspace: Workspace) async throws {
+        let walked = walk(workspace.root)
+        var drafts: [ContextChunk] = []
+        drafts.reserveCapacity(min(walked.files.count, maxChunks))
+        for file in walked.files {
+            if drafts.count >= maxChunks { break }
+            guard let data = try? Data(contentsOf: file.url),
+                  let text = String(data: data, encoding: .utf8),
+                  !text.isEmpty
+            else { continue }
+            let sha = ContentHash.sha256(data)
+            for (ordinal, piece) in TextChunker.chunks(text).enumerated() {
+                if drafts.count >= maxChunks { break }
+                drafts.append(
+                    ContextChunk(
+                        id: Self.chunkID(kind: .file, ref: file.relative, ordinal: ordinal),
+                        kind: .file,
+                        ref: file.relative,
+                        ordinal: ordinal,
+                        text: piece,
+                        contentSHA256: sha
+                    )
+                )
+            }
+        }
+        try await upsertIncremental(
+            kind: .file,
+            keepRefs: Set(drafts.map(\.ref)),
+            pruneMissingRefs: true,
+            drafts: drafts
+        )
+    }
+
+    private func upsertIncremental(
+        kind: ChunkKind,
+        keepRefs: Set<String>,
+        pruneMissingRefs: Bool,
+        drafts: [ContextChunk]
+    ) async throws {
+        let existing = Dictionary(
+            uniqueKeysWithValues: (try await store.chunks(kind: kind)).map { ($0.id, $0) }
+        )
+        let modelName = embedder?.model
+        var pending: [(index: Int, text: String)] = []
+        var ready = drafts
+        for (index, draft) in drafts.enumerated() {
+            if let prior = existing[draft.id],
+               prior.contentSHA256 == draft.contentSHA256,
+               prior.embeddingModel == modelName,
+               prior.embedding != nil {
+                ready[index].embedding = prior.embedding
+                ready[index].embeddingModel = prior.embeddingModel
+                continue
+            }
+            if embedder != nil {
+                pending.append((index, draft.text))
+            }
+        }
+        if let embedder, !pending.isEmpty {
+            do {
+                let texts = pending.map(\.text)
+                var offset = 0
+                while offset < texts.count {
+                    let end = min(offset + 32, texts.count)
+                    let vectors = try await embedder.embed(Array(texts[offset..<end]))
+                    for (inner, vector) in vectors.enumerated() {
+                        let slot = pending[offset + inner].index
+                        ready[slot].embedding = EmbeddingVector.encode(vector)
+                        ready[slot].embeddingModel = embedder.model
+                    }
+                    offset = end
+                }
+            } catch {
+                await onWarning?("embedding_failed")
+                for item in pending {
+                    if let prior = existing[ready[item.index].id] {
+                        ready[item.index].embedding = prior.embedding
+                        ready[item.index].embeddingModel = prior.embeddingModel
+                    }
+                }
+            }
+        }
+        try await store.upsertChunks(ready)
+        let newIDs = Set(ready.map(\.id))
+        var stale: [String] = []
+        for old in existing.values {
+            if keepRefs.contains(old.ref), !newIDs.contains(old.id) {
+                stale.append(old.id)
+            } else if pruneMissingRefs, !keepRefs.contains(old.ref) {
+                stale.append(old.id)
+            }
+        }
+        try await store.deleteChunks(ids: stale)
+    }
+
+    private func draftFromMiner(workspace: Workspace, jobID: JobID, fallback: String) async -> String {
+        let prompt = """
+            Draft a short architecture card for this repository.
+            Cover layers, entrypoints, logging conventions, and forbidden areas.
+            Write ONLY `.meister/architecture-draft.md` as markdown.
+            Do not edit other files.
+            """
+        do {
+            try FileManager.default.createDirectory(
+                at: workspace.root.appendingPathComponent(".meister", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try prompt.write(
+                to: workspace.root.appendingPathComponent(".meister/prompt.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try fallback.write(
+                to: workspace.root.appendingPathComponent(".meister/architecture-draft.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        } catch {
+            await onWarning?("architecture_index_failed")
+            return fallback
+        }
+        guard let miner else { return fallback }
+        let result = await miner.runMiner(
+            jobID: jobID,
+            workspace: workspace,
+            model: model,
+            isCancelled: nil
+        )
+        if result.failed {
+            await onWarning?("architecture_index_failed")
+            return fallback
+        }
+        let dest = workspace.root.appendingPathComponent(".meister/architecture-draft.md")
+        if let text = try? String(contentsOf: dest, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        return fallback
+    }
+
+    private func upsertArchitectureLearning(draft: String, jobID: JobID?) async throws {
+        let hash = ContentHash.sha256(Data(draft.utf8))
+        if let accepted = try await store.acceptedArchitectureNote() {
+            let acceptedHash = ContentHash.sha256(Data(accepted.body.utf8))
+            if acceptedHash == hash { return }
+        }
+        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
+        if var existing = pending.first {
+            existing.body = draft
+            existing.title = "Architecture card"
+            try await store.updateLearning(existing)
+            return
+        }
+        try await store.insertLearning(
+            Learning(
+                jobID: jobID,
+                kind: .architecture,
+                title: "Architecture card",
+                body: draft,
+                payloadJSON: #"{"kind":"architecture"}"#
+            )
+        )
     }
 
     private struct WalkedFile {

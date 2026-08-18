@@ -98,7 +98,14 @@ func withMeisterApp(
         var config = MeisterConfig.example
         config.dataDir = dataDir.path
         mutate(&config)
-        try await configure(app, config: config, docker: docker, startQueue: startQueue, skipAgent: true)
+        try await configure(
+            app,
+            config: config,
+            docker: docker,
+            startQueue: startQueue,
+            skipAgent: true,
+            embedder: HashEmbeddingClient()
+        )
         try await body(app)
     }
 }

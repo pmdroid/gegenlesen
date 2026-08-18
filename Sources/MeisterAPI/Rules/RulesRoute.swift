@@ -53,6 +53,7 @@ enum RulesRoute {
             updatedAt: now
         )
         try await req.application.meisterStore.insertRule(rule)
+        await embedRule(rule, on: req)
         return try encoded(RuleDTO(rule: rule), status: .created, on: req)
     }
 
@@ -76,6 +77,7 @@ enum RulesRoute {
         }
         existing.updatedAt = Date()
         try await req.application.meisterStore.updateRule(existing)
+        await embedRule(existing, on: req)
         return RuleDTO(rule: existing)
     }
 
@@ -84,6 +86,7 @@ enum RulesRoute {
         guard let deleted = try await req.application.meisterStore.softDeleteRule(id: existing.id) else {
             throw APIError.notFound()
         }
+        await embedRule(deleted, on: req)
         return RuleDTO(rule: deleted)
     }
 
@@ -115,6 +118,7 @@ enum RulesRoute {
             updatedAt: now
         )
         try await req.application.meisterStore.insertRule(copy)
+        await embedRule(copy, on: req)
         return try encoded(RuleDTO(rule: copy), status: .created, on: req)
     }
 
@@ -131,7 +135,15 @@ enum RulesRoute {
         guard let updated = try await req.application.meisterStore.setRuleEnabled(id: existing.id, enabled: enabled) else {
             throw APIError.notFound()
         }
+        await embedRule(updated, on: req)
         return RuleDTO(rule: updated)
+    }
+
+    private static func embedRule(_ rule: Rule, on req: Request) async {
+        try? await ArchitectureIndexJob(
+            store: req.application.meisterStore,
+            embedder: req.application.meisterEmbedder
+        ).embedRule(rule)
     }
 
     private static func requireRule(_ req: Request) async throws -> Rule {

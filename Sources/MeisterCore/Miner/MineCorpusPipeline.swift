@@ -5,17 +5,23 @@ public struct MineCorpusPipeline: Sendable {
     public var skipAgent: Bool
     public var miner: (any MinerRunning)?
     public var model: String
+    public var embedder: (any EmbeddingClient)?
+    public var maxChunks: Int
 
     public init(
         store: Store,
         skipAgent: Bool,
         miner: (any MinerRunning)? = nil,
-        model: String
+        model: String,
+        embedder: (any EmbeddingClient)? = nil,
+        maxChunks: Int = 20_000
     ) {
         self.store = store
         self.skipAgent = skipAgent
         self.miner = miner
         self.model = model
+        self.embedder = embedder
+        self.maxChunks = maxChunks
     }
 
     public func run(jobID: JobID, spec: MineJobSpec) async throws {
@@ -224,7 +230,7 @@ public struct MineCorpusPipeline: Sendable {
     private func fillInbox(
         spec: MineJobSpec,
         inserted: [Rule],
-        workspace: URL,
+        workspace _: URL,
         now: Date
     ) async throws {
         let sourceID = spec.sourceJobID
@@ -243,15 +249,20 @@ public struct MineCorpusPipeline: Sendable {
         }
 
         if spec.source == .job, let sourceID {
-            let sourceWorkspace = store.blobs.workspaceURL(jobID: sourceID.rawValue)
-            let indexRoot = FileManager.default.fileExists(atPath: sourceWorkspace.path)
-                ? sourceWorkspace
-                : workspace
+            let indexer = ArchitectureIndexJob(
+                store: store,
+                embedder: embedder,
+                maxChunks: maxChunks,
+                skipAgent: skipAgent,
+                miner: miner,
+                model: model,
+                onWarning: { [store, sourceID] message in
+                    try? await store.appendEvent(jobID: sourceID, level: .warning, message: message)
+                }
+            )
             do {
-                try await ArchitectureIndexJob(
-                    store: store,
-                    skipAgent: skipAgent
-                ).run(workspace: Workspace(root: indexRoot), jobID: sourceID)
+                try await indexSourceJob(sourceID, indexer: indexer)
+                try await indexer.embedEnabledRules(try await store.listRules(RuleListFilter(enabled: true)))
             } catch {
                 try await store.appendEvent(
                     jobID: sourceID,
@@ -280,6 +291,35 @@ public struct MineCorpusPipeline: Sendable {
                 )
             )
         }
+    }
+
+    private func indexSourceJob(_ sourceID: JobID, indexer: ArchitectureIndexJob) async throws {
+        let sourceWorkspace = store.blobs.workspaceURL(jobID: sourceID.rawValue)
+        if workspaceHasTree(sourceWorkspace) {
+            try await indexer.run(workspace: Workspace(root: sourceWorkspace), jobID: sourceID)
+            return
+        }
+        let archive = store.blobs.archiveURL(jobID: sourceID.rawValue)
+        guard FileManager.default.fileExists(atPath: archive.path) else {
+            try await store.appendEvent(
+                jobID: sourceID,
+                level: .warning,
+                message: "architecture_index_failed"
+            )
+            return
+        }
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("meister-reindex-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+        try ArchiveUnpacker().unpack(archive: archive, into: temp)
+        try await indexer.run(workspace: Workspace(root: temp), jobID: sourceID)
+    }
+
+    private func workspaceHasTree(_ root: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: root.path) else { return false }
+        let items = (try? fm.contentsOfDirectory(atPath: root.path)) ?? []
+        return items.contains { $0 != ".meister" && $0 != "job" && $0 != "corpus" }
     }
 
     private func fallbackRefs(items: [CorpusItem], spec: MineJobSpec) -> [String] {

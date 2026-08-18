@@ -14,7 +14,8 @@ func configure(
     allowRemote: Bool? = nil,
     docker: (any DockerExecuting)? = nil,
     startQueue: Bool = true,
-    skipAgent: Bool? = nil
+    skipAgent: Bool? = nil,
+    embedder: (any EmbeddingClient)? = nil
 ) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
@@ -45,13 +46,19 @@ func configure(
             if !skip { throw error }
         }
     }
+    let resolvedEmbedder = embedder ?? EmbeddingClientFactory.fromEnvironment(
+        model: config.embeddings.model,
+        dimensions: config.embeddings.dimensions
+    )
+    app.meisterEmbedder = resolvedEmbedder
     let runtime = JobRuntime(
         store: app.meisterStore,
         config: config,
         logger: app.logger,
         docker: app.meisterDocker,
         skipAgent: skip,
-        workingDirectory: app.directory.workingDirectory
+        workingDirectory: app.directory.workingDirectory,
+        embedder: resolvedEmbedder
     )
     app.meisterJobs = runtime
     app.lifecycle.use(JobRuntimeLifecycle())
@@ -125,6 +132,14 @@ private struct MeisterStoreKey: StorageKey {
     typealias Value = Store
 }
 
+private struct MeisterEmbedderBox: Sendable {
+    var client: (any EmbeddingClient)?
+}
+
+private struct MeisterEmbedderKey: StorageKey {
+    typealias Value = MeisterEmbedderBox
+}
+
 extension Application {
     var meisterStore: Store {
         get {
@@ -134,5 +149,10 @@ extension Application {
             return value
         }
         set { storage[MeisterStoreKey.self] = newValue }
+    }
+
+    var meisterEmbedder: (any EmbeddingClient)? {
+        get { storage[MeisterEmbedderKey.self]?.client }
+        set { storage[MeisterEmbedderKey.self] = MeisterEmbedderBox(client: newValue) }
     }
 }

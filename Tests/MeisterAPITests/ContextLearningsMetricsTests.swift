@@ -7,6 +7,16 @@ import VaporTesting
 @Suite
 struct ContextLearningsMetricsTests {
     @Test
+    func embeddingTargetStripsOpenAIPrefix() {
+        let target = EmbeddingClientFactory.resolveTarget(
+            model: "openai/text-embedding-3-small",
+            environment: ["OPENAI_API_KEY": "sk-test"]
+        )
+        #expect(target?.model == "text-embedding-3-small")
+        #expect(target?.endpoint == EmbeddingClientFactory.openAIEndpoint)
+    }
+
+    @Test
     func metricsReportsQueueDepth() async throws {
         try await withMeisterApp { app in
             let now = Date()
@@ -29,6 +39,11 @@ struct ContextLearningsMetricsTests {
                 #expect(res.body.string.contains("meister_queue_depth 1"))
                 #expect(res.body.string.contains("meister_archive_bytes 42"))
             }
+            #expect(MetricsRoute.isLoopbackAddress(nil))
+            #expect(MetricsRoute.isLoopbackAddress("127.0.0.1"))
+            #expect(MetricsRoute.isLoopbackAddress("::1"))
+            #expect(MetricsRoute.isLoopbackAddress("::ffff:127.0.0.1"))
+            #expect(!MetricsRoute.isLoopbackAddress("8.8.8.8"))
         }
     }
 

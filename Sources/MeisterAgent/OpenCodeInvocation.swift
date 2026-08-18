@@ -115,6 +115,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public static func minerFilePaths(workspace: Workspace) -> [String] {
         let candidates = [
             ".meister/prompt.md",
+            ".meister/architecture-draft.md",
             ".meister/findings.json",
             "job/findings.json",
             "job/feedback.json",

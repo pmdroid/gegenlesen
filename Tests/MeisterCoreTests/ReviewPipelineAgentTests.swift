@@ -20,6 +20,11 @@ struct ReviewPipelineAgentTests {
                 #expect(after.containerNameA == nil)
                 let findings = try await store.findings(jobID: job.id)
                 #expect(!findings.contains { $0.phase == .agent })
+                let context = store.blobs.workspaceURL(jobID: job.id.rawValue)
+                    .appendingPathComponent(".meister/context.md")
+                #expect(FileManager.default.fileExists(atPath: context.path))
+                let text = try String(contentsOf: context, encoding: .utf8)
+                #expect(text.contains("Project context"))
             }
         }
     }

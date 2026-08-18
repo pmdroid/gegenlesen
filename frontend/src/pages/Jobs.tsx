@@ -180,7 +180,7 @@ export function JobsPage() {
         <ContextRail />
         <h3>Learnings inbox</h3>
         <InboxRail />
-        <div className="neverapply">nothing auto-applies — accept writes, dismiss deletes</div>
+        <div className="neverapply">nothing auto-applies — accept writes, dismiss hides</div>
       </aside>
     </div>
   );

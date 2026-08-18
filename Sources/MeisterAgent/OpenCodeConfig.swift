@@ -11,6 +11,7 @@ public enum OpenCodeConfig: Sendable {
         ".meister/findings-model_b.json",
         ".meister/judge.json",
         ".meister/mined-rules.json",
+        ".meister/architecture-draft.md",
         ".meister/transcript.json",
     ]
 
@@ -38,6 +39,7 @@ public enum OpenCodeConfig: Sendable {
                 ".meister/findings-model_b.json": "allow",
                 ".meister/judge.json": "allow",
                 ".meister/mined-rules.json": "allow",
+                ".meister/architecture-draft.md": "allow",
                 ".meister/transcript.json": "allow",
             ],
             "bash": [

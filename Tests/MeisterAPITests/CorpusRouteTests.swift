@@ -129,6 +129,16 @@ struct CorpusRouteTests {
                 judgeModelID: "j"
             )
             try await app.meisterStore.insertJob(job)
+            let workspace = app.meisterStore.blobs.workspaceURL(jobID: job.id.rawValue)
+            try FileManager.default.createDirectory(
+                at: workspace.appendingPathComponent("Sources", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try "print(1)\n".write(
+                to: workspace.appendingPathComponent("Sources/A.swift"),
+                atomically: true,
+                encoding: .utf8
+            )
             try await app.meisterStore.insertFindings(
                 [
                     FindingDraft(
@@ -162,6 +172,13 @@ struct CorpusRouteTests {
                 #expect(rules.contains { ($0["title"] as? String) == "Learn unique finding title" })
                 let match = rules.first { ($0["title"] as? String) == "Learn unique finding title" }
                 #expect(match?["enabled"] as? Bool == false)
+            }
+            try await app.testing().test(.GET, "/api/learnings?status=pending") { response async throws in
+                let items = try #require(try jsonObject(response)["learnings"] as? [[String: Any]])
+                let kinds = Set(items.compactMap { $0["kind"] as? String })
+                #expect(kinds.contains("rule"))
+                #expect(kinds.contains("architecture"))
+                #expect(kinds.contains("context"))
             }
         }
     }

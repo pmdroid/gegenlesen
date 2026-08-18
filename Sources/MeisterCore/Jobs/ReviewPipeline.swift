@@ -10,7 +10,10 @@ public struct ReviewPipeline: Sendable {
     public var judge: (any JudgeRunning)?
     public var ruleTokenBudget: Int
     public var retrieveK: Int
+    public var maxChunks: Int
     public var embedder: (any EmbeddingClient)?
+    public var miner: (any MinerRunning)?
+    public var minerModel: String
 
     public init(
         store: Store,
@@ -22,7 +25,10 @@ public struct ReviewPipeline: Sendable {
         judge: (any JudgeRunning)? = nil,
         ruleTokenBudget: Int = 6000,
         retrieveK: Int = 12,
-        embedder: (any EmbeddingClient)? = nil
+        maxChunks: Int = 20_000,
+        embedder: (any EmbeddingClient)? = nil,
+        miner: (any MinerRunning)? = nil,
+        minerModel: String = "anthropic/claude-sonnet-4-5"
     ) {
         self.store = store
         self.skipAgent = skipAgent
@@ -33,7 +39,10 @@ public struct ReviewPipeline: Sendable {
         self.judge = judge
         self.ruleTokenBudget = ruleTokenBudget
         self.retrieveK = retrieveK
+        self.maxChunks = maxChunks
         self.embedder = embedder
+        self.miner = miner ?? (reviewer as? any MinerRunning)
+        self.minerModel = minerModel
     }
 
     public func run(jobID: JobID) async throws {
@@ -142,11 +151,19 @@ public struct ReviewPipeline: Sendable {
         let files = try await store.jobFiles(id: jobID)
         let workspace = Workspace(root: workspaceURL)
         do {
-            try await ArchitectureIndexJob(
+            let indexer = ArchitectureIndexJob(
                 store: store,
                 embedder: embedder,
-                skipAgent: skipAgent
-            ).run(workspace: workspace, jobID: jobID)
+                maxChunks: maxChunks,
+                skipAgent: skipAgent,
+                miner: miner,
+                model: minerModel,
+                onWarning: { [store, jobID] message in
+                    try? await store.appendEvent(jobID: jobID, level: .warning, message: message)
+                }
+            )
+            try await indexer.run(workspace: workspace, jobID: jobID)
+            try await indexer.embedEnabledRules(try await store.listRules(RuleListFilter(enabled: true)))
         } catch {
             try await store.appendEvent(
                 jobID: jobID,
@@ -554,7 +571,22 @@ public struct ReviewPipeline: Sendable {
                 }
             }
         }
-        try ContextPack.write(workspace: workspace, notes: notes, hits: hits)
+        let visibleNotes = notes.filter { note in
+            noteApplies(note, to: files.map(\.path))
+        }
+        let visibleHits = hits.filter { hit in
+            if hit.chunk.kind == .file { return true }
+            guard let note = notes.first(where: { $0.id == hit.chunk.ref }) else { return true }
+            return noteApplies(note, to: files.map(\.path))
+        }
+        try ContextPack.write(workspace: workspace, notes: visibleNotes, hits: visibleHits)
+    }
+
+    private func noteApplies(_ note: ContextNote, to paths: [String]) -> Bool {
+        if note.alwaysInclude { return true }
+        if note.pathGlobs.isEmpty { return true }
+        let matcher = PathGlob(note.pathGlobs)
+        return paths.contains { matcher.matches($0) }
     }
 
     private func loadPatchText(jobID: JobID, workspace: Workspace) -> Data? {

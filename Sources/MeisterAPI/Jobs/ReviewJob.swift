@@ -46,7 +46,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         logger: Logger,
         docker: any DockerExecuting,
         skipAgent: Bool,
-        workingDirectory: String
+        workingDirectory: String,
+        embedder: (any EmbeddingClient)?
     ) {
         let memory = MemoryQueue()
         var service = JobService(
@@ -106,10 +107,18 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     judge: invocation,
                     ruleTokenBudget: config.limits.ruleTokenBudget,
                     retrieveK: config.embeddings.retrieveK,
-                    embedder: EmbeddingClientFactory.fromEnvironment(
-                        model: config.embeddings.model,
-                        dimensions: config.embeddings.dimensions
-                    )
+                    maxChunks: config.embeddings.maxChunks,
+                    embedder: embedder,
+                    miner: skipAgent ? nil : OpenCodeInvocation(
+                        docker: docker,
+                        http: OpenCodeHTTPClient(),
+                        image: config.opencodeImage,
+                        runnerConfig: runnerConfig,
+                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                        providerEnv: providerEnv,
+                        schemasDirectory: schemasDirectory
+                    ),
+                    minerModel: config.judgeModel
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)
@@ -142,7 +151,9 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             try? data.write(to: url, options: .atomic)
                         }
                     ),
-                    model: config.judgeModel
+                    model: config.judgeModel,
+                    embedder: embedder,
+                    maxChunks: config.embeddings.maxChunks
                 ).run(jobID: params.corpusJobID, spec: params.spec)
             } catch {
                 _ = await handles.remove(params.corpusJobID)

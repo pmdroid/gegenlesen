@@ -72,14 +72,9 @@ enum ContextRoute {
     }
 
     private static func reembed(_ note: ContextNote, on req: Request) async {
-        let config = req.application.meisterConfig
-        let embedder = EmbeddingClientFactory.fromEnvironment(
-            model: config.embeddings.model,
-            dimensions: config.embeddings.dimensions
-        )
         try? await ArchitectureIndexJob(
             store: req.application.meisterStore,
-            embedder: embedder
+            embedder: req.application.meisterEmbedder
         ).embedNote(note)
     }
 

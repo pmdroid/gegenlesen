@@ -41,20 +41,55 @@ struct EmbeddingRetrieveTests {
                 alwaysInclude: true
             )
             let alwaysChunk = ContextChunk(
-                id: "always",
+                id: "always-0",
                 kind: .user,
                 ref: note.id,
-                text: note.body,
+                ordinal: 0,
+                text: "part one",
                 embedding: EmbeddingVector.encode([0, 0, 1]),
                 contentSHA256: "cc"
             )
+            let alwaysChunk2 = ContextChunk(
+                id: "always-1",
+                kind: .user,
+                ref: note.id,
+                ordinal: 1,
+                text: "part two",
+                embedding: EmbeddingVector.encode([0, 0, 1]),
+                contentSHA256: "dd"
+            )
             try await store.insertContextNote(note)
-            try await store.upsertChunks([near, far, alwaysChunk])
+            try await store.upsertChunks([near, far, alwaysChunk, alwaysChunk2])
 
             let hits = try await store.retrieveChunks(query: [1, 0, 0], k: 1)
             #expect(hits.first?.chunk.id == "near")
-            #expect(hits.contains { $0.chunk.id == "always" })
+            #expect(hits.contains { $0.chunk.id == "always-0" })
+            #expect(hits.contains { $0.chunk.id == "always-1" })
             #expect(!hits.contains { $0.chunk.id == "far" })
+        }
+    }
+
+    @Test
+    func incrementalIndexSkipsUnchangedSHA() async throws {
+        try await withTempDir("arch-incr") { root in
+            try writeFile("Sources/App/Main.swift", "print(\"hi\")\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                let embedder = CountingEmbedder()
+                let job = ArchitectureIndexJob(
+                    store: store,
+                    embedder: embedder,
+                    skipAgent: true
+                )
+                _ = try await job.run(workspace: Workspace(root: root), jobID: nil)
+                let first = embedder.callCount
+                #expect(first >= 1)
+                _ = try await job.run(workspace: Workspace(root: root), jobID: nil)
+                let second = embedder.callCount
+                #expect(second == first)
+                let pending = try await store.listLearnings(status: .pending, kind: .architecture)
+                #expect(pending.count == 1)
+            }
         }
     }
 
@@ -77,5 +112,16 @@ struct EmbeddingRetrieveTests {
                 #expect(packed.contains("Project context"))
             }
         }
+    }
+}
+
+final class CountingEmbedder: EmbeddingClient, @unchecked Sendable {
+    let model = "hash"
+    let dimensions = 16
+    nonisolated(unsafe) private(set) var callCount = 0
+
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        callCount += 1
+        return texts.map { EmbeddingVector.hashEmbedding($0, dimensions: dimensions) }
     }
 }

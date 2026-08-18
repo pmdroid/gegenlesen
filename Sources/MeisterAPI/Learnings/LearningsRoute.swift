@@ -39,7 +39,7 @@ enum LearningsRoute {
         }
         switch item.kind {
         case .rule:
-            try await acceptRule(item, store: req.application.meisterStore)
+            try await acceptRule(item, on: req)
         case .architecture:
             try await acceptArchitecture(item, on: req)
         case .context:
@@ -62,7 +62,8 @@ enum LearningsRoute {
         return LearningDTO(learning: item)
     }
 
-    private static func acceptRule(_ item: Learning, store: Store) async throws {
+    private static func acceptRule(_ item: Learning, on req: Request) async throws {
+        let store = req.application.meisterStore
         if let ruleID = payloadString(item.payloadJSON, key: "rule_id") {
             let id = RuleID(ruleID)
             if let existing = try await store.rule(id: id), existing.deletedAt == nil {
@@ -90,6 +91,7 @@ enum LearningsRoute {
                         unique.id = RuleID(existing.id.rawValue + "-hw")
                     }
                     try await store.insertRule(unique)
+                    await embedRule(unique, on: req)
                 }
                 return
             }
@@ -109,7 +111,17 @@ enum LearningsRoute {
             createdAt: now,
             updatedAt: now
         )
-        try await MinerDedup.upsert(rule, into: store, now: now)
+        _ = try await MinerDedup.upsert(rule, into: store, now: now)
+        if let stored = try await store.rule(id: rule.id) {
+            await embedRule(stored, on: req)
+        }
+    }
+
+    private static func embedRule(_ rule: Rule, on req: Request) async {
+        try? await ArchitectureIndexJob(
+            store: req.application.meisterStore,
+            embedder: req.application.meisterEmbedder
+        ).embedRule(rule)
     }
 
     private static func acceptArchitecture(_ item: Learning, on req: Request) async throws {
@@ -141,14 +153,9 @@ enum LearningsRoute {
     }
 
     private static func reembed(_ note: ContextNote, on req: Request) async {
-        let config = req.application.meisterConfig
-        let embedder = EmbeddingClientFactory.fromEnvironment(
-            model: config.embeddings.model,
-            dimensions: config.embeddings.dimensions
-        )
         try? await ArchitectureIndexJob(
             store: req.application.meisterStore,
-            embedder: embedder
+            embedder: req.application.meisterEmbedder
         ).embedNote(note)
     }
 
@@ -177,7 +184,7 @@ enum MetricsRoute {
 
     static func metrics(_ req: Request) async throws -> Response {
         if !isLoopback(req) {
-            throw Abort(.forbidden)
+            throw APIError.forbidden("metrics are localhost-only")
         }
         let snap = try await req.application.meisterStore.metricsSnapshot()
         var lines: [String] = [
@@ -227,9 +234,19 @@ enum MetricsRoute {
         return Response(status: .ok, headers: headers, body: .init(string: lines.joined(separator: "\n")))
     }
 
+    static func isLoopbackAddress(_ address: String?) -> Bool {
+        guard let address else { return true }
+        if address == "127.0.0.1" || address == "::1" || address == "0:0:0:0:0:0:0:1" {
+            return true
+        }
+        if address == "::ffff:127.0.0.1" || address.hasPrefix("::ffff:127.") {
+            return true
+        }
+        return false
+    }
+
     private static func isLoopback(_ req: Request) -> Bool {
-        guard let address = req.remoteAddress?.ipAddress else { return true }
-        return address == "127.0.0.1" || address == "::1" || address == "0:0:0:0:0:0:0:1"
+        isLoopbackAddress(req.remoteAddress?.ipAddress)
     }
 
     private static func format(_ value: Double) -> String {
