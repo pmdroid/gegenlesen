@@ -34,6 +34,7 @@ struct HealthTests {
                 let settings = try res.content.decode(SettingsDTO.self)
                 #expect(settings == MeisterConfig.example.settingsDTO)
                 #expect(!res.body.string.contains("API_KEY"))
+                #expect(!res.body.string.contains("data_dir"))
             }
         }
     }
