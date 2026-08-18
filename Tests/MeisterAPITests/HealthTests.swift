@@ -8,9 +8,10 @@ struct HealthTests {
     @Test
     func health() async throws {
         try await withMeisterApp { app in
-            try await app.testing().test(.GET, "/api/health") { res async in
+            try await app.testing().test(.GET, "/api/health") { res async throws in
                 #expect(res.status == .ok)
-                #expect(res.body.string == #"{"ok":true,"version":"0.1.0"}"#)
+                let body = try res.content.decode(HealthDTO.self)
+                #expect(body == HealthDTO(ok: true, version: "0.1.0"))
             }
         }
     }
@@ -32,13 +33,8 @@ struct HealthTests {
         try await withApp { app in
             var config = MeisterConfig.example
             config.bind = "0.0.0.0"
-            do {
-                try await configure(app, config: config)
-                if !BindPolicy.allowRemoteFromEnvironment() {
-                    Issue.record("configure should refuse 0.0.0.0")
-                }
-            } catch is BindRefused {
-                // expected when MEISTER_ALLOW_REMOTE is not 1
+            await #expect(throws: BindRefused.remote("0.0.0.0")) {
+                try await configure(app, config: config, allowRemote: false)
             }
         }
     }
@@ -57,6 +53,10 @@ struct HealthTests {
         defer { try? fm.removeItem(at: tmp) }
 
         try await withMeisterApp(workingDirectory: tmp.path) { app in
+            try await app.testing().test(.GET, "/") { res async in
+                #expect(res.status == .ok)
+                #expect(res.body.string.contains("ledger"))
+            }
             try await app.testing().test(.GET, "/jobs/demo") { res async in
                 #expect(res.status == .ok)
                 #expect(res.body.string.contains("ledger"))

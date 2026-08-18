@@ -6,10 +6,14 @@ func configure(_ app: Application) async throws {
     try await configure(app, config: config)
 }
 
-func configure(_ app: Application, config: MeisterConfig) async throws {
+func configure(
+    _ app: Application,
+    config: MeisterConfig,
+    allowRemote: Bool? = nil
+) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
-        allowRemote: BindPolicy.allowRemoteFromEnvironment()
+        allowRemote: allowRemote ?? BindPolicy.allowRemoteFromEnvironment()
     )
 
     app.meisterConfig = config
@@ -23,7 +27,9 @@ func configure(_ app: Application, config: MeisterConfig) async throws {
 
     let publicDirectory = spaPublicDirectory(workingDirectory: app.directory.workingDirectory)
     if FileManager.default.fileExists(atPath: publicDirectory) {
-        app.middleware.use(FileMiddleware(publicDirectory: publicDirectory))
+        app.middleware.use(
+            FileMiddleware(publicDirectory: publicDirectory, defaultFile: "index.html")
+        )
     }
 
     app.get("api", "health") { _ in
@@ -34,17 +40,23 @@ func configure(_ app: Application, config: MeisterConfig) async throws {
         req.application.meisterConfig.settingsDTO
     }
 
-    // Client routes like /jobs/:id are not files; serve the SPA shell.
-    app.get("**") { req async throws -> Response in
-        if req.url.path == "/api" || req.url.path.hasPrefix("/api/") {
-            throw Abort(.notFound)
-        }
-        let index = publicDirectory + "index.html"
-        guard FileManager.default.fileExists(atPath: index) else {
-            throw Abort(.notFound)
-        }
-        return try await req.fileio.asyncStreamFile(at: index)
+    // RoutingKit does not match `/` against a lone `**`, so register the empty path too.
+    let spa: @Sendable (Request) async throws -> Response = { req in
+        try await serveSPAIndex(req, publicDirectory: publicDirectory)
     }
+    app.get(use: spa)
+    app.get("**", use: spa)
+}
+
+func serveSPAIndex(_ req: Request, publicDirectory: String) async throws -> Response {
+    if req.url.path == "/api" || req.url.path.hasPrefix("/api/") {
+        throw Abort(.notFound)
+    }
+    let index = publicDirectory + "index.html"
+    guard FileManager.default.fileExists(atPath: index) else {
+        throw Abort(.notFound)
+    }
+    return try await req.fileio.asyncStreamFile(at: index)
 }
 
 func spaPublicDirectory(workingDirectory: String) -> String {
