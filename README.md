@@ -153,6 +153,7 @@ gegenlesen/
   Sources/CLibArchive/         # safe extract
   frontend/                    # React + Vite + TypeScript
   rules/                       # seed handwritten rules
+  Dockerfile                   # API + Ledger
   docker/opencode-runner/      # image that contains opencode
   scripts/pack-repo.sh         # preferred upload producer
   config/gegenlesen.example.json
@@ -174,7 +175,10 @@ make run                            # scripts/dev.sh; API :8080 + Vite
 ./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
 cd frontend && npm run dev
 scripts/build-runner.sh             # gegenlesen/opencode-runner:0.1.0
+make image                          # API + Ledger image, ghcr.io/pmdroid/gegenlesen:local
 make docs                           # Astro site on :4321
 ```
+
+Linux can run the GHCR image instead of `make run`. See [gegenlesen.dev/docs/docker](https://gegenlesen.dev/docs/docker). CI builds `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner` from `main` and from `v*` tags.
 
 `make clean` if you already mixed toolchains (`rm -rf .build`).

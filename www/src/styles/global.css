@@ -31,14 +31,32 @@ img { max-width: 100%; height: auto; }
   display: flex; align-items: center; gap: 18px;
   width: min(1040px, calc(100% - 2.4rem));
 }
-.brand { color: #e8f5e9; font-weight: 700; letter-spacing: 0.1em; }
-nav { display: flex; gap: 16px; }
-nav a { color: #557a58; }
-nav a.on, nav a:hover { color: #a5d6a7; }
-nav a.on { border-bottom: 1px solid #a5d6a7; }
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  color: #e8f5e9; font-weight: 700; letter-spacing: 0.1em;
+}
+.brand img {
+  height: 28px; width: auto;
+  mix-blend-mode: lighten;
+}
+.topbar nav { display: flex; gap: 16px; }
+.topbar nav a { color: #557a58; }
+.topbar nav a.on, .topbar nav a:hover { color: #a5d6a7; }
+.topbar nav a.on { border-bottom: 1px solid #a5d6a7; }
 .srv { margin-left: auto; color: #557a58; }
 
-.hero { padding: 4.2rem 0 2.6rem; max-width: 40rem; }
+.hero {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 2.4rem;
+  align-items: center;
+  padding: 4.2rem 0 2.6rem;
+}
+.hero-mark {
+  width: min(460px, 100%);
+  justify-self: center;
+  mix-blend-mode: lighten;
+}
 .kicker {
   color: #81c784;
   font-size: 12px;
@@ -124,7 +142,7 @@ nav a.on { border-bottom: 1px solid #a5d6a7; }
 
 .doc-shell {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: 3rem;
   flex: 1;
   width: min(1040px, calc(100% - 2.4rem));
@@ -132,7 +150,14 @@ nav a.on { border-bottom: 1px solid #a5d6a7; }
   padding: 2.4rem 0 4rem;
   align-items: start;
 }
-.side { position: sticky; top: 58px; padding-top: 4px; }
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 58px;
+  padding-top: 4px;
+}
 .side a {
   display: block;
   color: #557a58;
@@ -195,7 +220,8 @@ nav a.on { border-bottom: 1px solid #a5d6a7; }
 }
 
 @media (max-width: 860px) {
-  .pipeline, .grid, .doc-shell { grid-template-columns: 1fr; }
+  .pipeline, .grid, .doc-shell, .hero { grid-template-columns: 1fr; }
   .hero { padding-top: 2.4rem; }
+  .hero-mark { order: -1; width: min(320px, 100%); }
   .side { position: static; padding-bottom: 8px; border-bottom: 1px solid #1e2b1a; margin-bottom: 8px; }
 }

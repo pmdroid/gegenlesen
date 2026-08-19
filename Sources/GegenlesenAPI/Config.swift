@@ -324,6 +324,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_JUDGE_MODEL"], !value.isEmpty {
             next.judgeModel = value
         }
+        if let value = environment["GEGENLESEN_OPENCODE_IMAGE"], !value.isEmpty {
+            next.opencodeImage = value
+        }
         if let value = environment["GEGENLESEN_EMBEDDING_MODEL"], !value.isEmpty {
             next.embeddings.model = value
         }

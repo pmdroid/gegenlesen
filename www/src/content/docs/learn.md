@@ -1,7 +1,7 @@
 ---
 title: Learn
 description: How thumbs, comments, and the miner become suggested rules.
-order: 4
+order: 5
 ---
 
 Learn is not part of the review path. A review can write an architecture draft. It does not invent rules from findings.

@@ -1,0 +1,17 @@
+.git
+.github
+.build
+.swiftpm
+.var
+var
+www
+docs
+Tests
+/README.md
+frontend/node_modules
+frontend/dist
+frontend/.vite
+frontend/.env
+config/gegenlesen.json
+config/meister.json
+**/.DS_Store

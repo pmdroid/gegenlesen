@@ -1,7 +1,7 @@
 ---
 title: How a review works
 description: Pack, identify, deterministic checks, two reviewers, one judge.
-order: 2
+order: 3
 ---
 
 ```

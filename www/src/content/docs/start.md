@@ -21,6 +21,8 @@ To start only the API:
 ./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
 ```
 
+Linux can run the published image instead. See [Docker](/docs/docker).
+
 ## Start a review
 
 From the repo you want read:

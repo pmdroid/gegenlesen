@@ -1,0 +1,14 @@
+# Linux. --network host shares 127.0.0.1 with OpenCode loopback publishes.
+# DATA must be the same path on the host and in the container so runner binds work.
+services:
+  gegenlesen:
+    image: ghcr.io/pmdroid/gegenlesen:main
+    build: .
+    network_mode: host
+    environment:
+      GEGENLESEN_DATA_DIR: ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}
+      GEGENLESEN_OPENCODE_IMAGE: ${GEGENLESEN_OPENCODE_IMAGE:-ghcr.io/pmdroid/gegenlesen/runner:main}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}:${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}
+      - ${GEGENLESEN_CONFIG_DIR:-./config}:/app/config

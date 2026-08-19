@@ -1,4 +1,4 @@
-.PHONY: build test run docs clean
+.PHONY: build test run docs image clean
 
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
 
@@ -13,6 +13,9 @@ run:
 
 docs:
 	cd www && npm run dev -- --host 0.0.0.0 --port 4321
+
+image:
+	./scripts/build-image.sh
 
 clean:
 	rm -rf .build

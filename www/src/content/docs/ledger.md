@@ -1,7 +1,7 @@
 ---
 title: Ledger
 description: The admin UI. Jobs, findings, rules, context, learnings.
-order: 3
+order: 4
 ---
 
 Ledger is the React app under `frontend/`. It talks to `/api` on the same origin in Vite (proxied to `:8080`).
