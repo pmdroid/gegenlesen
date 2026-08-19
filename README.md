@@ -159,15 +159,18 @@ meister/
 
 ## Run
 
-Use the Xcode toolchain (`Command Line Tools` cannot import Swift Testing / XCTest, and mixing toolchains poisons `.build`).
+Use Xcode’s Swift, not `/usr/bin/swift` from Command Line Tools. Mixing them produces:
+
+`module compiled with Swift 6.3 cannot be imported by the Swift 6.2.3 compiler`
 
 ```bash
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 export OPENROUTER_API_KEY=…         # both reviewers + judge; no Anthropic key
-swift build
-scripts/dev.sh                      # API :8080 + Vite; creates meister-egress
+make build                          # or: ./scripts/swift build
+make run                            # scripts/dev.sh; API :8080 + Vite
 # or:
-swift run MeisterAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
-cd frontend && npm run dev          # proxies /api → :8080
+./scripts/swift run MeisterAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
+cd frontend && npm run dev
 scripts/build-runner.sh             # meister/opencode-runner:0.1.0
 ```
+
+`make clean` if you already mixed toolchains (`rm -rf .build`).
