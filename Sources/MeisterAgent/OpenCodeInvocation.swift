@@ -43,6 +43,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         self.transcriptWriter = transcriptWriter
     }
 
+    /// Writable spots on a `--read-only` root. OpenCode writes `~/.cache/opencode/version`.
+    static let homeTmpfs = [
+        "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m",
+        "/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m",
+        "/home/meister/.cache:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
+        "/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
+    ]
+
     public func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
         let jobID = request.job.id
         let nameA = Self.containerName(jobID: jobID, slot: .modelA)
@@ -293,6 +301,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let permission = try OpenCodeConfig.permissionJSON()
         var env: [String: String] = [
             "HOME": "/home/meister",
+            "XDG_CACHE_HOME": "/home/meister/.cache",
             "OPENCODE_DISABLE_AUTOUPDATE": "true",
             "OPENCODE_AUTO_SHARE": "false",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
@@ -330,11 +339,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             publishLoopback: fallbackRun ? nil : (hostPort, 4096),
             user: "1000:1000",
             readOnly: true,
-            tmpfs: [
-                "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m",
-                "/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m",
-                "/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
-            ],
+            tmpfs: Self.homeTmpfs,
             binds: [
                 .init(source: workspace.path, dest: "/workspace", readOnly: false),
                 .init(source: runnerConfig.path, dest: "/home/meister/.config/opencode", readOnly: true),
@@ -370,6 +375,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let permission = try OpenCodeConfig.permissionJSON()
         var env: [String: String] = [
             "HOME": "/home/meister",
+            "XDG_CACHE_HOME": "/home/meister/.cache",
             "OPENCODE_DISABLE_AUTOUPDATE": "true",
             "OPENCODE_AUTO_SHARE": "false",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
@@ -407,11 +413,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             publishLoopback: fallbackRun ? nil : (hostPort, 4096),
             user: "1000:1000",
             readOnly: true,
-            tmpfs: [
-                "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m",
-                "/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m",
-                "/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
-            ],
+            tmpfs: Self.homeTmpfs,
             binds: [
                 .init(source: workspace.path, dest: "/workspace", readOnly: false),
                 .init(source: runnerConfig.path, dest: "/home/meister/.config/opencode", readOnly: true),
