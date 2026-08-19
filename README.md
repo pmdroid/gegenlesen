@@ -185,3 +185,7 @@ Open `http://127.0.0.1:8080`, then `gegenlesen review` from the repo you want re
 From source (Mac / Xcode Swift): `scripts/build-runner.sh` then `make run`. Mixing Xcode’s Swift with `/usr/bin/swift` produces a module version error. `make clean` if you already mixed toolchains.
 
 CI builds `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner` from `main` and from `v*` tags.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
