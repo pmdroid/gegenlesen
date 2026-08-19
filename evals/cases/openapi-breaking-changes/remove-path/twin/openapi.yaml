@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info:
+  title: demo
+  version: 1.0.0
+  description: docs only
+paths:
+  /pets:
+    get:
+      responses:
+        "200":
+          description: ok
+  /users:
+    get:
+      responses:
+        "200":
+          description: ok

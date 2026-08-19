@@ -6,7 +6,7 @@ struct Gegenlesen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gegenlesen",
         abstract: "Pack a repo and start a gegenlesen review",
-        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self]
+        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self, Eval.self]
     )
 }
 

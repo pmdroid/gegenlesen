@@ -1,0 +1,10 @@
+rule_id: openapi-breaking-changes
+layer: rules
+must_find: true
+file_path: openapi.yaml
+start_line: 1
+end_line: 20
+tolerance: 20
+min_severity: error
+ci: false
+skip_reason: openapi_break checker is a stub; turn ci on when oasdiff findings land

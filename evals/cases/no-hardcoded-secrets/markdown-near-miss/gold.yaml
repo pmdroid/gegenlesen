@@ -1,0 +1,4 @@
+rule_id: no-hardcoded-secrets
+layer: rules
+must_find: false
+ci: true
