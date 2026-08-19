@@ -9,9 +9,11 @@ export default defineConfig({
 			description:
 				'Two reviewers, house rules, a conservative judge. The CLI starts a review. Ledger is the admin UI.',
 			logo: {
-				src: './src/assets/mark.svg',
+				src: './src/assets/logo.webp',
 				alt: 'Gegenlesen',
+				replacesTitle: true,
 			},
+			favicon: '/favicon.png',
 			social: [
 				{
 					icon: 'github',

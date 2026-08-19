@@ -36,8 +36,29 @@
 	--sl-color-bg-sidebar: #1a1612;
 }
 
+.site-title img {
+	height: 2.75rem;
+	width: auto;
+	border-radius: 0.35rem;
+}
+
 .hero {
 	padding-block: 3rem;
+}
+
+.hero img {
+	max-width: min(28rem, 100%);
+	height: auto;
+	filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.45));
+}
+
+.hero h1[data-page-title] {
+	/* Wordmark is in the badge. Keep the heading for the document title. */
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
 }
 
 .hero .tagline {

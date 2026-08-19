@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Gegenlesen" width="420" />
+</p>
+
 # Gegenlesen
 
 Single-tenant PR review. The **CLI** starts a review (`gegenlesen review`). The **web UI** is management only: jobs, findings + 👍/👎, rules, context, learnings. Reviewers run in Docker; a judge drops unsupported findings.
