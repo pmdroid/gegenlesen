@@ -1,0 +1,10 @@
+rule_id: use-project-logger
+layer: agent
+must_find: true
+file_path: Sources/App.swift
+start_line: 6
+end_line: 6
+tolerance: 2
+min_severity: warning
+ci: false
+skip_reason: semantic rule; scored on live nightly only

@@ -1,4 +1,4 @@
-.PHONY: build test run docs image clean
+.PHONY: build test eval run docs image clean
 
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
 
@@ -7,6 +7,9 @@ build:
 
 test:
 	./scripts/swift test
+
+eval:
+	./scripts/swift run gegenlesen eval
 
 run:
 	./scripts/dev.sh
