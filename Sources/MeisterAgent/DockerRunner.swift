@@ -21,10 +21,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: dockerPath)
         process.arguments = request.dockerCLIArguments()
-        var environment: [String: String] = [
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "HOME": NSTemporaryDirectory(),
-        ]
+        var environment = Self.dockerCLIEnvironment()
         for key in request.passThroughEnv {
             if let value = request.env[key], !value.isEmpty {
                 environment[key] = value
@@ -63,27 +60,19 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         }
 
         let deadline = ContinuousClock.now + request.timeout
-        let once = ResumeOnce()
-        let watchdog = Task {
-            try await Task.sleep(until: deadline, clock: .continuous)
-            Self.killSync(dockerPath: dockerPath, name: name)
-            process.terminate()
+        do {
+            try process.run()
+        } catch {
+            return DockerResult(exitCode: 127, stderr: Data(String(describing: error).utf8))
         }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            process.terminationHandler = { _ in
-                once.resume { cont.resume() }
+        while process.isRunning {
+            if ContinuousClock.now >= deadline {
+                Self.killSync(dockerPath: dockerPath, name: name)
+                process.terminate()
+                break
             }
-            do {
-                try process.run()
-            } catch {
-                once.resume { cont.resume() }
-                return
-            }
-            if !process.isRunning {
-                once.resume { cont.resume() }
-            }
+            try? await Task.sleep(for: .milliseconds(50))
         }
-        watchdog.cancel()
 
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
@@ -171,14 +160,26 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         _ = try? runDocker(path: dockerPath, arguments: ["rm", "-f", name])
     }
 
+    /// Host docker CLI only. Container env is `-e` on the argv.
+    static func dockerCLIEnvironment() -> [String: String] {
+        let host = ProcessInfo.processInfo.environment
+        var env: [String: String] = [
+            "PATH": host["PATH"] ?? "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "HOME": host["HOME"] ?? NSHomeDirectory(),
+        ]
+        for key in ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "ORBSTACK_HOST"] {
+            if let value = host[key], !value.isEmpty {
+                env[key] = value
+            }
+        }
+        return env
+    }
+
     static func runDocker(path: String, arguments: [String]) throws -> DockerResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
-        process.environment = [
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "HOME": NSTemporaryDirectory(),
-        ]
+        process.environment = Self.dockerCLIEnvironment()
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
@@ -252,19 +253,6 @@ public final class LoopbackPortLease: @unchecked Sendable {
 
     deinit {
         release()
-    }
-}
-
-private final class ResumeOnce: @unchecked Sendable {
-    private let lock = NSLock()
-    private var done = false
-
-    func resume(_ body: () -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !done else { return }
-        done = true
-        body()
     }
 }
 
