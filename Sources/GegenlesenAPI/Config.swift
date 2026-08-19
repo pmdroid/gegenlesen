@@ -140,6 +140,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var opencodeImage: String
     var embeddings: EmbeddingsConfig
     var limits: Limits
+    /// Persisted in config/gegenlesen.json. Never returned by GET /api/settings.
+    var openrouterApiKey: String?
 
     enum CodingKeys: String, CodingKey {
         case bind, port
@@ -149,6 +151,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case opencodeImage = "opencode_image"
         case embeddings
         case limits
+        case openrouterApiKey = "openrouter_api_key"
     }
 
     init(
@@ -159,7 +162,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         judgeModel: String,
         opencodeImage: String,
         embeddings: EmbeddingsConfig = .v1,
-        limits: Limits
+        limits: Limits,
+        openrouterApiKey: String? = nil
     ) {
         self.bind = bind
         self.port = port
@@ -169,6 +173,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.opencodeImage = opencodeImage
         self.embeddings = embeddings
         self.limits = limits
+        self.openrouterApiKey = openrouterApiKey
     }
 
     init(from decoder: Decoder) throws {
@@ -181,6 +186,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
+        openrouterApiKey = try container.decodeIfPresent(String.self, forKey: .openrouterApiKey)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -193,6 +199,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(opencodeImage, forKey: .opencodeImage)
         try container.encode(embeddings, forKey: .embeddings)
         try container.encode(limits, forKey: .limits)
+        if let openrouterApiKey, !openrouterApiKey.isEmpty {
+            try container.encode(openrouterApiKey, forKey: .openrouterApiKey)
+        }
     }
 
     static let example = GegenlesenConfig(
@@ -208,29 +217,89 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         limits: .v1
     )
 
+    struct Loaded: Sendable {
+        var config: GegenlesenConfig
+        /// Writable path. Example JSON is only a template.
+        var fileURL: URL
+    }
+
     static func load(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,
         cwd: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     ) throws -> GegenlesenConfig {
-        let candidates: [URL] = {
+        try loadDetailed(environment: environment, fileManager: fileManager, cwd: cwd).config
+    }
+
+    static func loadDetailed(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        cwd: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    ) throws -> Loaded {
+        let writable = cwd.appendingPathComponent("config/gegenlesen.json")
+        let candidates: [(url: URL, writable: URL)] = {
             if let override = environment["GEGENLESEN_CONFIG"], !override.isEmpty {
-                return [URL(fileURLWithPath: override)]
+                let url = URL(fileURLWithPath: override)
+                return [(url, url)]
             }
             return [
-                cwd.appendingPathComponent("config/gegenlesen.json"),
-                cwd.appendingPathComponent("config/gegenlesen.example.json"),
+                (writable, writable),
+                (cwd.appendingPathComponent("config/gegenlesen.example.json"), writable),
             ]
         }()
 
         var config = example
-        for url in candidates {
-            guard fileManager.fileExists(atPath: url.path) else { continue }
-            let data = try Data(contentsOf: url)
+        var fileURL = writable
+        for candidate in candidates {
+            guard fileManager.fileExists(atPath: candidate.url.path) else { continue }
+            let data = try Data(contentsOf: candidate.url)
             config = try JSONDecoder().decode(GegenlesenConfig.self, from: data)
+            fileURL = candidate.writable
             break
         }
-        return config.applyingEnvironmentOverrides(environment)
+        config = config.applyingEnvironmentOverrides(environment)
+        config.installOpenRouterKeyInProcess(environment: environment)
+        return Loaded(config: config, fileURL: fileURL)
+    }
+
+    func persist(to url: URL, fileManager: FileManager = .default) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(self)
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func installOpenRouterKeyInProcess(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let existing = environment["OPENROUTER_API_KEY"] ?? ""
+        if !existing.isEmpty { return }
+        guard let key = openrouterApiKey, !key.isEmpty else { return }
+        setenv("OPENROUTER_API_KEY", key, 1)
+    }
+
+    func providerEnv(
+        from environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var env: [String: String] = [:]
+        for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
+            if let value = environment[key], !value.isEmpty {
+                env[key] = value
+            }
+        }
+        if env["OPENROUTER_API_KEY"] == nil, let key = openrouterApiKey, !key.isEmpty {
+            env["OPENROUTER_API_KEY"] = key
+        }
+        return env
+    }
+
+    func isOpenRouterConfigured(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        if let key = openrouterApiKey, !key.isEmpty { return true }
+        if let key = environment["OPENROUTER_API_KEY"], !key.isEmpty { return true }
+        return false
     }
 
     func applyingEnvironmentOverrides(
@@ -268,13 +337,20 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     }
 
     var settingsDTO: SettingsDTO {
+        settingsDTO(environment: ProcessInfo.processInfo.environment)
+    }
+
+    func settingsDTO(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SettingsDTO {
         SettingsDTO(
             bind: bind,
             port: port,
             models: models,
             judgeModel: judgeModel,
             opencodeImage: opencodeImage,
-            limits: limits
+            limits: limits,
+            openrouterConfigured: isOpenRouterConfigured(environment: environment)
         )
     }
 }
@@ -291,17 +367,35 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var judgeModel: String
     var opencodeImage: String
     var limits: Limits
+    var openrouterConfigured: Bool
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
         case limits
+        case openrouterConfigured = "openrouter_configured"
+    }
+}
+
+struct SettingsUpdate: Content, Sendable, Equatable {
+    var models: ModelSlots?
+    var judgeModel: String?
+    var openrouterApiKey: String?
+
+    enum CodingKeys: String, CodingKey {
+        case models
+        case judgeModel = "judge_model"
+        case openrouterApiKey = "openrouter_api_key"
     }
 }
 
 private struct GegenlesenConfigKey: StorageKey {
     typealias Value = GegenlesenConfig
+}
+
+private struct GegenlesenConfigFileKey: StorageKey {
+    typealias Value = URL
 }
 
 extension Application {
@@ -313,5 +407,10 @@ extension Application {
             return value
         }
         set { storage[GegenlesenConfigKey.self] = newValue }
+    }
+
+    var gegenlesenConfigFileURL: URL? {
+        get { storage[GegenlesenConfigFileKey.self] }
+        set { storage[GegenlesenConfigFileKey.self] = newValue }
     }
 }

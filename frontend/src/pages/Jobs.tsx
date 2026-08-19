@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
-import { listContextNotes, listJobs, listLearnings, listRules } from "../client";
+import { listContextNotes, listJobs, listLearnings, listRepositories, listRules } from "../client";
+import { repoLabel } from "../scope";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -42,7 +44,7 @@ function InboxRail() {
 function ContextRail() {
   const notes = useQuery({
     queryKey: ["context"],
-    queryFn: listContextNotes,
+    queryFn: () => listContextNotes(),
     refetchInterval: 4000,
   });
   const items = notes.data?.notes ?? [];
@@ -56,7 +58,9 @@ function ContextRail() {
           <Link to="/context" className="rn">
             {note.title}
           </Link>
-          <div className="rk">{note.kind}</div>
+          <div className="rk">
+            {note.kind} · {repoLabel(note.repository)}
+          </div>
         </div>
       ))}
     </>
@@ -92,10 +96,39 @@ function pipelineLine(job: JobListItem): string {
   }
 }
 
+const STATUS_FILTERS = [
+  { id: "all", label: "all" },
+  { id: "active", label: "running" },
+  { id: "queued", label: "queued" },
+  { id: "succeeded", label: "succeeded" },
+  { id: "failed", label: "failed" },
+  { id: "cancelled", label: "cancelled" },
+] as const;
+
 export function JobsPage() {
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]["id"]>("all");
+  const [repository, setRepository] = useState("all");
+  const [q, setQ] = useState("");
+
+  const repos = useQuery({
+    queryKey: ["repositories"],
+    queryFn: listRepositories,
+    refetchInterval: 8000,
+  });
+
+  const jobsQuery = useMemo(() => {
+    const query: Parameters<typeof listJobs>[0] = { limit: 200 };
+    if (status === "active") query.active = true;
+    else if (status !== "all") query.status = status;
+    if (repository === "global") query.unscoped = true;
+    else if (repository !== "all") query.repository = repository;
+    if (q.trim()) query.q = q.trim();
+    return query;
+  }, [status, repository, q]);
+
   const jobs = useQuery({
-    queryKey: ["jobs"],
-    queryFn: listJobs,
+    queryKey: ["jobs", jobsQuery],
+    queryFn: () => listJobs(jobsQuery),
     refetchInterval: 2000,
   });
 
@@ -110,6 +143,7 @@ export function JobsPage() {
   const queued = items.filter((job) => job.status === "queued").length;
   const running = items.filter((job) => !isTerminal(job.status) && job.status !== "queued").length;
   const succeeded = items.filter((job) => job.status === "succeeded").length;
+  const repoNames = repos.data?.repositories ?? [];
 
   return (
     <div className="layout">
@@ -119,9 +153,38 @@ export function JobsPage() {
           <b>queue:</b> {queued} queued · {running} running · {succeeded} succeeded · this UI is a
           read-only tail — start work with <b>gegenlesen review</b>
         </div>
+        <div className="filters">
+          {STATUS_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={status === item.id ? "chip on" : "chip"}
+              onClick={() => setStatus(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+          <select value={repository} onChange={(event) => setRepository(event.target.value)}>
+            <option value="all">all repos</option>
+            <option value="global">unscoped</option>
+            {repoNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+            placeholder="filter title"
+            aria-label="filter jobs"
+          />
+        </div>
         {items.length === 0 ? (
           <div className="empty">
-            No jobs yet. In a repo run <code>gegenlesen review</code>.
+            {status !== "all" || repository !== "all" || q.trim()
+              ? "No jobs match this filter."
+              : "No jobs yet. In a repo run `gegenlesen review`."}
             <br />
             Jobs appear here only after the CLI POSTs them.
           </div>
@@ -132,6 +195,7 @@ export function JobsPage() {
                 <Link className="t" to={`/jobs/${job.id}`}>
                   {job.title ?? job.id}
                 </Link>
+                <span className="sha">{repoLabel(job.repository)}</span>
                 <span className="sha">{shortSHA(job.head_sha ?? job.base_sha)}</span>
                 <span className={statusClass(job.status)}>{job.status}</span>
               </div>
@@ -171,7 +235,8 @@ export function JobsPage() {
               <span className="rk">
                 {rule.kind}
                 {"instruction" in rule.payload ? " · semantic guidance" : ""} ·{" "}
-                {rule.path_globs.join(", ")} · {rule.enabled ? "enabled" : "disabled"}
+                {repoLabel(rule.repository)} · {rule.path_globs.join(", ")} ·{" "}
+                {rule.enabled ? "enabled" : "disabled"}
               </span>
             </div>
           ))

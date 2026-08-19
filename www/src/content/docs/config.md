@@ -1,11 +1,12 @@
 ---
 title: Config
-description: Files, env vars, and Docker image for Gegenlesen.
+description: Files, env vars, and Docker image for gegenlesen.
+order: 5
 ---
 
-Copy `config/gegenlesen.example.json` to `config/gegenlesen.json`. That file is gitignored.
+Ledger **setup** writes `config/gegenlesen.json` (gitignored), including models and `openrouter_api_key`. You can still copy `config/gegenlesen.example.json` and set `OPENROUTER_API_KEY` in the environment.
 
-Override the path with `GEGENLESEN_CONFIG`.
+Override the path with `GEGENLESEN_CONFIG`. GET `/api/settings` never returns the key.
 
 ## Env
 

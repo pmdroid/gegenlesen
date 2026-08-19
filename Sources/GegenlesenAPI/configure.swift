@@ -4,8 +4,8 @@ import GegenlesenCore
 import Vapor
 
 func configure(_ app: Application) async throws {
-    let config = try GegenlesenConfig.load()
-    try await configure(app, config: config)
+    let loaded = try GegenlesenConfig.loadDetailed()
+    try await configure(app, config: loaded.config, configFileURL: loaded.fileURL)
 }
 
 func configure(
@@ -15,7 +15,8 @@ func configure(
     docker: (any DockerExecuting)? = nil,
     startQueue: Bool = true,
     skipAgent: Bool? = nil,
-    embedder: (any EmbeddingClient)? = nil
+    embedder: (any EmbeddingClient)? = nil,
+    configFileURL: URL? = nil
 ) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
@@ -25,6 +26,7 @@ func configure(
     JSONCoding.install()
 
     app.gegenlesenConfig = config
+    app.gegenlesenConfigFileURL = configFileURL
     app.http.server.configuration.hostname = config.bind
     app.http.server.configuration.port = config.port
 
@@ -85,9 +87,8 @@ func configure(
         HealthDTO(ok: true, version: GegenlesenVersion.current)
     }
 
-    app.get("api", "settings") { req in
-        req.application.gegenlesenConfig.settingsDTO
-    }
+    SettingsRoute.register(app)
+    ModelsRoute.register(app)
 
     let rulesDir = URL(fileURLWithPath: app.directory.workingDirectory, isDirectory: true)
         .appendingPathComponent("rules", isDirectory: true)
@@ -97,6 +98,7 @@ func configure(
     FindingsRoute.register(app)
     RulesRoute.register(app)
     CorpusRoute.register(app)
+    HarvestRoute.register(app)
     ContextRoute.register(app)
     LearningsRoute.register(app)
     MetricsRoute.register(app)

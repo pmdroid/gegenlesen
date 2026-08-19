@@ -37,14 +37,41 @@ actor QueueHandles {
     }
 }
 
+final class LiveSettings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var config: GegenlesenConfig
+    private var providerEnv: [String: String]
+
+    init(config: GegenlesenConfig, providerEnv: [String: String]) {
+        self.config = config
+        self.providerEnv = providerEnv
+    }
+
+    func snapshot() -> (GegenlesenConfig, [String: String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (config, providerEnv)
+    }
+
+    func update(config: GegenlesenConfig, providerEnv: [String: String]) {
+        lock.lock()
+        self.config = config
+        self.providerEnv = providerEnv
+        lock.unlock()
+    }
+}
+
 final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let memory: MemoryQueue
     let service: JobService<MemoryQueue>
     let handles: QueueHandles
     let blobs: BlobStore
     let store: Store
-    let config: GegenlesenConfig
+    let live: LiveSettings
+    let skipAgent: Bool
     private var task: Task<Void, Never>?
+
+    var config: GegenlesenConfig { live.snapshot().0 }
 
     init(
         store: Store,
@@ -67,21 +94,16 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             .appendingPathComponent("docker/opencode-runner", isDirectory: true)
         let schemasDirectory = URL(fileURLWithPath: workingDirectory, isDirectory: true)
             .appendingPathComponent("schemas", isDirectory: true)
-        let hostEnv = ProcessInfo.processInfo.environment
-        let providerEnv: [String: String] = {
-            var env: [String: String] = [:]
-            for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
-                if let value = hostEnv[key], !value.isEmpty {
-                    env[key] = value
-                }
-            }
-            return env
-        }()
+        let live = LiveSettings(
+            config: config,
+            providerEnv: config.providerEnv(from: ProcessInfo.processInfo.environment)
+        )
         service.registerJob(
             parameters: ReviewJobParameters.self,
             retryStrategy: .dontRetry
         ) { params, _ in
             do {
+                let (config, providerEnv) = live.snapshot()
                 let invocation = OpenCodeInvocation(
                     docker: docker,
                     image: config.opencodeImage,
@@ -135,6 +157,40 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             retryStrategy: .dontRetry
         ) { params, _ in
             do {
+                let (config, providerEnv) = live.snapshot()
+                if params.spec.source == .harvest {
+                    try await HarvestPipeline(
+                        store: store,
+                        skipAgent: skipAgent,
+                        miner: skipAgent ? nil : OpenCodeInvocation(
+                            docker: docker,
+                            image: config.opencodeImage,
+                            runnerConfig: runnerConfig,
+                            agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                            providerEnv: providerEnv,
+                            schemasDirectory: schemasDirectory,
+                            transcriptWriter: { jobID, data in
+                                let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "mine")
+                                try? FileManager.default.createDirectory(
+                                    at: url.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true
+                                )
+                                try? data.write(to: url, options: .atomic)
+                            }
+                        ),
+                        suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
+                            docker: docker,
+                            image: config.opencodeImage,
+                            runnerConfig: runnerConfig,
+                            judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
+                            providerEnv: providerEnv,
+                            schemasDirectory: schemasDirectory
+                        ),
+                        model: config.models.modelA,
+                        embedder: embedder,
+                        maxChunks: config.embeddings.maxChunks
+                    ).run(jobID: params.corpusJobID)
+                } else {
                 try await MineCorpusPipeline(
                     store: store,
                     skipAgent: skipAgent,
@@ -166,6 +222,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     embedder: embedder,
                     maxChunks: config.embeddings.maxChunks
                 ).run(jobID: params.corpusJobID, spec: params.spec)
+                }
             } catch {
                 _ = await handles.remove(params.corpusJobID)
                 throw error
@@ -200,8 +257,16 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         self.handles = handles
         self.blobs = store.blobs
         self.store = store
-        self.config = config
+        self.live = live
+        self.skipAgent = skipAgent
         runtimeRef.runtime = self
+    }
+
+    func apply(_ config: GegenlesenConfig) {
+        live.update(
+            config: config,
+            providerEnv: config.providerEnv(from: ProcessInfo.processInfo.environment)
+        )
     }
 
     func start() {
@@ -257,6 +322,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             scope: .full,
             parentJobID: source.id,
             title: "learn \(source.title ?? source.id.rawValue)",
+            repository: source.repository,
             reviewerAModelID: config.models.modelA,
             reviewerBModelID: config.models.modelB,
             judgeModelID: config.judgeModel

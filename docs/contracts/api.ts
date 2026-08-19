@@ -1,5 +1,5 @@
 /**
- * Gegenlesen HTTP + file-contract types.
+ * gegenlesen HTTP + file-contract types.
  * Wire format is snake_case — these types match JSON 1:1.
  * Copy into frontend/src/ during PR 1. Keep in sync with
  * docs/technical-plan.md and schemas/openapi.yaml.
@@ -100,6 +100,31 @@ export interface SettingsDTO {
   judge_model: string;
   opencode_image: string;
   limits: Limits;
+  openrouter_configured: boolean;
+}
+
+export interface SettingsUpdate {
+  models?: ModelSlots;
+  judge_model?: string;
+  openrouter_api_key?: string;
+}
+
+export interface OpenRouterModel {
+  id: string;
+  name: string;
+  description?: string | null;
+  context_length?: number | null;
+  prompt_price?: string | null;
+  free: boolean;
+}
+
+export interface OpenRouterModelList {
+  models: OpenRouterModel[];
+  total: number;
+  query?: string | null;
+  category?: string | null;
+  sort?: string | null;
+  free: boolean;
 }
 
 export interface CreateJobMeta {
@@ -133,6 +158,7 @@ export interface JobListItem {
   status: JobStatus;
   scope: JobScope;
   parent_job_id: JobId | null;
+  repository: string | null;
   reviewer_a_model_id: string;
   reviewer_b_model_id: string;
   judge_model_id: string;
@@ -240,6 +266,7 @@ export interface Rule {
   provenance: RuleProvenance;
   languages: string[];
   path_globs: string[];
+  repository: string | null;
   payload: RulePayload;
   examples: RuleExample[];
   source_pr_refs: string[];
@@ -257,6 +284,7 @@ export interface RuleUpsert {
   enabled?: boolean;
   languages: string[];
   path_globs: string[];
+  repository?: string | null;
   payload: RulePayload;
   examples?: RuleExample[];
   body?: string;
@@ -305,6 +333,7 @@ export interface ContextNote {
   body: string;
   path_globs: string[];
   always_include: boolean;
+  repository: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -314,6 +343,7 @@ export interface ContextNoteUpsert {
   body: string;
   path_globs?: string[];
   always_include?: boolean;
+  repository?: string | null;
 }
 
 export interface Learning {

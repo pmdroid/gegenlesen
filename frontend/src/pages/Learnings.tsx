@@ -31,8 +31,7 @@ export function LearningsPage() {
       {items.length === 0 ? (
         <div className="empty">
           Rule, architecture, and context suggestions land here after learn
-          (manual <code>POST /api/jobs/:id/learn</code>, or the background
-          sweeper on jobs with new thumbs or comments).
+          (job learn, background sweeper, or <code>gegenlesen harvest</code>).
         </div>
       ) : (
         items.map((item) => (

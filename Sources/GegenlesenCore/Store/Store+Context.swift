@@ -1,6 +1,33 @@
 import Foundation
 import GRDB
 
+func appendRepositoryFilter(
+    clauses: inout [String],
+    arguments: inout [any DatabaseValueConvertible],
+    repository: String?,
+    unscoped: Bool,
+    includeGlobal: Bool
+) {
+    if unscoped {
+        clauses.append("repository IS NULL")
+    } else if let repository {
+        if includeGlobal {
+            clauses.append("(repository IS NULL OR repository = ?)")
+        } else {
+            clauses.append("repository = ?")
+        }
+        arguments.append(repository)
+    }
+}
+
+func likePattern(_ raw: String) -> String {
+    let escaped = raw
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "%", with: "\\%")
+        .replacingOccurrences(of: "_", with: "\\_")
+    return "%\(escaped)%"
+}
+
 public struct ContextRetrieveHit: Sendable, Equatable {
     public var chunk: ContextChunk
     public var score: Float
@@ -37,12 +64,31 @@ public struct MetricsSnapshot: Sendable, Equatable {
 }
 
 extension Store {
-    public func listContextNotes(includeDeleted: Bool = false) throws -> [ContextNote] {
+    public func listContextNotes(
+        includeDeleted: Bool = false,
+        repository: String? = nil,
+        unscoped: Bool = false,
+        includeGlobal: Bool = false
+    ) throws -> [ContextNote] {
         try read { db in
-            let sql = includeDeleted
-                ? "SELECT * FROM context_notes ORDER BY kind, updated_at DESC, id"
-                : "SELECT * FROM context_notes WHERE deleted_at IS NULL ORDER BY kind, updated_at DESC, id"
-            return try Row.fetchAll(db, sql: sql).map(ContextNote.init(row:))
+            var clauses: [String] = []
+            var arguments: [any DatabaseValueConvertible] = []
+            if !includeDeleted {
+                clauses.append("deleted_at IS NULL")
+            }
+            appendRepositoryFilter(
+                clauses: &clauses,
+                arguments: &arguments,
+                repository: repository,
+                unscoped: unscoped,
+                includeGlobal: includeGlobal
+            )
+            let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+            return try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM context_notes \(whereSQL) ORDER BY kind, updated_at DESC, id",
+                arguments: StatementArguments(arguments)
+            ).map(ContextNote.init(row:))
         }
     }
 
@@ -61,8 +107,8 @@ extension Store {
                 sql: """
                     INSERT INTO context_notes (
                       id, kind, title, body, path_globs_json, always_include,
-                      created_at, updated_at, deleted_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      repository, created_at, updated_at, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
                     note.id,
@@ -71,6 +117,7 @@ extension Store {
                     note.body,
                     encodeJSONArray(note.pathGlobs),
                     note.alwaysInclude ? 1 : 0,
+                    note.repository,
                     ISO8601Dates.string(from: note.createdAt),
                     ISO8601Dates.string(from: note.updatedAt),
                     note.deletedAt.map(ISO8601Dates.string(from:)),
@@ -85,7 +132,7 @@ extension Store {
                 sql: """
                     UPDATE context_notes SET
                       kind = ?, title = ?, body = ?, path_globs_json = ?,
-                      always_include = ?, updated_at = ?, deleted_at = ?
+                      always_include = ?, repository = ?, updated_at = ?, deleted_at = ?
                     WHERE id = ?
                     """,
                 arguments: [
@@ -94,6 +141,7 @@ extension Store {
                     note.body,
                     encodeJSONArray(note.pathGlobs),
                     note.alwaysInclude ? 1 : 0,
+                    note.repository,
                     ISO8601Dates.string(from: note.updatedAt),
                     note.deletedAt.map(ISO8601Dates.string(from:)),
                     note.id,
@@ -113,13 +161,25 @@ extension Store {
         return note
     }
 
-    public func acceptedArchitectureNote() throws -> ContextNote? {
+    public func acceptedArchitectureNote(repository: String? = nil) throws -> ContextNote? {
         try read { db in
-            try Row.fetchOne(
+            if let repository {
+                return try Row.fetchOne(
+                    db,
+                    sql: """
+                        SELECT * FROM context_notes
+                        WHERE kind = 'architecture' AND deleted_at IS NULL AND repository = ?
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                        """,
+                    arguments: [repository]
+                ).map(ContextNote.init(row:))
+            }
+            return try Row.fetchOne(
                 db,
                 sql: """
                     SELECT * FROM context_notes
-                    WHERE kind = 'architecture' AND deleted_at IS NULL
+                    WHERE kind = 'architecture' AND deleted_at IS NULL AND repository IS NULL
                     ORDER BY updated_at DESC
                     LIMIT 1
                     """
@@ -400,6 +460,7 @@ extension ContextNote {
             body: row["body"] as String? ?? "",
             pathGlobs: globs,
             alwaysInclude: always,
+            repository: row["repository"] as String?,
             createdAt: ISO8601Dates.date(from: row["created_at"] as String? ?? "") ?? Date(),
             updatedAt: ISO8601Dates.date(from: row["updated_at"] as String? ?? "") ?? Date(),
             deletedAt: (row["deleted_at"] as String?).flatMap(ISO8601Dates.date(from:))

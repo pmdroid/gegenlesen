@@ -21,7 +21,7 @@ struct HealthTests {
     func configureOpensSQLiteStore() async throws {
         try await withGegenlesenApp { app in
             let identifiers = try await app.gegenlesenStore.appliedMigrationIdentifiers()
-            #expect(identifiers == [Migrations.v1Initial])
+            #expect(identifiers == [Migrations.v1Initial, Migrations.v2Repositories])
             #expect(!(try await app.gegenlesenStore.tableExists("settings")))
         }
     }
@@ -32,8 +32,15 @@ struct HealthTests {
             try await app.testing().test(.GET, "/api/settings") { res async throws in
                 #expect(res.status == .ok)
                 let settings = try res.content.decode(SettingsDTO.self)
-                #expect(settings == GegenlesenConfig.example.settingsDTO)
+                let expected = GegenlesenConfig.example.settingsDTO(environment: [:])
+                #expect(settings.bind == expected.bind)
+                #expect(settings.port == expected.port)
+                #expect(settings.models == expected.models)
+                #expect(settings.judgeModel == expected.judgeModel)
+                #expect(settings.opencodeImage == expected.opencodeImage)
+                #expect(settings.limits == expected.limits)
                 #expect(!res.body.string.contains("API_KEY"))
+                #expect(!res.body.string.contains("openrouter_api_key"))
                 #expect(!res.body.string.contains("data_dir"))
             }
         }
@@ -81,6 +88,7 @@ struct HealthTests {
 
 func withGegenlesenApp(
     workingDirectory: String? = nil,
+    configFileURL: URL? = nil,
     mutate: (inout GegenlesenConfig) -> Void = { _ in },
     startQueue: Bool = false,
     docker: any DockerExecuting = NoopDocker(),
@@ -104,7 +112,8 @@ func withGegenlesenApp(
             docker: docker,
             startQueue: startQueue,
             skipAgent: true,
-            embedder: HashEmbeddingClient()
+            embedder: HashEmbeddingClient(),
+            configFileURL: configFileURL
         )
         try await body(app)
     }

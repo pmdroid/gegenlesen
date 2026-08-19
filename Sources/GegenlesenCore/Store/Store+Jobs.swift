@@ -24,14 +24,14 @@ extension Store {
                 sql: """
                     INSERT INTO jobs (
                       id, created_at, updated_at, started_at, finished_at,
-                      status, scope, parent_job_id, title,
+                      status, scope, parent_job_id, title, repository,
                       reviewer_a_model_id, reviewer_b_model_id, judge_model_id,
                       base_sha, head_sha, default_branch, archive_sha256,
                       archive_bytes, file_count, error_message,
                       container_name, container_name_a, container_name_b, timings_json
                     ) VALUES (
                       ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?,
                       ?, ?, ?,
                       ?, ?, ?, ?,
                       ?, ?, ?,
@@ -50,39 +50,84 @@ extension Store {
         }
     }
 
-    public func listJobs(limit: Int, offset: Int, status: JobStatus?) throws -> JobListPage {
+    public func listJobs(
+        limit: Int,
+        offset: Int,
+        status: JobStatus? = nil,
+        active: Bool = false,
+        repository: String? = nil,
+        unscoped: Bool = false,
+        query: String? = nil
+    ) throws -> JobListPage {
         try read { db in
-            let total: Int
-            let rows: [Row]
+            var clauses: [String] = []
+            var arguments: [any DatabaseValueConvertible] = []
             if let status {
-                total = try Int.fetchOne(
-                    db,
-                    sql: "SELECT COUNT(*) FROM jobs WHERE status = ?",
-                    arguments: [status.rawValue]
-                ) ?? 0
-                rows = try Row.fetchAll(
-                    db,
-                    sql: """
-                        SELECT * FROM jobs
-                        WHERE status = ?
-                        ORDER BY created_at DESC
-                        LIMIT ? OFFSET ?
-                        """,
-                    arguments: [status.rawValue, limit, offset]
-                )
-            } else {
-                total = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM jobs") ?? 0
-                rows = try Row.fetchAll(
-                    db,
-                    sql: """
-                        SELECT * FROM jobs
-                        ORDER BY created_at DESC
-                        LIMIT ? OFFSET ?
-                        """,
-                    arguments: [limit, offset]
-                )
+                clauses.append("status = ?")
+                arguments.append(status.rawValue)
+            } else if active {
+                clauses.append("status NOT IN ('succeeded', 'failed', 'cancelled')")
             }
+            if unscoped {
+                clauses.append("repository IS NULL")
+            } else if let repository {
+                clauses.append("repository = ?")
+                arguments.append(repository)
+            }
+            if let query, !query.isEmpty {
+                clauses.append("IFNULL(title, id) LIKE ? ESCAPE '\\'")
+                arguments.append(likePattern(query))
+            }
+            let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+            let total = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM jobs \(whereSQL)",
+                arguments: StatementArguments(arguments)
+            ) ?? 0
+            var pageArguments = arguments
+            pageArguments.append(limit)
+            pageArguments.append(offset)
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM jobs
+                    \(whereSQL)
+                    ORDER BY created_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                arguments: StatementArguments(pageArguments)
+            )
             return JobListPage(jobs: rows.map(Job.init(row:)), total: total)
+        }
+    }
+
+    public func updateJobRepository(id: JobID, repository: String?, at now: Date = Date()) throws {
+        try write { db in
+            try db.execute(
+                sql: "UPDATE jobs SET repository = ?, updated_at = ? WHERE id = ?",
+                arguments: [repository, ISO8601Dates.string(from: now), id.rawValue]
+            )
+        }
+    }
+
+    public func listRepositories() throws -> [String] {
+        try read { db in
+            let rows = try String.fetchAll(
+                db,
+                sql: """
+                    SELECT DISTINCT repository FROM (
+                      SELECT repository FROM jobs WHERE repository IS NOT NULL
+                      UNION
+                      SELECT repository FROM rules
+                        WHERE repository IS NOT NULL AND deleted_at IS NULL
+                      UNION
+                      SELECT repository FROM context_notes
+                        WHERE repository IS NOT NULL AND deleted_at IS NULL
+                    )
+                    ORDER BY repository
+                    """
+            )
+            return rows
         }
     }
 
@@ -653,6 +698,7 @@ extension Job {
             scope.rawValue,
             parentJobID?.rawValue,
             title,
+            repository,
             reviewerAModelID,
             reviewerBModelID,
             judgeModelID,
@@ -685,6 +731,7 @@ extension Job {
             scope: JobScope(rawValue: row.string("scope")) ?? .full,
             parentJobID: row.optionalString("parent_job_id").map { JobID($0) },
             title: row.optionalString("title"),
+            repository: row.optionalString("repository"),
             reviewerAModelID: row.string("reviewer_a_model_id"),
             reviewerBModelID: row.string("reviewer_b_model_id"),
             judgeModelID: row.string("judge_model_id"),

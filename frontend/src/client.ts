@@ -14,17 +14,21 @@ import type {
   Rule,
   RuleListResponse,
   RuleUpsert,
+  OpenRouterModelList,
   SettingsDTO,
+  SettingsUpdate,
   TranscriptPhase,
 } from "./api";
 
 export class HTTPError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(path: string, status: number) {
-    super(`${path} ${status}`);
+  constructor(path: string, status: number, message?: string, code?: string) {
+    super(message && message.length > 0 ? message : `${path} ${status}`);
     this.name = "HTTPError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -32,10 +36,10 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof HTTPError && error.status === 404;
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+async function getJSON<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const res = await fetch(path, { headers });
   if (!res.ok) {
-    throw new HTTPError(path, res.status);
+    throw await httpError(path, res);
   }
   return res.json() as Promise<T>;
 }
@@ -55,12 +59,22 @@ async function sendJSON<T>(path: string, method: string, body?: unknown): Promis
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new HTTPError(path, res.status);
+    throw await httpError(path, res);
   }
   if (res.status === 204) {
     return undefined as T;
   }
   return res.json() as Promise<T>;
+}
+
+async function httpError(path: string, res: Response): Promise<HTTPError> {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string; code?: string } };
+    return new HTTPError(path, res.status, parsed.error?.message, parsed.error?.code);
+  } catch {
+    return new HTTPError(path, res.status);
+  }
 }
 
 export function getHealth(): Promise<HealthDTO> {
@@ -71,8 +85,50 @@ export function getSettings(): Promise<SettingsDTO> {
   return getJSON("/api/settings");
 }
 
-export function listJobs(): Promise<JobListResponse> {
-  return getJSON("/api/jobs");
+export function putSettings(body: SettingsUpdate): Promise<SettingsDTO> {
+  return sendJSON("/api/settings", "PUT", body);
+}
+
+export function listOpenRouterModels(opts: {
+  q?: string;
+  category?: string;
+  sort?: string;
+  limit?: number;
+  free?: boolean;
+  key?: string;
+}): Promise<OpenRouterModelList> {
+  const params = new URLSearchParams();
+  if (opts.q) params.set("q", opts.q);
+  if (opts.category) params.set("category", opts.category);
+  if (opts.sort) params.set("sort", opts.sort);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.free) params.set("free", "true");
+  const query = params.toString();
+  const headers = opts.key ? { "X-OpenRouter-Key": opts.key } : undefined;
+  return getJSON(`/api/models${query ? `?${query}` : ""}`, headers);
+}
+
+export function listJobs(query?: {
+  status?: string;
+  active?: boolean;
+  repository?: string;
+  unscoped?: boolean;
+  q?: string;
+  limit?: number;
+}): Promise<JobListResponse> {
+  const params = new URLSearchParams();
+  if (query?.status) params.set("status", query.status);
+  if (query?.active) params.set("active", "true");
+  if (query?.repository) params.set("repository", query.repository);
+  if (query?.unscoped) params.set("unscoped", "true");
+  if (query?.q) params.set("q", query.q);
+  if (query?.limit) params.set("limit", String(query.limit));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return getJSON(`/api/jobs${suffix}`);
+}
+
+export function listRepositories(): Promise<{ repositories: string[] }> {
+  return getJSON("/api/repositories");
 }
 
 export function getJob(id: string): Promise<JobDetail> {
@@ -116,11 +172,15 @@ export function listRules(query?: {
   enabled?: boolean;
   kind?: string;
   provenance?: string;
+  repository?: string;
+  unscoped?: boolean;
 }): Promise<RuleListResponse> {
   const params = new URLSearchParams();
   if (query?.enabled !== undefined) params.set("enabled", String(query.enabled));
   if (query?.kind) params.set("kind", query.kind);
   if (query?.provenance) params.set("provenance", query.provenance);
+  if (query?.repository) params.set("repository", query.repository);
+  if (query?.unscoped) params.set("unscoped", "true");
   const suffix = params.size ? `?${params.toString()}` : "";
   return getJSON(`/api/rules${suffix}`);
 }
@@ -153,8 +213,15 @@ export function disableRule(id: string): Promise<Rule> {
   return sendJSON(`/api/rules/${id}/disable`, "POST");
 }
 
-export function listContextNotes(): Promise<{ notes: ContextNote[] }> {
-  return getJSON("/api/context");
+export function listContextNotes(query?: {
+  repository?: string;
+  unscoped?: boolean;
+}): Promise<{ notes: ContextNote[] }> {
+  const params = new URLSearchParams();
+  if (query?.repository) params.set("repository", query.repository);
+  if (query?.unscoped) params.set("unscoped", "true");
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return getJSON(`/api/context${suffix}`);
 }
 
 export function createContextNote(body: ContextNoteUpsert): Promise<ContextNote> {

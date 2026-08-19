@@ -5,8 +5,8 @@ import Foundation
 struct Gegenlesen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gegenlesen",
-        abstract: "Pack a repo and start a Gegenlesen review",
-        subcommands: [Review.self, Status.self, Cancel.self, Serve.self]
+        abstract: "Pack a repo and start a gegenlesen review",
+        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self]
     )
 }
 
@@ -34,9 +34,35 @@ struct Review: AsyncParsableCommand {
         if let baseRef {
             meta["base_ref"] = baseRef
         }
+        if let repository = detectRepository() {
+            meta["repository"] = repository
+        }
         let accepted = try await client.createJob(archive: archive, meta: meta)
         print(accepted.id)
         let terminal = try await client.poll(id: accepted.id)
+        if let error = terminal.errorMessage, !error.isEmpty {
+            print("\(terminal.status) \(error)")
+        } else {
+            print(terminal.status)
+        }
+        if terminal.status == "failed" || terminal.status == "cancelled" {
+            throw ExitCode(1)
+        }
+    }
+}
+
+struct Harvest: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "harvest",
+        abstract: "Pack the current repo and mine disabled house-rule drafts"
+    )
+
+    func run() async throws {
+        let client = GegenlesenClient()
+        let archive = try packCWD(baseRef: nil)
+        let accepted = try await client.createHarvest(archive: archive, repository: detectRepository())
+        print(accepted.id)
+        let terminal = try await client.poll(id: accepted.id, timeout: 900)
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
         } else {
@@ -76,8 +102,9 @@ struct Status: AsyncParsableCommand {
 
     private func printJob(_ job: JobJSON) {
         let sha = job.headSHA ?? job.baseSHA ?? "-"
+        let repo = job.repository ?? "-"
         let err = job.errorMessage.map { " \($0)" } ?? ""
-        print("\(job.id)  \(job.status)  \(job.title ?? "-")  \(sha)\(err)")
+        print("\(job.id)  \(job.status)  \(job.title ?? "-")  \(repo)  \(sha)\(err)")
     }
 }
 
@@ -99,7 +126,7 @@ struct Cancel: AsyncParsableCommand {
 struct Serve: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "Start the Gegenlesen API if GegenlesenAPI is available"
+        abstract: "Start the gegenlesen API if GegenlesenAPI is available"
     )
 
     func run() throws {
@@ -116,6 +143,55 @@ struct Serve: AsyncParsableCommand {
         }
         print("Start the API with: swift run GegenlesenAPI serve")
     }
+}
+
+func detectRepository() -> String? {
+    if let remote = gitOriginURL() {
+        return normalizeRepository(remote)
+    }
+    return normalizeRepository(URL(fileURLWithPath: FileManager.default.currentDirectoryPath).lastPathComponent)
+}
+
+func gitOriginURL() -> String? {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+    process.arguments = ["remote", "get-url", "origin"]
+    process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    process.standardInput = FileHandle.nullDevice
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.standardOutput = stdout
+    process.standardError = stderr
+    do {
+        try process.run()
+        process.waitUntilExit()
+    } catch {
+        return nil
+    }
+    guard process.terminationStatus == 0 else { return nil }
+    return String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+}
+
+func normalizeRepository(_ raw: String?) -> String? {
+    guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+        return nil
+    }
+    if value.hasPrefix("git@") {
+        let rest = String(value.dropFirst(4))
+        if let colon = rest.firstIndex(of: ":") {
+            value = String(rest[..<colon]) + "/" + String(rest[rest.index(after: colon)...])
+        }
+    } else if let url = URL(string: value), let host = url.host, !host.isEmpty {
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        value = path.isEmpty ? host : "\(host)/\(path)"
+    }
+    if value.hasSuffix(".git") {
+        value = String(value.dropLast(4))
+    }
+    while value.hasSuffix("/") {
+        value.removeLast()
+    }
+    return value.isEmpty ? nil : value
 }
 
 func packCWD(baseRef: String?) throws -> Data {

@@ -1,35 +1,26 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import starlight from '@astrojs/starlight';
+import { loadEnv } from 'vite';
+
+const env = loadEnv('development', process.cwd(), '');
+const extraHosts = String(env.ALLOWED_HOSTS ?? process.env.ALLOWED_HOSTS ?? '')
+	.split(',')
+	.map((host) => host.trim())
+	.filter(Boolean);
 
 export default defineConfig({
-	integrations: [
-		starlight({
-			title: 'Gegenlesen',
-			description:
-				'Two reviewers, house rules, a conservative judge. The CLI starts a review. Ledger is the admin UI.',
-			logo: {
-				src: './src/assets/logo.webp',
-				alt: 'Gegenlesen',
-				replacesTitle: true,
-			},
-			favicon: '/favicon.png',
-			social: [
-				{
-					icon: 'github',
-					label: 'GitHub',
-					href: 'https://github.com/pmdroid/gegenlesen',
-				},
-			],
-			customCss: ['./src/styles/custom.css'],
-			sidebar: [
-				{ label: 'Start', slug: 'start' },
-				{ label: 'How a review works', slug: 'review' },
-				{ label: 'Ledger', slug: 'ledger' },
-				{ label: 'Learn', slug: 'learn' },
-				{ label: 'Config', slug: 'config' },
-				{ label: 'Security', slug: 'security' },
-			],
-		}),
-	],
+	site: 'https://gegenlesen.dev',
+	markdown: {
+		syntaxHighlight: false,
+	},
+	server: {
+		host: '0.0.0.0',
+		port: 4321,
+	},
+	vite: {
+		server: {
+			allowedHosts: ['gegenlesen.dev', 'www.gegenlesen.dev', ...extraHosts],
+			host: '0.0.0.0',
+		},
+	},
 });

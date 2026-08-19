@@ -120,6 +120,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public static func minerFilePaths(workspace: Workspace) -> [String] {
         let candidates = [
             ".gegenlesen/prompt.md",
+            ".gegenlesen/harvest-scan.json",
             ".gegenlesen/architecture-draft.md",
             ".gegenlesen/findings.json",
             "job/findings.json",
@@ -201,13 +202,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         jobID: JobID,
         workspace: URL,
         model: String,
-        extraFiles: [String] = []
+        extraFiles: [String] = [],
+        defaultAgent: String = "miner"
     ) throws -> DockerRequest {
         try isolatedDockerRequest(
             name: ReviewContainers.miner(jobID),
             workspace: workspace,
             model: model,
-            defaultAgent: "miner",
+            defaultAgent: defaultAgent,
             timeout: agentTimeout,
             promptFile: "/workspace/.gegenlesen/prompt.md",
             extraFiles: extraFiles,
@@ -304,7 +306,10 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 jobID: jobID,
                 workspace: workspace.root,
                 model: model,
-                extraFiles: Self.minerFilePaths(workspace: workspace)
+                extraFiles: Self.minerFilePaths(workspace: workspace),
+                defaultAgent: FileManager.default.fileExists(
+                    atPath: workspace.root.appendingPathComponent(".gegenlesen/harvest-scan.json").path
+                ) ? "harvester" : "miner"
             )
         } catch {
             return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))

@@ -1,6 +1,7 @@
 ---
 title: Security
 description: No auth. Isolation is bind, extract, and Docker.
+order: 6
 ---
 
 v1 has no login. Treat this as a single-tenant box.

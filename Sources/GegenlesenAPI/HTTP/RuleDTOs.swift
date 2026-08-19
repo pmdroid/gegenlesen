@@ -14,6 +14,7 @@ struct RuleUpsert: Content {
     var enabled: Bool?
     var languages: [String]
     var pathGlobs: [String]
+    var repository: String?
     var payload: RulePayload
     var examples: [RuleExample]?
     var body: String?
@@ -21,6 +22,7 @@ struct RuleUpsert: Content {
     enum CodingKeys: String, CodingKey {
         case id, title, severity, kind, enabled, languages
         case pathGlobs = "path_globs"
+        case repository
         case payload, examples, body
     }
 }
@@ -35,6 +37,7 @@ struct RuleDTO: Content {
     var provenance: RuleProvenance
     var languages: [String]
     var pathGlobs: [String]
+    var repository: String?
     var payload: RulePayload
     var examples: [RuleExample]
     var sourcePRRefs: [String]
@@ -48,6 +51,7 @@ struct RuleDTO: Content {
         case deletedAt = "deleted_at"
         case provenance, languages
         case pathGlobs = "path_globs"
+        case repository
         case payload, examples
         case sourcePRRefs = "source_pr_refs"
         case promotedFromRuleID = "promoted_from_rule_id"
@@ -67,6 +71,7 @@ struct RuleDTO: Content {
         try container.encode(provenance, forKey: .provenance)
         try container.encode(languages, forKey: .languages)
         try container.encode(pathGlobs, forKey: .pathGlobs)
+        try container.encodeNilIfNeeded(repository, forKey: .repository)
         try container.encode(payload, forKey: .payload)
         try container.encode(examples, forKey: .examples)
         try container.encode(sourcePRRefs, forKey: .sourcePRRefs)
@@ -86,6 +91,7 @@ struct RuleDTO: Content {
         self.provenance = rule.provenance
         self.languages = rule.languages
         self.pathGlobs = rule.pathGlobs
+        self.repository = rule.repository
         self.payload = rule.payload
         self.examples = rule.examples
         self.sourcePRRefs = rule.sourcePRRefs

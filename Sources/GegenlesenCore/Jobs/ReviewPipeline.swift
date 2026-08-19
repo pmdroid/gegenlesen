@@ -75,6 +75,7 @@ public struct ReviewPipeline: Sendable {
             try ArchiveUnpacker().unpack(archive: archive, into: workspaceURL)
             try await store.appendEvent(jobID: jobID, level: .info, message: "unpacked")
             _ = try await store.apply(jobID: jobID, event: .unpackOK)
+            try await fillRepositoryIfNeeded(jobID: jobID, workspace: workspaceURL)
         } catch {
             _ = try await store.apply(
                 jobID: jobID,
@@ -499,6 +500,12 @@ public struct ReviewPipeline: Sendable {
         )
     }
 
+    private func fillRepositoryIfNeeded(jobID: JobID, workspace: URL) async throws {
+        guard let job = try await store.job(id: jobID), job.repository == nil else { return }
+        guard let detected = RepositoryName.detect(in: workspace) else { return }
+        try await store.updateJobRepository(id: jobID, repository: detected)
+    }
+
     private func nonempty(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -510,8 +517,10 @@ public struct ReviewPipeline: Sendable {
         files: [JobFile],
         workspace: Workspace
     ) async throws -> [Rule] {
-        let enabled = try await store.listRules(RuleListFilter(enabled: true))
         let job = try await store.job(id: jobID)
+        var filter = RuleListFilter.applicable(to: job?.repository)
+        filter.enabled = true
+        let enabled = try await store.listRules(filter)
         let patch = loadPatchText(jobID: jobID, workspace: workspace)
         let tokens = RetrievalQuery.tokens(
             paths: files.map(\.path),
@@ -541,7 +550,12 @@ public struct ReviewPipeline: Sendable {
         title: String?,
         patch: Data?
     ) async throws {
-        let notes = try await store.listContextNotes()
+        let job = try await store.job(id: jobID)
+        let notes = try await store.listContextNotes(
+            repository: job?.repository,
+            unscoped: job?.repository == nil,
+            includeGlobal: job?.repository != nil
+        )
         var hits: [ContextRetrieveHit] = []
         let queryText = RetrievalQuery.tokens(paths: files.map(\.path), patch: patch, title: title)
             .joined(separator: " ")
@@ -576,7 +590,10 @@ public struct ReviewPipeline: Sendable {
         }
         let visibleHits = hits.filter { hit in
             if hit.chunk.kind == .file { return true }
-            guard let note = notes.first(where: { $0.id == hit.chunk.ref }) else { return true }
+            if hit.chunk.kind == .rule {
+                return true
+            }
+            guard let note = notes.first(where: { $0.id == hit.chunk.ref }) else { return false }
             return noteApplies(note, to: files.map(\.path))
         }
         try ContextPack.write(workspace: workspace, notes: visibleNotes, hits: visibleHits)

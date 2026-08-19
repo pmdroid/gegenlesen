@@ -59,6 +59,17 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 .page { padding: 16px 20px; font-size: 12.5px; line-height: 1.6; }
 .page h1 { font-size: 14px; color: #e8f5e9; font-weight: 700; margin: 0 0 12px; }
 .pagehead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.filters {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin: 10px 0 4px; color: #557a58;
+}
+.filters select, .filters input[type="text"], .filters input:not([type]) {
+  background: #080a07; color: #c8e6c9; border: 1px solid #2e4a26;
+  border-radius: 3px; padding: 4px 8px; font-family: inherit; font-size: 11.5px;
+}
+.rowsel { display: flex; gap: 8px; align-items: flex-start; }
+.rowsel > input[type="checkbox"] { margin-top: 10px; accent-color: #4caf50; }
+.grow { flex: 1; min-width: 0; }
 .toggle {
   display: inline-flex; align-items: center; gap: 6px;
   color: #7fa882; font-size: 11.5px; cursor: pointer; user-select: none;
@@ -73,6 +84,37 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 }
 .formrow { display: flex; gap: 8px; margin-top: 14px; }
 .formerr { color: #e57373; margin-top: 8px; }
+.setup { max-width: 640px; }
+.setup p { color: #7fa882; max-width: 40rem; }
+.picker { position: relative; }
+.picker-id { color: #557a58; font-size: 11px; margin-top: 4px; word-break: break-all; }
+.picker-menu {
+  position: absolute; left: 0; right: 0; z-index: 8;
+  max-height: 240px; overflow: auto;
+  background: #080a07; border: 1px solid #2e4a26; border-radius: 3px;
+  margin-top: 2px;
+}
+.picker-menu button {
+  display: block; width: 100%; text-align: left;
+  font-family: inherit; font-size: 12px; cursor: pointer;
+  background: transparent; color: #c8e6c9; border: 0;
+  padding: 7px 8px;
+}
+.picker-menu button:hover, .picker-menu button.on { background: #1b3a1e; }
+.picker-name { display: block; color: #e8f5e9; }
+.picker-free { color: #81c784; font-size: 10.5px; }
+.picker-hint { color: #557a58; font-size: 11px; padding: 6px 8px; }
+.picker-toolbar {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  color: #557a58; font-size: 11px; margin: 8px 0;
+}
+.chip {
+  font-family: inherit; font-size: 11px; cursor: pointer;
+  background: transparent; color: #7fa882; border: 1px solid #2e4a26;
+  border-radius: 3px; padding: 3px 8px;
+}
+.chip.on { background: #1b3a1e; color: #c8e6c9; border-color: #4caf50; }
+.chip:disabled { opacity: 0.5; cursor: default; }
 .btn {
   font-family: inherit; font-size: 11px; cursor: pointer;
   background: #1b3a1e; color: #a5d6a7; border: 1px solid #4caf50;

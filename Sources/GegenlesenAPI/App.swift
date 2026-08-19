@@ -6,7 +6,7 @@ import Vapor
 struct GegenlesenAPI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "GegenlesenAPI",
-        abstract: "Gegenlesen HTTP API",
+        abstract: "gegenlesen HTTP API",
         subcommands: [Serve.self],
         defaultSubcommand: Serve.self
     )
@@ -15,7 +15,7 @@ struct GegenlesenAPI: AsyncParsableCommand {
 struct Serve: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "Start the Gegenlesen HTTP API"
+        abstract: "Start the gegenlesen HTTP API"
     )
 
     @ArgumentParser.Option(name: .long, help: "Bind address (loopback unless GEGENLESEN_ALLOW_REMOTE=1).")
@@ -28,25 +28,25 @@ struct Serve: AsyncParsableCommand {
     var dataDir: String?
 
     func run() async throws {
-        var config = try GegenlesenConfig.load()
-        if let bind { config.bind = bind }
-        if let port { config.port = port }
-        if let dataDir { config.dataDir = dataDir }
+        var loaded = try GegenlesenConfig.loadDetailed()
+        if let bind { loaded.config.bind = bind }
+        if let port { loaded.config.port = port }
+        if let dataDir { loaded.config.dataDir = dataDir }
 
         var env = Environment(
             name: ProcessInfo.processInfo.environment["VAPOR_ENV"] ?? "production",
             arguments: [
                 "GegenlesenAPI",
                 "serve",
-                "--hostname", config.bind,
-                "--port", String(config.port),
+                "--hostname", loaded.config.bind,
+                "--port", String(loaded.config.port),
             ]
         )
         try LoggingSystem.bootstrap(from: &env)
 
         let app = try await Application.make(env)
         do {
-            try await configure(app, config: config)
+            try await configure(app, config: loaded.config, configFileURL: loaded.fileURL)
             try await app.execute()
         } catch {
             app.logger.report(error: error)

@@ -17,6 +17,9 @@ mkdir -p "$WORKDIR/.gegenlesen"
 git archive HEAD | tar -x -C "$WORKDIR"
 printf '%s' "$BASE" > "$WORKDIR/.gegenlesen/base_sha"
 printf '%s' "$HEAD" > "$WORKDIR/.gegenlesen/head_sha"
+if origin=$(git remote get-url origin 2>/dev/null); then
+  printf '%s' "$origin" > "$WORKDIR/.gegenlesen/repository"
+fi
 
 # Empty patch is allowed only when BASE equals HEAD, or a usable bundle is kept.
 git diff --no-color --find-renames "$BASE" "$HEAD" \

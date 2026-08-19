@@ -418,7 +418,7 @@ struct JobsRouteTests {
 }
 
 private let jobListKeys: Set<String> = [
-    "id", "title", "status", "scope", "parent_job_id",
+    "id", "title", "status", "scope", "parent_job_id", "repository",
     "reviewer_a_model_id", "reviewer_b_model_id", "judge_model_id",
     "base_sha", "head_sha", "queue_position", "summary",
     "created_at", "started_at", "finished_at", "error_message",

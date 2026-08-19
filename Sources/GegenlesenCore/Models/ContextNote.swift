@@ -7,6 +7,7 @@ public struct ContextNote: Sendable, Equatable {
     public var body: String
     public var pathGlobs: [String]
     public var alwaysInclude: Bool
+    public var repository: String?
     public var createdAt: Date
     public var updatedAt: Date
     public var deletedAt: Date?
@@ -18,6 +19,7 @@ public struct ContextNote: Sendable, Equatable {
         body: String,
         pathGlobs: [String] = [],
         alwaysInclude: Bool = false,
+        repository: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         deletedAt: Date? = nil
@@ -28,6 +30,7 @@ public struct ContextNote: Sendable, Equatable {
         self.body = body
         self.pathGlobs = pathGlobs
         self.alwaysInclude = alwaysInclude
+        self.repository = repository
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.deletedAt = deletedAt

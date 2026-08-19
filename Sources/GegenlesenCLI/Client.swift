@@ -31,6 +31,28 @@ struct GegenlesenClient: Sendable {
         return try JSONDecoder().decode(AcceptedJSON.self, from: data)
     }
 
+    func createHarvest(archive: Data, repository: String? = nil) async throws -> AcceptedJSON {
+        let boundary = "gegenlesen-\(UUID().uuidString)"
+        var body = Data()
+        append(&body, "--\(boundary)\r\n")
+        append(&body, "Content-Disposition: form-data; name=\"archive\"; filename=\"tree.tar.gz\"\r\n")
+        append(&body, "Content-Type: application/gzip\r\n\r\n")
+        body.append(archive)
+        if let repository {
+            append(&body, "\r\n--\(boundary)\r\n")
+            append(&body, "Content-Disposition: form-data; name=\"repository\"\r\n\r\n")
+            append(&body, repository)
+        }
+        append(&body, "\r\n--\(boundary)--\r\n")
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/harvest"))
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response, expected: 202)
+        return try JSONDecoder().decode(AcceptedJSON.self, from: data)
+    }
+
     func jobs() async throws -> JobListJSON {
         let (data, response) = try await URLSession.shared.data(from: baseURL.appendingPathComponent("api/jobs"))
         try throwIfNeeded(data: data, response: response, expected: 200)
@@ -97,12 +119,14 @@ struct JobJSON: Decodable {
     var status: String
     var headSHA: String?
     var baseSHA: String?
+    var repository: String?
     var errorMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status
         case headSHA = "head_sha"
         case baseSHA = "base_sha"
+        case repository
         case errorMessage = "error_message"
     }
 }

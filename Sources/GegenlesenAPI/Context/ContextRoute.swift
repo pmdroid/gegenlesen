@@ -11,7 +11,26 @@ enum ContextRoute {
     }
 
     static func list(_ req: Request) async throws -> ContextNoteListResponse {
-        let notes = try await req.application.gegenlesenStore.listContextNotes()
+        var unscoped = false
+        if let raw = req.query[String.self, at: "unscoped"] {
+            unscoped = try parseBool(raw, name: "unscoped")
+        }
+        let repository: String?
+        if req.query[String.self, at: "repository"] == "global" {
+            unscoped = true
+            repository = nil
+        } else {
+            repository = RepositoryName.normalize(req.query[String.self, at: "repository"])
+        }
+        var includeGlobal = false
+        if let raw = req.query[String.self, at: "include_global"] {
+            includeGlobal = try parseBool(raw, name: "include_global")
+        }
+        let notes = try await req.application.gegenlesenStore.listContextNotes(
+            repository: repository,
+            unscoped: unscoped,
+            includeGlobal: includeGlobal
+        )
         return ContextNoteListResponse(notes: notes.map(ContextNoteDTO.init(note:)))
     }
 
@@ -21,7 +40,8 @@ enum ContextRoute {
             title: upsert.title,
             body: upsert.body,
             pathGlobs: upsert.pathGlobs ?? [],
-            alwaysInclude: upsert.alwaysInclude ?? false
+            alwaysInclude: upsert.alwaysInclude ?? false,
+            repository: RepositoryName.normalize(upsert.repository)
         )
         try await req.application.gegenlesenStore.insertContextNote(note)
         await reembed(note, on: req)
@@ -39,6 +59,7 @@ enum ContextRoute {
         if let always = upsert.alwaysInclude {
             existing.alwaysInclude = always
         }
+        existing.repository = RepositoryName.normalize(upsert.repository)
         existing.updatedAt = Date()
         try await req.application.gegenlesenStore.updateContextNote(existing)
         await reembed(existing, on: req)
@@ -61,6 +82,14 @@ enum ContextRoute {
             throw APIError.notFound()
         }
         return note
+    }
+
+    private static func parseBool(_ raw: String, name: String) throws -> Bool {
+        switch raw.lowercased() {
+        case "1", "true", "yes": return true
+        case "0", "false", "no": return false
+        default: throw APIError.badRequest("invalid \(name)")
+        }
     }
 
     private static func decode(_ req: Request) throws -> ContextNoteUpsert {

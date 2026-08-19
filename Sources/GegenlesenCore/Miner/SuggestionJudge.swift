@@ -59,7 +59,7 @@ public struct SuggestionJudgeRunResult: Sendable {
 
 public enum SuggestionJudge: Sendable {
     public static let prompt = """
-        # Gegenlesen suggestion judge
+        # gegenlesen suggestion judge
 
         You filter proposed house rules and context notes. Decide FIRST.
         Default is DROP. These are not review findings.
@@ -87,7 +87,40 @@ public enum SuggestionJudge: Sendable {
         Do not modify any file except .gegenlesen/suggestion-judge.json.
         """
 
-    public static func writeInput(_ candidates: [SuggestionCandidate], workspace: URL) throws {
+    public static let harvestPrompt = """
+        # gegenlesen harvest suggestion judge
+
+        You filter harvest drafts from an existing repo. Decide FIRST.
+        These are not review findings.
+
+        Read .gegenlesen/suggestion-judge-input.json. Echo each candidate.id
+        as finding_id.
+
+        Keep a rule if it is a reusable house convention already visible in
+        two places (docs + code, or two source files): terminology, API
+        contracts, ports, setup flow, storage isolation, platform UX.
+        Drop taste, one-off bugs, and README wishes with no matching code.
+
+        Keep a context note if it is durable operator knowledge (CI gates,
+        release signing, packaging). Drop a recap of this harvest job.
+
+        If and only if verdict is keep, you MAY add rewrite {title, body}:
+        make the text generic. Do not invent policy the evidence does not
+        support.
+
+        Write .gegenlesen/suggestion-judge.json:
+          { "verdicts": [ { "finding_id", "verdict", "rationale", "rewrite"? } ] }
+
+        rewrite is optional: { "title", "body" }.
+        Do not invent candidates.
+        Do not modify any file except .gegenlesen/suggestion-judge.json.
+        """
+
+    public static func writeInput(
+        _ candidates: [SuggestionCandidate],
+        workspace: URL,
+        prompt: String = prompt
+    ) throws {
         let rows: [[String: Any]] = candidates.map { item in
             [
                 "id": item.id,

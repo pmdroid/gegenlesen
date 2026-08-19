@@ -34,6 +34,7 @@ public struct CorpusItem: Sendable, Equatable {
 public enum MineSource: String, Codable, Sendable, Equatable {
     case corpus
     case job
+    case harvest
 }
 
 public struct MineJobSpec: Codable, Sendable, Equatable {

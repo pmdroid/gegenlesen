@@ -1,9 +1,12 @@
 ---
 title: Learn
 description: How thumbs, comments, and the miner become suggested rules.
+order: 4
 ---
 
 Learn is not part of the review path. A review can write an architecture draft. It does not invent rules from findings.
+
+`gegenlesen harvest` is a separate first-run pass over a packed tree. It scans lint configs as suppressions, Flash drafts cited conventions, Terra drops most of them, and Ledger gets disabled drafts tagged `source: harvest`. Nothing auto-enables.
 
 ## When it runs
 

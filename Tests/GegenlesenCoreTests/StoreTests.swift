@@ -10,11 +10,11 @@ struct StoreTests {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
             let first = try await store.appliedMigrationIdentifiers()
-            #expect(first == [Migrations.v1Initial])
+            #expect(first == [Migrations.v1Initial, Migrations.v2Repositories])
 
             let reopened = try Store.open(dataDir: dir)
             let second = try await reopened.appliedMigrationIdentifiers()
-            #expect(second == [Migrations.v1Initial])
+            #expect(second == [Migrations.v1Initial, Migrations.v2Repositories])
         }
     }
 
@@ -44,6 +44,11 @@ struct StoreTests {
             let jobColumns = try await store.columnNames(in: "jobs")
             #expect(jobColumns.contains("container_name_a"))
             #expect(jobColumns.contains("container_name_b"))
+            #expect(jobColumns.contains("repository"))
+            let ruleColumns = try await store.columnNames(in: "rules")
+            #expect(ruleColumns.contains("repository"))
+            let noteColumns = try await store.columnNames(in: "context_notes")
+            #expect(noteColumns.contains("repository"))
         }
     }
 

@@ -1,0 +1,72 @@
+---
+import Base from '../layouts/Base.astro';
+
+const docs = [
+	{ href: '/docs/start', label: 'start' },
+	{ href: '/docs/review', label: 'how a review works' },
+	{ href: '/docs/ledger', label: 'ledger' },
+	{ href: '/docs/learn', label: 'learn' },
+	{ href: '/docs/config', label: 'config' },
+	{ href: '/docs/security', label: 'security' },
+];
+---
+
+<Base title="gegenlesen" description="Two models read the change. A third keeps only what the lines support.">
+	<div class="layout">
+		<main class="stream">
+			<p class="logline">$ <b>gegenlesen review</b></p>
+			<p class="logline">packed · identified · det → A ∥ B → judge</p>
+			<h1>Two readers. One judge. House rules stay off until you flip them.</h1>
+			<p class="lede">
+				<code>gegenlesen review</code> packs the repo. DeepSeek and Gemini both run. Terra keeps or
+				drops each finding. Ledger is the shop book, not the front door.
+			</p>
+			<div class="actions">
+				<a class="btn" href="/docs/start">start a review</a>
+				<a class="chip" href="/docs/review">how it works</a>
+			</div>
+
+			<section class="jobblock" aria-label="Pipeline">
+				<div class="jobhead">
+					<span class="t">pipeline</span>
+					<span class="st ok">always both</span>
+				</div>
+				<div class="pipe">01 pack · working tree plus <b>.gegenlesen/diff.patch</b></div>
+				<div class="pipe">02 identify · git range, then matching enabled rules</div>
+				<div class="pipe">03 cheap checks · regex, deny-lists, sibling tests on the host</div>
+				<div class="pipe">04 two models · A and B in Docker. Always both.</div>
+				<div class="pipe">05 judge · keep, drop, or downgrade. Host still checks citations.</div>
+			</section>
+
+			<section class="grid">
+				<article class="rule">
+					<h2>the CLI starts work</h2>
+					<p>Ledger never posts a job. You run <code>gegenlesen review</code> from the repo you want read.</p>
+				</article>
+				<article class="rule">
+					<h2>nothing auto-enables</h2>
+					<p>Mined and suggested rules land disabled. Accept is a human click.</p>
+				</article>
+				<article class="rule">
+					<h2>learn is a later pass</h2>
+					<p>Thumbs and comments sit until you hit learn or the sweeper. Review does not invent rules.</p>
+				</article>
+				<article class="rule">
+					<h2>no login</h2>
+					<p>Single tenant. Bind loopback. Setup in Ledger writes the OpenRouter key to a gitignored config file.</p>
+				</article>
+			</section>
+		</main>
+		<aside class="rail">
+			<h3>docs</h3>
+			{docs.map((item) => (
+				<a href={item.href}>{item.label}</a>
+			))}
+			<h3>run</h3>
+			<div class="ctx"><code>make run</code></div>
+			<div class="ctx"><code>gegenlesen review</code></div>
+			<h3>ledger</h3>
+			<div class="ctx">jobs · rules · context · learnings. Management only. No upload.</div>
+		</aside>
+	</div>
+</Base>

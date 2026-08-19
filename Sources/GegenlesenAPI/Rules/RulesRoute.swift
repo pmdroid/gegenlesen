@@ -46,6 +46,7 @@ enum RulesRoute {
             provenance: .handwritten,
             languages: upsert.languages,
             pathGlobs: upsert.pathGlobs.isEmpty ? ["**/*"] : upsert.pathGlobs,
+            repository: RepositoryName.normalize(upsert.repository),
             payload: upsert.payload,
             examples: upsert.examples ?? [],
             body: upsert.body ?? "",
@@ -68,6 +69,7 @@ enum RulesRoute {
         }
         existing.languages = upsert.languages
         existing.pathGlobs = upsert.pathGlobs.isEmpty ? ["**/*"] : upsert.pathGlobs
+        existing.repository = RepositoryName.normalize(upsert.repository)
         existing.payload = upsert.payload
         if let examples = upsert.examples {
             existing.examples = examples
@@ -109,6 +111,7 @@ enum RulesRoute {
             provenance: .handwritten,
             languages: existing.languages,
             pathGlobs: existing.pathGlobs,
+            repository: existing.repository,
             payload: existing.payload,
             examples: existing.examples,
             sourcePRRefs: existing.sourcePRRefs,
@@ -172,6 +175,17 @@ enum RulesRoute {
                 throw APIError.badRequest("invalid provenance")
             }
             filter.provenance = provenance
+        }
+        if let raw = req.query[String.self, at: "unscoped"] {
+            filter.unscoped = try parseBool(raw, name: "unscoped")
+        }
+        if req.query[String.self, at: "repository"] == "global" {
+            filter.unscoped = true
+        } else if let raw = req.query[String.self, at: "repository"] {
+            filter.repository = RepositoryName.normalize(raw)
+        }
+        if let raw = req.query[String.self, at: "include_global"] {
+            filter.includeGlobal = try parseBool(raw, name: "include_global")
         }
         return filter
     }

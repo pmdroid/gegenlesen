@@ -1,18 +1,14 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Gegenlesen" width="420" />
+  <img src="docs/assets/logo.png" alt="gegenlesen" width="420" />
 </p>
 
-# Gegenlesen
+# gegenlesen
 
 Single-tenant PR review. The **CLI** starts a review (`gegenlesen review`). The **web UI** is management only: jobs, findings + 👍/👎, rules, context, learnings. Reviewers run in Docker; a judge drops unsupported findings.
 
 There is no auth in v1. Bind `127.0.0.1`. One agent job at a time.
 
-**Site (Astro):** `cd www && npm run dev` or `make docs` → [http://127.0.0.1:4321](http://127.0.0.1:4321)
-
-**How it works (HTML):** [`docs/overview.html`](docs/overview.html)
-
-**Admin UI (locked: Ledger):** [`docs/ui-ledger.html`](docs/ui-ledger.html)
+**Site + docs:** [gegenlesen.dev](https://gegenlesen.dev) (`make docs` for a local copy)
 
 **Full design (approved):** [`docs/gegenlesen-pr-review-service.md`](docs/gegenlesen-pr-review-service.md)
 

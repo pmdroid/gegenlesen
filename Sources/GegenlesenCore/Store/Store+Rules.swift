@@ -6,17 +6,33 @@ public struct RuleListFilter: Sendable {
     public var kind: RuleKind?
     public var provenance: RuleProvenance?
     public var includeDeleted: Bool
+    public var repository: String?
+    public var unscoped: Bool
+    public var includeGlobal: Bool
 
     public init(
         enabled: Bool? = nil,
         kind: RuleKind? = nil,
         provenance: RuleProvenance? = nil,
-        includeDeleted: Bool = false
+        includeDeleted: Bool = false,
+        repository: String? = nil,
+        unscoped: Bool = false,
+        includeGlobal: Bool = false
     ) {
         self.enabled = enabled
         self.kind = kind
         self.provenance = provenance
         self.includeDeleted = includeDeleted
+        self.repository = repository
+        self.unscoped = unscoped
+        self.includeGlobal = includeGlobal
+    }
+
+    public static func applicable(to repository: String?) -> RuleListFilter {
+        if let repository {
+            return RuleListFilter(repository: repository, includeGlobal: true)
+        }
+        return RuleListFilter(unscoped: true)
     }
 }
 
@@ -49,6 +65,13 @@ extension Store {
                 clauses.append("provenance = ?")
                 arguments.append(provenance.rawValue)
             }
+            appendRepositoryFilter(
+                clauses: &clauses,
+                arguments: &arguments,
+                repository: filter.repository,
+                unscoped: filter.unscoped,
+                includeGlobal: filter.includeGlobal
+            )
             let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
             let rows = try Row.fetchAll(
                 db,
@@ -251,7 +274,7 @@ func updateRuleRow(_ rule: Rule, db: Database) throws {
             UPDATE rules SET
               title = ?, severity = ?, kind = ?, enabled = ?, deleted_at = ?,
               provenance = ?, languages_json = ?, path_globs_json = ?,
-              payload_json = ?, examples_json = ?, source_pr_refs_json = ?,
+              repository = ?, payload_json = ?, examples_json = ?, source_pr_refs_json = ?,
               promoted_from_rule_id = ?, body_md = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -264,6 +287,7 @@ func updateRuleRow(_ rule: Rule, db: Database) throws {
             rule.provenance.rawValue,
             encodeJSON(rule.languages),
             encodeJSON(rule.pathGlobs),
+            rule.repository,
             encodeJSON(rule.payload),
             encodeJSON(rule.examples),
             encodeJSON(rule.sourcePRRefs),
@@ -281,9 +305,9 @@ func insertRuleRow(_ rule: Rule, db: Database) throws {
         sql: """
             INSERT INTO rules (
               id, title, severity, kind, enabled, deleted_at, provenance,
-              languages_json, path_globs_json, payload_json, examples_json,
+              languages_json, path_globs_json, repository, payload_json, examples_json,
               source_pr_refs_json, promoted_from_rule_id, body_md, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
         arguments: [
             rule.id.rawValue,
@@ -295,6 +319,7 @@ func insertRuleRow(_ rule: Rule, db: Database) throws {
             rule.provenance.rawValue,
             encodeJSON(rule.languages),
             encodeJSON(rule.pathGlobs),
+            rule.repository,
             encodeJSON(rule.payload),
             encodeJSON(rule.examples),
             encodeJSON(rule.sourcePRRefs),
@@ -355,6 +380,7 @@ extension Rule {
             provenance: RuleProvenance(rawValue: row.optionalString("provenance") ?? "") ?? .handwritten,
             languages: languages,
             pathGlobs: globs,
+            repository: row.optionalString("repository"),
             payload: payload,
             examples: examples,
             sourcePRRefs: refs,

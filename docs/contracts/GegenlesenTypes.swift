@@ -374,6 +374,7 @@ struct Rule: Codable, Sendable, Equatable {
     var provenance: RuleProvenance
     var languages: [String]
     var pathGlobs: [String]
+    var repository: String?
     var payload: RulePayload
     var examples: [RuleExample]
     var sourcePRRefs: [String]
@@ -387,6 +388,7 @@ struct Rule: Codable, Sendable, Equatable {
         case deletedAt = "deleted_at"
         case provenance, languages
         case pathGlobs = "path_globs"
+        case repository
         case payload, examples
         case sourcePRRefs = "source_pr_refs"
         case promotedFromRuleID = "promoted_from_rule_id"
@@ -521,12 +523,14 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     var judgeModel: String
     var opencodeImage: String
     var limits: Limits
+    var openrouterConfigured: Bool
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
         case limits
+        case openrouterConfigured = "openrouter_configured"
     }
 }
 
@@ -539,6 +543,7 @@ struct CreateJobMeta: Codable, Sendable, Equatable {
     var headRef: String?
     var baseSHA: String?
     var headSHA: String?
+    var repository: String?
 
     enum CodingKeys: String, CodingKey {
         case title, scope
@@ -548,6 +553,7 @@ struct CreateJobMeta: Codable, Sendable, Equatable {
         case headRef = "head_ref"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
+        case repository
     }
 }
 
@@ -568,6 +574,7 @@ struct JobListItem: Codable, Sendable, Equatable {
     var status: JobStatus
     var scope: JobScope
     var parentJobID: JobID?
+    var repository: String?
     var reviewerAModelID: String
     var reviewerBModelID: String
     var judgeModelID: String
@@ -583,6 +590,7 @@ struct JobListItem: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
+        case repository
         case reviewerAModelID = "reviewer_a_model_id"
         case reviewerBModelID = "reviewer_b_model_id"
         case judgeModelID = "judge_model_id"
@@ -603,6 +611,7 @@ struct JobDetail: Codable, Sendable, Equatable {
     var status: JobStatus
     var scope: JobScope
     var parentJobID: JobID?
+    var repository: String?
     var reviewerAModelID: String
     var reviewerBModelID: String
     var judgeModelID: String
@@ -620,6 +629,7 @@ struct JobDetail: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
+        case repository
         case reviewerAModelID = "reviewer_a_model_id"
         case reviewerBModelID = "reviewer_b_model_id"
         case judgeModelID = "judge_model_id"

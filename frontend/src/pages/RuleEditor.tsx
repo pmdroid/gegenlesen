@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { RulePayload, RuleUpsert, Severity } from "../api";
-import { createRule, deleteRule, getRule, promoteRule, updateRule } from "../client";
+import { createRule, deleteRule, getRule, listRepositories, promoteRule, updateRule } from "../client";
 
 function instructionOf(payload: RulePayload): string {
   return "instruction" in payload ? payload.instruction : "";
@@ -24,12 +24,14 @@ export function RuleEditorPage() {
     queryFn: () => getRule(id ?? ""),
     enabled: !isNew && Boolean(id),
   });
+  const repos = useQuery({ queryKey: ["repositories"], queryFn: listRepositories });
 
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState<Severity>("warning");
   const [instruction, setInstruction] = useState("");
   const [pathGlobs, setPathGlobs] = useState("**/*");
   const [languages, setLanguages] = useState("*");
+  const [repository, setRepository] = useState("");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +43,7 @@ export function RuleEditorPage() {
     setInstruction(instructionOf(rule.payload));
     setPathGlobs(rule.path_globs.join("\n") || "**/*");
     setLanguages(rule.languages.join(", "));
+    setRepository(rule.repository ?? "");
     setBody(rule.body);
   }, [existing.data]);
 
@@ -61,6 +64,7 @@ export function RuleEditorPage() {
         kind: existing.data?.kind ?? "semantic",
         languages: langs.length ? langs : ["*"],
         path_globs: globs.length ? globs : ["**/*"],
+        repository: repository.trim() || null,
         payload:
           existingPayload && !("instruction" in existingPayload)
             ? existingPayload
@@ -75,6 +79,7 @@ export function RuleEditorPage() {
     onSuccess: (rule) => {
       void queryClient.invalidateQueries({ queryKey: ["rules"] });
       void queryClient.invalidateQueries({ queryKey: ["rule", rule.id] });
+      void queryClient.invalidateQueries({ queryKey: ["repositories"] });
       navigate(`/rules/${rule.id}`);
     },
     onError: (err: Error) => setError(err.message),
@@ -176,6 +181,15 @@ export function RuleEditorPage() {
           <input value={languages} onChange={(event) => setLanguages(event.target.value)} />
         </label>
         <label>
+          repository (blank = global)
+          <input
+            list="known-repos"
+            value={repository}
+            onChange={(event) => setRepository(event.target.value)}
+            placeholder="global"
+          />
+        </label>
+        <label>
           body
           <textarea rows={4} value={body} onChange={(event) => setBody(event.target.value)} />
         </label>
@@ -196,6 +210,11 @@ export function RuleEditorPage() {
           ) : null}
         </div>
       </form>
+      <datalist id="known-repos">
+        {(repos.data?.repositories ?? []).map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
     </div>
   );
 }

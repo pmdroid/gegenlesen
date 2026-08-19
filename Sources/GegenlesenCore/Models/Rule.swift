@@ -36,6 +36,7 @@ public struct Rule: Sendable, Equatable {
     public var provenance: RuleProvenance
     public var languages: [String]
     public var pathGlobs: [String]
+    public var repository: String?
     public var payload: RulePayload
     public var examples: [RuleExample]
     public var sourcePRRefs: [String]
@@ -54,6 +55,7 @@ public struct Rule: Sendable, Equatable {
         provenance: RuleProvenance = .handwritten,
         languages: [String],
         pathGlobs: [String],
+        repository: String? = nil,
         payload: RulePayload,
         examples: [RuleExample] = [],
         sourcePRRefs: [String] = [],
@@ -71,6 +73,7 @@ public struct Rule: Sendable, Equatable {
         self.provenance = provenance
         self.languages = languages
         self.pathGlobs = pathGlobs
+        self.repository = repository
         self.payload = payload
         self.examples = examples
         self.sourcePRRefs = sourcePRRefs

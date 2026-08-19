@@ -26,6 +26,8 @@ struct OpenCodeConfigTests {
         #expect(edit["*/.gegenlesen/findings-model_b.json"] == "allow")
         #expect(edit["*/.gegenlesen/judge.json"] == "allow")
         #expect(edit["*/.gegenlesen/suggestion-judge.json"] == "allow")
+        #expect(edit[".gegenlesen/harvest.json"] == "allow")
+        #expect(edit["*/.gegenlesen/harvest.json"] == "allow")
         #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
 
         let bash = try #require(permission["bash"] as? [String: String])

@@ -13,6 +13,7 @@
     "base_ref": { "type": ["string", "null"] },
     "head_ref": { "type": ["string", "null"] },
     "base_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
-    "head_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+    "head_sha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "repository": { "type": ["string", "null"] }
   }
 }

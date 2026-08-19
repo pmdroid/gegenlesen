@@ -157,6 +157,7 @@ export function JobDetailPage() {
         <div className="pipe">{pipelineLine(detail)}</div>
         <div className="pipe" style={{ borderBottom: summaryLine(detail) ? undefined : 0 }}>
           posted by CLI · scope: {detail.scope}
+          {detail.repository ? ` · ${detail.repository}` : " · global"}
           {detail.parent_job_id ? (
             <>
               {" · "}

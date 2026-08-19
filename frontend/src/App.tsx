@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { getHealth, getSettings } from "./client";
 import { ContextPage } from "./pages/Context";
 import { JobDetailPage } from "./pages/JobDetail";
@@ -7,6 +7,7 @@ import { JobsPage } from "./pages/Jobs";
 import { LearningsPage } from "./pages/Learnings";
 import { RuleEditorPage } from "./pages/RuleEditor";
 import { RulesPage } from "./pages/Rules";
+import { SetupPage } from "./pages/Setup";
 
 export function App() {
   const location = useLocation();
@@ -21,11 +22,15 @@ export function App() {
     : health.isError
       ? "api down"
       : "api …";
+  const needsSetup =
+    Boolean(settings.data) &&
+    !settings.data?.openrouter_configured &&
+    location.pathname !== "/setup";
 
   return (
     <>
       <div className="topbar">
-        <span className="brand">Gegenlesen</span>
+        <span className="brand">gegenlesen</span>
         <nav>
           <NavLink to="/" className={jobsOn ? "on" : undefined}>
             jobs
@@ -39,9 +44,13 @@ export function App() {
           <NavLink to="/learnings" className={({ isActive }) => (isActive ? "on" : undefined)}>
             learnings
           </NavLink>
+          <NavLink to="/setup" className={({ isActive }) => (isActive ? "on" : undefined)}>
+            setup
+          </NavLink>
         </nav>
         <span className="srv">{apiLabel}</span>
       </div>
+      {needsSetup ? <Navigate to="/setup" replace /> : null}
       <Routes>
         <Route path="/" element={<JobsPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
@@ -50,6 +59,7 @@ export function App() {
         <Route path="/rules/:id" element={<RuleEditorPage />} />
         <Route path="/context" element={<ContextPage />} />
         <Route path="/learnings" element={<LearningsPage />} />
+        <Route path="/setup" element={<SetupPage />} />
       </Routes>
     </>
   );

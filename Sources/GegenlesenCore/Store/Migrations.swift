@@ -2,10 +2,12 @@ import GRDB
 
 public enum Migrations {
     public static let v1Initial = "v1_initial"
+    public static let v2Repositories = "v2_repositories"
 
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration(v1Initial, migrate: migrateV1Initial)
+        migrator.registerMigration(v2Repositories, migrate: migrateV2Repositories)
         return migrator
     }
 
@@ -172,5 +174,14 @@ public enum Migrations {
               created_at    TEXT NOT NULL
             );
             """)
+    }
+
+    private static func migrateV2Repositories(_ db: Database) throws {
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN repository TEXT")
+        try db.execute(sql: "ALTER TABLE rules ADD COLUMN repository TEXT")
+        try db.execute(sql: "ALTER TABLE context_notes ADD COLUMN repository TEXT")
+        try db.execute(sql: "CREATE INDEX jobs_repository ON jobs(repository)")
+        try db.execute(sql: "CREATE INDEX rules_repository ON rules(repository)")
+        try db.execute(sql: "CREATE INDEX context_notes_repository ON context_notes(repository)")
     }
 }

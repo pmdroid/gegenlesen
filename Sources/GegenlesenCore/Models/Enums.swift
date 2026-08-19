@@ -74,7 +74,7 @@ public enum RuleKind: String, Codable, Sendable, Equatable {
 }
 
 public enum RuleProvenance: String, Codable, Sendable, Equatable {
-    case handwritten, mined, suggested
+    case handwritten, mined, suggested, harvest
 }
 
 public enum FeedbackVerdict: String, Codable, Sendable, Equatable {

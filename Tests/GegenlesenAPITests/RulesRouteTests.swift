@@ -155,7 +155,7 @@ struct RulesRouteTests {
 
 private let ruleKeys: Set<String> = [
     "id", "title", "severity", "kind", "enabled", "deleted_at", "provenance",
-    "languages", "path_globs", "payload", "examples", "source_pr_refs",
+    "languages", "path_globs", "repository", "payload", "examples", "source_pr_refs",
     "promoted_from_rule_id", "body", "created_at", "updated_at",
 ]
 

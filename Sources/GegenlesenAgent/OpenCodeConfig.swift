@@ -12,6 +12,7 @@ public enum OpenCodeConfig: Sendable {
         ".gegenlesen/judge.json",
         ".gegenlesen/suggestion-judge.json",
         ".gegenlesen/mined-rules.json",
+        ".gegenlesen/harvest.json",
         ".gegenlesen/architecture-draft.md",
         ".gegenlesen/transcript.json",
     ]
@@ -104,6 +105,11 @@ public enum OpenCodeConfig: Sendable {
                 ],
                 "miner": [
                     "description": "Extracts candidate rules from a PR corpus into .gegenlesen/mined-rules.json",
+                    "mode": "primary",
+                    "temperature": 0.2,
+                ],
+                "harvester": [
+                    "description": "Extracts house rules from a tree into .gegenlesen/harvest.json",
                     "mode": "primary",
                     "temperature": 0.2,
                 ],

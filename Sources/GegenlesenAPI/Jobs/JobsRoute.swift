@@ -7,6 +7,7 @@ enum JobsRoute {
     static func register(_ app: Application) {
         app.post("api", "jobs", use: create)
         app.get("api", "jobs", use: list)
+        app.get("api", "repositories", use: repositories)
         app.get("api", "jobs", ":id", use: detail)
         app.get("api", "jobs", ":id", "events", use: events)
         app.get("api", "jobs", ":id", "transcript", use: transcript)
@@ -58,6 +59,7 @@ enum JobsRoute {
             scope: meta.scope,
             parentJobID: meta.parentJobID,
             title: title,
+            repository: RepositoryName.normalize(meta.repository),
             reviewerAModelID: config.models.modelA,
             reviewerBModelID: config.models.modelB,
             judgeModelID: config.judgeModel,
@@ -105,10 +107,18 @@ enum JobsRoute {
         } else {
             status = nil
         }
+        let active = try parseFlag(req, "active")
+        let unscoped = try parseFlag(req, "unscoped")
+        let repository = RepositoryName.normalize(req.query[String.self, at: "repository"])
+        let query = nonempty(req.query[String.self, at: "q"])
         let page = try await req.application.gegenlesenStore.listJobs(
             limit: limit,
             offset: offset,
-            status: status
+            status: status,
+            active: active,
+            repository: unscoped ? nil : repository,
+            unscoped: unscoped || (req.query[String.self, at: "repository"] == "global"),
+            query: query
         )
         var items: [JobListItem] = []
         items.reserveCapacity(page.jobs.count)
@@ -118,6 +128,10 @@ enum JobsRoute {
             items.append(JobListItem.from(job, queuePosition: position, summary: summary))
         }
         return JobListResponse(jobs: items, total: page.total)
+    }
+
+    static func repositories(_ req: Request) async throws -> RepositoryListResponse {
+        RepositoryListResponse(repositories: try await req.application.gegenlesenStore.listRepositories())
     }
 
     static func detail(_ req: Request) async throws -> JobDetail {
@@ -299,6 +313,15 @@ enum JobsRoute {
         headers.contentType = .json
         let data = try JSONCoding.encoder.encode(body)
         return Response(status: status, headers: headers, body: .init(data: data))
+    }
+
+    private static func parseFlag(_ req: Request, _ name: String) throws -> Bool {
+        guard let raw = req.query[String.self, at: name] else { return false }
+        switch raw.lowercased() {
+        case "1", "true", "yes": return true
+        case "0", "false", "no": return false
+        default: throw APIError.badRequest("invalid \(name)")
+        }
     }
 
     private static func nonempty(_ value: String?) -> String? {

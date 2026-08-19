@@ -1,10 +1,10 @@
-# Gegenlesen site
+# gegenlesen site
 
-Astro + Starlight. Landing page and operator docs.
+Astro app. Landing plus operator docs. Same dark green monospace as Ledger (`frontend/`).
 
 ```bash
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0 --port 4321
 ```
 
-Serves `http://127.0.0.1:4321`. From the repo root, `make docs`.
+Production host is [gegenlesen.dev](https://gegenlesen.dev). From the repo root, `make docs`.

@@ -10,6 +10,7 @@ struct CreateJobMeta: Content {
     var headRef: String?
     var baseSHA: String?
     var headSHA: String?
+    var repository: String?
 
     enum CodingKeys: String, CodingKey {
         case title, scope
@@ -18,6 +19,7 @@ struct CreateJobMeta: Content {
         case headRef = "head_ref"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
+        case repository
     }
 }
 
@@ -32,9 +34,18 @@ struct JobAccepted: Content {
     }
 }
 
+struct HarvestIngestResponse: Content {
+    var rules: Int
+    var notes: Int
+}
+
 struct JobListResponse: Content {
     var jobs: [JobListItem]
     var total: Int
+}
+
+struct RepositoryListResponse: Content {
+    var repositories: [String]
 }
 
 struct JobEventsResponse: Content {
@@ -99,6 +110,7 @@ struct JobListItem: Content {
     var status: JobStatus
     var scope: JobScope
     var parentJobID: JobID?
+    var repository: String?
     var reviewerAModelID: String
     var reviewerBModelID: String
     var judgeModelID: String
@@ -114,6 +126,7 @@ struct JobListItem: Content {
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
+        case repository
         case reviewerAModelID = "reviewer_a_model_id"
         case reviewerBModelID = "reviewer_b_model_id"
         case judgeModelID = "judge_model_id"
@@ -134,6 +147,7 @@ struct JobListItem: Content {
         try container.encode(status, forKey: .status)
         try container.encode(scope, forKey: .scope)
         try container.encodeNilIfNeeded(parentJobID, forKey: .parentJobID)
+        try container.encodeNilIfNeeded(repository, forKey: .repository)
         try container.encode(reviewerAModelID, forKey: .reviewerAModelID)
         try container.encode(reviewerBModelID, forKey: .reviewerBModelID)
         try container.encode(judgeModelID, forKey: .judgeModelID)
@@ -154,6 +168,7 @@ struct JobListItem: Content {
             status: job.status,
             scope: job.scope,
             parentJobID: job.parentJobID,
+            repository: job.repository,
             reviewerAModelID: job.reviewerAModelID,
             reviewerBModelID: job.reviewerBModelID,
             judgeModelID: job.judgeModelID,
@@ -175,6 +190,7 @@ struct JobDetail: Content {
     var status: JobStatus
     var scope: JobScope
     var parentJobID: JobID?
+    var repository: String?
     var reviewerAModelID: String
     var reviewerBModelID: String
     var judgeModelID: String
@@ -192,6 +208,7 @@ struct JobDetail: Content {
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
+        case repository
         case reviewerAModelID = "reviewer_a_model_id"
         case reviewerBModelID = "reviewer_b_model_id"
         case judgeModelID = "judge_model_id"
@@ -213,6 +230,7 @@ struct JobDetail: Content {
         try container.encode(status, forKey: .status)
         try container.encode(scope, forKey: .scope)
         try container.encodeNilIfNeeded(parentJobID, forKey: .parentJobID)
+        try container.encodeNilIfNeeded(repository, forKey: .repository)
         try container.encode(reviewerAModelID, forKey: .reviewerAModelID)
         try container.encode(reviewerBModelID, forKey: .reviewerBModelID)
         try container.encode(judgeModelID, forKey: .judgeModelID)
@@ -241,6 +259,7 @@ struct JobDetail: Content {
             status: job.status,
             scope: job.scope,
             parentJobID: job.parentJobID,
+            repository: job.repository,
             reviewerAModelID: job.reviewerAModelID,
             reviewerBModelID: job.reviewerBModelID,
             judgeModelID: job.judgeModelID,

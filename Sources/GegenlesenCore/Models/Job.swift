@@ -64,6 +64,7 @@ public struct Job: Sendable, Equatable {
     public var scope: JobScope
     public var parentJobID: JobID?
     public var title: String?
+    public var repository: String?
     public var reviewerAModelID: String
     public var reviewerBModelID: String
     public var judgeModelID: String
@@ -89,6 +90,7 @@ public struct Job: Sendable, Equatable {
         scope: JobScope,
         parentJobID: JobID? = nil,
         title: String? = nil,
+        repository: String? = nil,
         reviewerAModelID: String,
         reviewerBModelID: String,
         judgeModelID: String,
@@ -113,6 +115,7 @@ public struct Job: Sendable, Equatable {
         self.scope = scope
         self.parentJobID = parentJobID
         self.title = title
+        self.repository = repository
         self.reviewerAModelID = reviewerAModelID
         self.reviewerBModelID = reviewerBModelID
         self.judgeModelID = judgeModelID

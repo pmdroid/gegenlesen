@@ -1,4 +1,4 @@
-# Gegenlesen technical plan
+# gegenlesen technical plan
 
 Implementation contract. Other agents and PRs **must** match these types, names, JSON keys, and HTTP shapes. Narrative and rationale live in [`gegenlesen-pr-review-service.md`](gegenlesen-pr-review-service.md). If this file and the design disagree on a type or wire field, **this file wins** and the design should be updated.
 
@@ -48,7 +48,7 @@ First systematic pass: design doc vs this plan vs Swift vs TypeScript vs OpenAPI
 - Error envelope `{ error: { code, message, details } }` and `ErrorCode`.
 - `GET /api/jobs` wrapper `{ jobs, total }` (design only said query params).
 - `POST /api/rules/:id/enable` and `/disable` (design already has PUT + CRUD).
-- `GET /api/health` `{ ok, version }` shape (`version` = Gegenlesen `0.1.0`).
+- `GET /api/health` `{ ok, version }` shape (`version` = gegenlesen `0.1.0`).
 - `Finding.created_at` on HTTP (SQL has it; design example omitted it). **Keep it** — list/detail need a timestamp.
 
 **Still missing as a schema file**
@@ -707,7 +707,7 @@ See [`schemas/openapi.yaml`](../schemas/openapi.yaml) `JobDetail`. Includes `fin
 { "ok": true, "version": "0.1.0" }
 ```
 
-`version` is the Gegenlesen release, not the OpenCode pin.
+`version` is the gegenlesen release, not the OpenCode pin.
 
 ---
 

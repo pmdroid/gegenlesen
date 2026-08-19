@@ -11,11 +11,13 @@ struct ContextNoteUpsert: Content {
     var body: String
     var pathGlobs: [String]?
     var alwaysInclude: Bool?
+    var repository: String?
 
     enum CodingKeys: String, CodingKey {
         case title, body
         case pathGlobs = "path_globs"
         case alwaysInclude = "always_include"
+        case repository
     }
 }
 
@@ -26,6 +28,7 @@ struct ContextNoteDTO: Content {
     var body: String
     var pathGlobs: [String]
     var alwaysInclude: Bool
+    var repository: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -33,8 +36,22 @@ struct ContextNoteDTO: Content {
         case id, kind, title, body
         case pathGlobs = "path_globs"
         case alwaysInclude = "always_include"
+        case repository
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(title, forKey: .title)
+        try container.encode(body, forKey: .body)
+        try container.encode(pathGlobs, forKey: .pathGlobs)
+        try container.encode(alwaysInclude, forKey: .alwaysInclude)
+        try container.encodeNilIfNeeded(repository, forKey: .repository)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     init(note: ContextNote) {
@@ -44,6 +61,7 @@ struct ContextNoteDTO: Content {
         body = note.body
         pathGlobs = note.pathGlobs
         alwaysInclude = note.alwaysInclude
+        repository = note.repository
         createdAt = note.createdAt
         updatedAt = note.updatedAt
     }

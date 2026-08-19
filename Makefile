@@ -12,7 +12,7 @@ run:
 	./scripts/dev.sh
 
 docs:
-	cd www && npm run dev
+	cd www && npm run dev -- --host 0.0.0.0 --port 4321
 
 clean:
 	rm -rf .build

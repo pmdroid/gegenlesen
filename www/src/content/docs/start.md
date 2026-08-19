@@ -1,6 +1,7 @@
 ---
 title: Start
-description: Build Gegenlesen and run the first review.
+description: Build gegenlesen and run the first review.
+order: 1
 ---
 
 Use Xcode’s Swift. Mixing it with Command Line Tools `/usr/bin/swift` produces a module version error. `./scripts/swift` and `make` set `DEVELOPER_DIR` for you.
@@ -8,13 +9,11 @@ Use Xcode’s Swift. Mixing it with Command Line Tools `/usr/bin/swift` produces
 ## Run the service
 
 ```bash
-cp config/gegenlesen.example.json config/gegenlesen.json
-export OPENROUTER_API_KEY=…
 scripts/build-runner.sh
 make run
 ```
 
-`make run` starts the API on `127.0.0.1:8080` and the Ledger Vite app on port 5173.
+`make run` starts the API on `127.0.0.1:8080` and the Ledger Vite app on port 5173. Open Ledger and use **setup** to pick the two reviewers, the judge, and paste an OpenRouter key. That writes `config/gegenlesen.json`. You can still export `OPENROUTER_API_KEY` instead.
 
 To start only the API:
 
@@ -42,7 +41,7 @@ gegenlesen review --parent <job-id>
 cd www && npm install && npm run dev
 ```
 
-Astro serves this site on port 4321. `make docs` does the same from the repo root.
+The public site is [gegenlesen.dev](https://gegenlesen.dev). `make docs` serves the same pages on port 4321.
 
 ## After the rename
 

@@ -64,6 +64,7 @@ enum LearningsRoute {
 
     private static func acceptRule(_ item: Learning, on req: Request) async throws {
         let store = req.application.gegenlesenStore
+        let repository = try await sourceRepository(item, store: store)
         if let ruleID = payloadString(item.payloadJSON, key: "rule_id") {
             let id = RuleID(ruleID)
             if let existing = try await store.rule(id: id), existing.deletedAt == nil {
@@ -78,6 +79,7 @@ enum LearningsRoute {
                         provenance: .handwritten,
                         languages: existing.languages,
                         pathGlobs: existing.pathGlobs,
+                        repository: existing.repository ?? repository,
                         payload: existing.payload,
                         examples: existing.examples,
                         sourcePRRefs: existing.sourcePRRefs,
@@ -106,6 +108,7 @@ enum LearningsRoute {
             provenance: .handwritten,
             languages: ["*"],
             pathGlobs: ["**/*"],
+            repository: repository,
             payload: .semantic(instruction: item.body, fewShots: []),
             body: item.body,
             createdAt: now,
@@ -127,7 +130,8 @@ enum LearningsRoute {
     private static func acceptArchitecture(_ item: Learning, on req: Request) async throws {
         let store = req.application.gegenlesenStore
         let now = Date()
-        if var existing = try await store.acceptedArchitectureNote() {
+        let repository = try await sourceRepository(item, store: store)
+        if var existing = try await store.acceptedArchitectureNote(repository: repository) {
             existing.title = item.title
             existing.body = item.body
             existing.updatedAt = now
@@ -138,6 +142,7 @@ enum LearningsRoute {
                 kind: .architecture,
                 title: item.title,
                 body: item.body,
+                repository: repository,
                 createdAt: now,
                 updatedAt: now
             )
@@ -147,9 +152,15 @@ enum LearningsRoute {
     }
 
     private static func acceptContext(_ item: Learning, on req: Request) async throws {
-        let note = ContextNote(title: item.title, body: item.body)
+        let repository = try await sourceRepository(item, store: req.application.gegenlesenStore)
+        let note = ContextNote(title: item.title, body: item.body, repository: repository)
         try await req.application.gegenlesenStore.insertContextNote(note)
         await reembed(note, on: req)
+    }
+
+    private static func sourceRepository(_ item: Learning, store: Store) async throws -> String? {
+        guard let jobID = item.jobID else { return nil }
+        return try await store.job(id: jobID)?.repository
     }
 
     private static func reembed(_ note: ContextNote, on req: Request) async {

@@ -258,7 +258,13 @@ public struct ArchitectureIndexJob: Sendable {
 
     private func upsertArchitectureLearning(draft: String, jobID: JobID?) async throws {
         let hash = ContentHash.sha256(Data(draft.utf8))
-        if let accepted = try await store.acceptedArchitectureNote() {
+        let repository: String?
+        if let jobID {
+            repository = try await store.job(id: jobID)?.repository
+        } else {
+            repository = nil
+        }
+        if let accepted = try await store.acceptedArchitectureNote(repository: repository) {
             let acceptedHash = ContentHash.sha256(Data(accepted.body.utf8))
             if acceptedHash == hash { return }
         }

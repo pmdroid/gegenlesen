@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Gegenlesen API
+  title: gegenlesen API
   version: 0.1.0
   description: |
     Single-tenant PR review service. No auth.
@@ -23,11 +23,83 @@ paths:
       operationId: getSettings
       responses:
         "200":
-          description: Non-secret config
+          description: Non-secret config. Never includes the API key.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SettingsDTO"
+    put:
+      operationId: putSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Saved models. Key stored on disk, not echoed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsDTO"
+        "422":
+          description: Missing models or OpenRouter rejected the key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
+  /api/models:
+    get:
+      operationId: listOpenRouterModels
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Free-text name or slug. Forwarded to OpenRouter.
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [programming, technology, academia, science, legal, translation]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              [
+                most-popular,
+                newest,
+                top-weekly,
+                pricing-low-to-high,
+                coding-high-to-low,
+                intelligence-high-to-low,
+                agentic-high-to-low,
+              ]
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: free
+          in: query
+          schema: { type: boolean }
+          description: Only models with zero prompt and completion price.
+        - name: X-OpenRouter-Key
+          in: header
+          schema: { type: string }
+          description: Optional key before it is saved. Otherwise the stored key is used.
+      responses:
+        "200":
+          description: Text models from OpenRouter. Ids are prefixed with openrouter/ for OpenCode.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenRouterModelList"
+        "422":
+          description: Missing or rejected key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
   /api/metrics:
     get:
       operationId: getMetrics
@@ -51,6 +123,21 @@ paths:
         - name: status
           in: query
           schema: { $ref: "#/components/schemas/JobStatus" }
+        - name: active
+          in: query
+          schema: { type: boolean }
+          description: If true and status is omitted, only non-terminal jobs.
+        - name: repository
+          in: query
+          schema: { type: string }
+        - name: unscoped
+          in: query
+          schema: { type: boolean }
+          description: If true, only jobs with no repository.
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Case-insensitive title/id substring.
       responses:
         "200":
           description: newest first
@@ -91,6 +178,22 @@ paths:
         "415": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "507": { $ref: "#/components/responses/Error" }
+  /api/repositories:
+    get:
+      operationId: listRepositories
+      responses:
+        "200":
+          description: known repositories from jobs, rules, and notes
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items: { type: string }
   /api/jobs/{id}:
     get:
       operationId: getJob
@@ -211,6 +314,15 @@ paths:
         - name: provenance
           in: query
           schema: { $ref: "#/components/schemas/RuleProvenance" }
+        - name: repository
+          in: query
+          schema: { type: string }
+        - name: unscoped
+          in: query
+          schema: { type: boolean }
+        - name: include_global
+          in: query
+          schema: { type: boolean }
       responses:
         "200":
           content:
@@ -471,7 +583,7 @@ components:
     SettingsDTO:
       type: object
       additionalProperties: false
-      required: [bind, port, models, judge_model, opencode_image, limits]
+      required: [bind, port, models, judge_model, opencode_image, limits, openrouter_configured]
       properties:
         bind: { type: string }
         port: { type: integer }
@@ -479,6 +591,38 @@ components:
         judge_model: { type: string }
         opencode_image: { type: string }
         limits: { $ref: "#/components/schemas/Limits" }
+        openrouter_configured: { type: boolean }
+    SettingsUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        models: { $ref: "#/components/schemas/ModelSlots" }
+        judge_model: { type: string }
+        openrouter_api_key: { type: string }
+    OpenRouterModel:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        context_length: { type: integer, nullable: true }
+        prompt_price: { type: string, nullable: true }
+        free: { type: boolean }
+    OpenRouterModelList:
+      type: object
+      additionalProperties: false
+      required: [models, total, free]
+      properties:
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/OpenRouterModel" }
+        total: { type: integer }
+        query: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        sort: { type: string, nullable: true }
+        free: { type: boolean }
     APIErrorBody:
       type: object
       additionalProperties: false
@@ -521,6 +665,7 @@ components:
         - status
         - scope
         - parent_job_id
+        - repository
         - reviewer_a_model_id
         - reviewer_b_model_id
         - judge_model_id
@@ -538,6 +683,7 @@ components:
         status: { $ref: "#/components/schemas/JobStatus" }
         scope: { $ref: "#/components/schemas/JobScope" }
         parent_job_id: { type: ["string", "null"], format: uuid }
+        repository: { type: ["string", "null"] }
         reviewer_a_model_id: { type: string }
         reviewer_b_model_id: { type: string }
         judge_model_id: { type: string }
@@ -750,6 +896,7 @@ components:
         - provenance
         - languages
         - path_globs
+        - repository
         - payload
         - examples
         - source_pr_refs
@@ -771,6 +918,7 @@ components:
         path_globs:
           type: array
           items: { type: string }
+        repository: { type: ["string", "null"] }
         payload: { $ref: "#/components/schemas/RulePayload" }
         examples:
           type: array
@@ -798,6 +946,7 @@ components:
         path_globs:
           type: array
           items: { type: string }
+        repository: { type: ["string", "null"] }
         payload: { $ref: "#/components/schemas/RulePayload" }
         examples:
           type: array

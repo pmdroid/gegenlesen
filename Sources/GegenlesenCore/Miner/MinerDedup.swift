@@ -20,13 +20,17 @@ public enum MinerDedup: Sendable {
 
         let key = Normalize.titleKey(rule.title)
         let existing = try await store.listRules(RuleListFilter(includeDeleted: false))
-        if let match = existing.first(where: { Normalize.titleKey($0.title) == key }) {
+        if let match = existing.first(where: {
+            Normalize.titleKey($0.title) == key
+                && RepositoryName.normalize($0.repository) == RepositoryName.normalize(rule.repository)
+        }) {
             _ = try await store.appendSourcePRRefs(id: match.id, refs: rule.sourcePRRefs, at: now)
             return .attached(match.id)
         }
 
         if let top = try await store.ftsTop1Rule(matching: rule.title),
-           PatchGlobs.equivalent(top.pathGlobs, rule.pathGlobs) {
+           PatchGlobs.equivalent(top.pathGlobs, rule.pathGlobs),
+           RepositoryName.normalize(top.repository) == RepositoryName.normalize(rule.repository) {
             _ = try await store.appendSourcePRRefs(id: top.id, refs: rule.sourcePRRefs, at: now)
             return .attached(top.id)
         }
