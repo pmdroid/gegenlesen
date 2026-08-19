@@ -14,22 +14,22 @@
     "question": "deny",
     "edit": {
       "*": "deny",
-      ".meister/findings.json": "allow",
-      ".meister/findings-model_a.json": "allow",
-      ".meister/findings-model_b.json": "allow",
-      ".meister/judge.json": "allow",
-      ".meister/suggestion-judge.json": "allow",
-      ".meister/mined-rules.json": "allow",
-      ".meister/architecture-draft.md": "allow",
-      ".meister/transcript.json": "allow",
-      "*/.meister/findings.json": "allow",
-      "*/.meister/findings-model_a.json": "allow",
-      "*/.meister/findings-model_b.json": "allow",
-      "*/.meister/judge.json": "allow",
-      "*/.meister/suggestion-judge.json": "allow",
-      "*/.meister/mined-rules.json": "allow",
-      "*/.meister/architecture-draft.md": "allow",
-      "*/.meister/transcript.json": "allow"
+      ".gegenlesen/findings.json": "allow",
+      ".gegenlesen/findings-model_a.json": "allow",
+      ".gegenlesen/findings-model_b.json": "allow",
+      ".gegenlesen/judge.json": "allow",
+      ".gegenlesen/suggestion-judge.json": "allow",
+      ".gegenlesen/mined-rules.json": "allow",
+      ".gegenlesen/architecture-draft.md": "allow",
+      ".gegenlesen/transcript.json": "allow",
+      "*/.gegenlesen/findings.json": "allow",
+      "*/.gegenlesen/findings-model_a.json": "allow",
+      "*/.gegenlesen/findings-model_b.json": "allow",
+      "*/.gegenlesen/judge.json": "allow",
+      "*/.gegenlesen/suggestion-judge.json": "allow",
+      "*/.gegenlesen/mined-rules.json": "allow",
+      "*/.gegenlesen/architecture-draft.md": "allow",
+      "*/.gegenlesen/transcript.json": "allow"
     },
     "bash": {
       "*": "deny",
@@ -55,17 +55,17 @@
     "explore": { "disable": true },
     "scout": { "disable": true },
     "reviewer": {
-      "description": "Read-only PR reviewer that writes .meister/findings.json",
+      "description": "Read-only PR reviewer that writes .gegenlesen/findings.json",
       "mode": "primary",
       "temperature": 0.1
     },
     "judge": {
-      "description": "Conservative findings judge that writes .meister/judge.json",
+      "description": "Conservative findings judge that writes .gegenlesen/judge.json",
       "mode": "primary",
       "temperature": 0.0
     },
     "miner": {
-      "description": "Extracts candidate rules from a PR corpus into .meister/mined-rules.json",
+      "description": "Extracts candidate rules from a PR corpus into .gegenlesen/mined-rules.json",
       "mode": "primary",
       "temperature": 0.2
     }

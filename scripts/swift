@@ -3,6 +3,6 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=toolchain.sh
 . "$root/scripts/toolchain.sh"
-meister_sync_build_dir "$root"
+gegenlesen_sync_build_dir "$root"
 cd "$root"
 exec swift "$@"

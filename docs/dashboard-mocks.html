@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Meister — admin UI mocks</title>
+  <title>Gegenlesen — admin UI mocks</title>
   <style>
     :root { --ph: 52px; }
     * { box-sizing: border-box; }
@@ -110,15 +110,15 @@
     <button class="on" data-m="a" type="button">A · Catalog</button>
     <button data-m="b" type="button">B · Inbox</button>
     <button data-m="c" type="button">C · Findings</button>
-    <span class="hint">Reviews start from <code>meister review</code> — these screens manage what already ran</span>
+    <span class="hint">Reviews start from <code>gegenlesen review</code> — these screens manage what already ran</span>
   </div>
 
   <!-- A Catalog -->
   <div class="mock on a" id="a">
     <div class="bar">
-      <strong>Meister</strong>
+      <strong>Gegenlesen</strong>
       <nav><b>Overview</b> Rules Context Learnings Jobs</nav>
-      <span class="cli">server :8080 · start reviews with <code>meister review</code></span>
+      <span class="cli">server :8080 · start reviews with <code>gegenlesen review</code></span>
     </div>
     <div class="wrap">
       <div class="row">
@@ -147,7 +147,7 @@
               </tr>
             </tbody>
           </table>
-          <p class="cli" style="margin:12px 0 0">Empty state if none: “No jobs yet. In a repo run <code>meister review</code>.”</p>
+          <p class="cli" style="margin:12px 0 0">Empty state if none: “No jobs yet. In a repo run <code>gegenlesen review</code>.”</p>
         </div>
         <div class="panel">
           <h2>Pending learnings</h2>
@@ -185,12 +185,12 @@
   <!-- B Inbox -->
   <div class="mock b" id="b">
     <aside>
-      <h1>MEISTER</h1>
+      <h1>GEGENLESEN</h1>
       <a class="on" href="#">Learnings <span class="n">4</span></a>
       <a href="#">Context</a>
       <a href="#">Rules</a>
       <a href="#">Jobs</a>
-      <p class="foot">This UI does not start reviews.<br>CLI: <code>meister review</code><br>then come back here to accept what it learned.</p>
+      <p class="foot">This UI does not start reviews.<br>CLI: <code>gegenlesen review</code><br>then come back here to accept what it learned.</p>
     </aside>
     <main>
       <h2>Suggested from last run</h2>
@@ -237,7 +237,7 @@
   <!-- C Findings admin -->
   <div class="mock c" id="c">
     <div class="top">
-      <strong>Meister · admin</strong>
+      <strong>Gegenlesen · admin</strong>
       <nav>Jobs <b>auth: drop print logging</b> Rules Context Learnings</nav>
       <span style="font-size:12px;color:#9bb0c2">started by CLI · not from this UI</span>
     </div>

@@ -4,15 +4,15 @@ if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app/Contents/Develope
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 
-meister_swift_version() {
+gegenlesen_swift_version() {
   swift --version 2>/dev/null | head -n 1
 }
 
-meister_sync_build_dir() {
+gegenlesen_sync_build_dir() {
   local root="${1:-.}"
-  local marker="$root/.build/meister-swift-version"
+  local marker="$root/.build/gegenlesen-swift-version"
   local current
-  current="$(meister_swift_version)"
+  current="$(gegenlesen_swift_version)"
   if [ -z "$current" ]; then
     return 0
   fi

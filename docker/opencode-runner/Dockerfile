@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -u 1000 -m meister
+RUN useradd -u 1000 -m gegenlesen
 
 RUN set -eux; \
     case "$TARGETARCH" in \
@@ -48,14 +48,14 @@ RUN set -eux; \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
-COPY opencode.json /home/meister/.config/opencode/opencode.json
-COPY agents/ /home/meister/.config/opencode/agents/
+COPY opencode.json /home/gegenlesen/.config/opencode/opencode.json
+COPY agents/ /home/gegenlesen/.config/opencode/agents/
 
-RUN chown -R 1000:1000 /home/meister
+RUN chown -R 1000:1000 /home/gegenlesen
 
-LABEL org.meister.opencode-version="${OPENCODE_VERSION}"
-LABEL org.meister.runner-version="0.1.0"
+LABEL org.gegenlesen.opencode-version="${OPENCODE_VERSION}"
+LABEL org.gegenlesen.runner-version="0.1.0"
 
-USER meister
+USER gegenlesen
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

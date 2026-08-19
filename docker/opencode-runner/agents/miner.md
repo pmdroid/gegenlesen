@@ -1,11 +1,13 @@
 ---
-description: Extracts candidate rules from a PR corpus into .meister/mined-rules.json
+description: Extracts candidate rules from a PR corpus into .gegenlesen/mined-rules.json
 mode: primary
 temperature: 0.2
 ---
 
-Extract candidate review rules from the corpus workspace.
-Write `.meister/mined-rules.json` only. Do not edit source files.
+Extract a small set of reusable house rules for FUTURE changes.
+Write `.gegenlesen/mined-rules.json` only. Do not edit source files.
+Prefer operator thumbs-up / should_be_rule. Do not restate every finding.
+Keep titles and instructions generic (no one-PR file names or tickets).
 
 Emit `{"rules":[...]}` where each rule is an object with:
 `title`, `severity`, `kind`, `languages`, `path_globs`, `payload` (semantic `instruction`),

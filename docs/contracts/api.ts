@@ -1,5 +1,5 @@
 /**
- * Meister HTTP + file-contract types.
+ * Gegenlesen HTTP + file-contract types.
  * Wire format is snake_case — these types match JSON 1:1.
  * Copy into frontend/src/ during PR 1. Keep in sync with
  * docs/technical-plan.md and schemas/openapi.yaml.
@@ -330,7 +330,7 @@ export interface LearningListResponse {
   learnings: Learning[];
 }
 
-/** Agent-written `.meister/findings.json` */
+/** Agent-written `.gegenlesen/findings.json` */
 export interface AgentFindingsFile {
   findings: AgentFinding[];
 }
@@ -350,7 +350,7 @@ export interface AgentFinding {
   suggested_patch?: string | null;
 }
 
-/** Host-written `.meister/judge-input.json` */
+/** Host-written `.gegenlesen/judge-input.json` */
 export interface JudgeInputFile {
   candidates: JudgeCandidate[];
 }
@@ -371,7 +371,7 @@ export interface JudgeCandidate {
   actual_slice: string;
 }
 
-/** Judge-written `.meister/judge.json` */
+/** Judge-written `.gegenlesen/judge.json` */
 export interface JudgeFile {
   verdicts: JudgeVerdictRow[];
 }

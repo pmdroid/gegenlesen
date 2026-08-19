@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meister.local/schemas/judge.json",
+  "$id": "https://gegenlesen.local/schemas/judge.json",
   "title": "JudgeFile",
   "type": "object",
   "additionalProperties": false,

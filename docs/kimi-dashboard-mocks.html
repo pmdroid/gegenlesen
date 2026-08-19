@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Meister — admin UI mocks (kimi set)</title>
+  <title>Gegenlesen — admin UI mocks (kimi set)</title>
   <style>
     :root { --ph: 52px; }
     * { box-sizing: border-box; }
@@ -269,17 +269,17 @@
 </head>
 <body>
   <div class="picker">
-    <strong>Meister admin — kimi set</strong>
+    <strong>Gegenlesen admin — kimi set</strong>
     <button class="on" data-m="d1" type="button">D1 · Ledger</button>
     <button data-m="d2" type="button">D2 · Board</button>
     <button data-m="d3" type="button">D3 · Review room</button>
-    <span class="hint">Management only — reviews start from <code>meister review</code> in a repo, never here</span>
+    <span class="hint">Management only — reviews start from <code>gegenlesen review</code> in a repo, never here</span>
   </div>
 
   <!-- ================= D1 · LEDGER ================= -->
   <div class="mock on d1" id="d1">
     <div class="topbar">
-      <span class="brand">MEISTER</span>
+      <span class="brand">GEGENLESEN</span>
       <nav>
         <span class="on">jobs</span><span>rules</span><span>context</span><span>learnings</span>
       </nav>
@@ -287,8 +287,8 @@
     </div>
     <div class="layout">
       <div class="stream">
-        <div class="logline">$ meister status</div>
-        <div class="logline"><b>queue:</b> 0 queued · 1 running · 4 succeeded · this UI is a read-only tail — start work with <b>meister review</b></div>
+        <div class="logline">$ gegenlesen status</div>
+        <div class="logline"><b>queue:</b> 0 queued · 1 running · 4 succeeded · this UI is a read-only tail — start work with <b>gegenlesen review</b></div>
 
         <div class="jobblock">
           <div class="jobhead">
@@ -367,7 +367,7 @@
         </div>
 
         <div class="empty">
-          No jobs yet. In a repo run <code>meister review</code>.<br>
+          No jobs yet. In a repo run <code>gegenlesen review</code>.<br>
           Jobs appear here only after the CLI POSTs them.
         </div>
       </div>
@@ -408,15 +408,15 @@
   <!-- ================= D2 · BOARD ================= -->
   <div class="mock d2" id="d2">
     <div class="topbar">
-      <span class="brand">Meister</span>
+      <span class="brand">Gegenlesen</span>
       <span>Jobs board</span>
-      <span class="cli-note">the CLI moves cards left → right · this board only reads · start work with <code>meister review</code></span>
+      <span class="cli-note">the CLI moves cards left → right · this board only reads · start work with <code>gegenlesen review</code></span>
     </div>
     <div class="board">
       <div class="col">
         <h3>Queued <span class="cnt">0</span></h3>
         <div class="emptycol">
-          No jobs yet.<br>In a repo run <code>meister review</code>.<br>Cards appear when the CLI POSTs.
+          No jobs yet.<br>In a repo run <code>gegenlesen review</code>.<br>Cards appear when the CLI POSTs.
         </div>
       </div>
       <div class="col">
@@ -495,7 +495,7 @@
         </div>
         <div class="docksec">
           <h4>Context — always-on notes</h4>
-          <div class="ditem">Use OSLog; print is never OK<small>embedded · always included in .meister/context.md</small></div>
+          <div class="ditem">Use OSLog; print is never OK<small>embedded · always included in .gegenlesen/context.md</small></div>
           <div class="ditem">Never touch Payments from Auth<small>user note</small></div>
           <div class="ditem">Burst size 20 in prod, 2 in tests<small>accepted from learnings on Aug 12</small></div>
         </div>
@@ -511,7 +511,7 @@
       <button class="jobtab" type="button">rate-limiter: token bucket · reviewing</button>
       <button class="jobtab" type="button">openapi: add /v2/usage · succeeded</button>
       <button class="jobtab" type="button">billing: retry backoff · incremental</button>
-      <span class="cli-note">jobs come from <code>meister review</code> — pick one to inspect, not to start</span>
+      <span class="cli-note">jobs come from <code>gegenlesen review</code> — pick one to inspect, not to start</span>
     </div>
     <div class="main">
       <div class="diffpane">
@@ -619,7 +619,7 @@
           </div>
           <div class="ritem">
             <div class="rt">Never touch Payments from Auth</div>
-            <small>context note · always included in .meister/context.md</small>
+            <small>context note · always included in .gegenlesen/context.md</small>
           </div>
           <button class="newbtn" type="button">+ New rule or context note</button>
         </div>
@@ -655,13 +655,13 @@
     not just the landing page:
 
     D1 · LEDGER — "the UI is a read-only tail of the CLI."
-      Dark monospace log-stream. Jobs render as `$ meister status` output with
+      Dark monospace log-stream. Jobs render as `$ gegenlesen status` output with
       one pipeline line per job (deterministic → A ∥ B → judge verdicts), so the
       server-side sequencing is the visual structure itself. Findings are log
       entries with [judge: kept/dropped] and [deterministic · skipped judge]
       tags; pre-judge drops stay visible for audit. Rules/context/learnings live
       in a dense config-file-style rail. Empty state is inline in the stream:
-      "No jobs yet. In a repo run meister review." Best fit if the audience is
+      "No jobs yet. In a repo run gegenlesen review." Best fit if the audience is
       the operator who thinks in terminal output; worst fit for scanning many
       jobs at a glance.
 
@@ -690,7 +690,7 @@
       fleet overview — that's what the job strip concedes.
 
     Shared invariants across all three: no upload button, no start-review
-    affordance anywhere; every screen states that jobs come from `meister
+    affordance anywhere; every screen states that jobs come from `gegenlesen
     review`; learnings are accept/dismiss only; semantic rules are presented as
     first-class guidance for both reviewers; deterministic (oasdiff/regex)
     findings are marked as skipping the judge.

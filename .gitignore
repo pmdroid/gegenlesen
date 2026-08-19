@@ -9,7 +9,7 @@ DerivedData/
 .netrc
 
 # Operator secrets and runtime data
-config/meister.json
+config/gegenlesen.json
 /var/
 
 # Frontend

@@ -13,31 +13,31 @@ else
 fi
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
-mkdir -p "$WORKDIR/.meister"
+mkdir -p "$WORKDIR/.gegenlesen"
 git archive HEAD | tar -x -C "$WORKDIR"
-printf '%s' "$BASE" > "$WORKDIR/.meister/base_sha"
-printf '%s' "$HEAD" > "$WORKDIR/.meister/head_sha"
+printf '%s' "$BASE" > "$WORKDIR/.gegenlesen/base_sha"
+printf '%s' "$HEAD" > "$WORKDIR/.gegenlesen/head_sha"
 
 # Empty patch is allowed only when BASE equals HEAD, or a usable bundle is kept.
 git diff --no-color --find-renames "$BASE" "$HEAD" \
-  > "$WORKDIR/.meister/diff.patch"
+  > "$WORKDIR/.gegenlesen/diff.patch"
 
 # Optional bundle; drop if git fails or the file exceeds 40 MiB.
-if git bundle create "$WORKDIR/.meister/history.bundle" "$BASE" "$HEAD" 2>/dev/null; then
-  size=$(wc -c < "$WORKDIR/.meister/history.bundle")
+if git bundle create "$WORKDIR/.gegenlesen/history.bundle" "$BASE" "$HEAD" 2>/dev/null; then
+  size=$(wc -c < "$WORKDIR/.gegenlesen/history.bundle")
   if [ "$size" -gt 41943040 ]; then
-    rm -f "$WORKDIR/.meister/history.bundle"
+    rm -f "$WORKDIR/.gegenlesen/history.bundle"
   fi
 else
-  rm -f "$WORKDIR/.meister/history.bundle"
+  rm -f "$WORKDIR/.gegenlesen/history.bundle"
 fi
 
-if [ ! -f "$WORKDIR/.meister/diff.patch" ]; then
-  echo "pack-repo.sh: git diff did not produce .meister/diff.patch" >&2
+if [ ! -f "$WORKDIR/.gegenlesen/diff.patch" ]; then
+  echo "pack-repo.sh: git diff did not produce .gegenlesen/diff.patch" >&2
   exit 1
 fi
-if [ ! -s "$WORKDIR/.meister/diff.patch" ] \
-   && [ ! -f "$WORKDIR/.meister/history.bundle" ] \
+if [ ! -s "$WORKDIR/.gegenlesen/diff.patch" ] \
+   && [ ! -f "$WORKDIR/.gegenlesen/history.bundle" ] \
    && [ "$BASE" != "$HEAD" ]; then
   echo "pack-repo.sh: empty diff and no usable bundle" >&2
   exit 1

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meister.local/schemas/create-job-meta.json",
+  "$id": "https://gegenlesen.local/schemas/create-job-meta.json",
   "title": "CreateJobMeta",
   "type": "object",
   "additionalProperties": false,

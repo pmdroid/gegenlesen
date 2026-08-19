@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Meister — how the system works</title>
+  <title>Gegenlesen — how the system works</title>
   <style>
     :root {
       --bg: #f4f1ea;
@@ -101,10 +101,10 @@
 </head>
 <body>
   <header>
-    <p class="kicker">Meister · v1</p>
+    <p class="kicker">Gegenlesen · v1</p>
     <h1>How the system works</h1>
     <p class="lede">
-      Meister reviews a git change you start from the CLI. Cheap deterministic rules run first,
+      Gegenlesen reviews a git change you start from the CLI. Cheap deterministic rules run first,
       including an OpenAPI / Swagger break check. Two OpenCode reviewers — the
       two configured models, always both, driven over HTTP inside Docker —
       review what is left. A third OpenCode session judges the combined findings
@@ -115,7 +115,7 @@
   <main>
     <h2>In one paragraph</h2>
     <p>
-      An operator runs <code>meister review</code> in a repo. The CLI packs
+      An operator runs <code>gegenlesen review</code> in a repo. The CLI packs
       the change and posts it to the local API. A <strong>Vapor</strong> service unpacks
       it safely, figures out the git range, and loads matching handwritten and
       mined rules. Regex, deny-list, sibling-test, and <code>oasdiff</code>
@@ -172,7 +172,7 @@
         <text class="t lab" x="345" y="70" text-anchor="middle">Host process · Vapor</text>
 
         <rect class="box host" x="238" y="88" width="214" height="44" rx="4" />
-        <text class="t h" x="345" y="115" text-anchor="middle">Meister HTTP API</text>
+        <text class="t h" x="345" y="115" text-anchor="middle">Gegenlesen HTTP API</text>
 
         <rect class="box host" x="238" y="144" width="214" height="44" rx="4" />
         <text class="t h" x="345" y="164" text-anchor="middle">Job queue · 1 worker</text>
@@ -256,7 +256,7 @@
 
         <rect class="card" x="248" y="16" width="184" height="80" rx="6" />
         <text class="t h" x="340" y="50" text-anchor="middle">POST /session</text>
-        <text class="t s" x="340" y="70" text-anchor="middle">title = meister-review-…</text>
+        <text class="t s" x="340" y="70" text-anchor="middle">title = gegenlesen-review-…</text>
 
         <path class="arr" d="M432 56 H464" />
 
@@ -268,7 +268,7 @@
         <path class="arr" d="M564 96 V128" />
 
         <rect class="card" x="248" y="128" width="416" height="80" rx="6" />
-        <text class="t h" x="456" y="162" text-anchor="middle">Read .meister/findings.json  (or judge.json)</text>
+        <text class="t h" x="456" y="162" text-anchor="middle">Read .gegenlesen/findings.json  (or judge.json)</text>
         <text class="t s" x="456" y="182" text-anchor="middle">HTTP is control. The file is the finding contract.</text>
 
         <path class="arr" d="M456 208 V236" />
@@ -317,7 +317,7 @@
         </defs>
         <g transform="translate(80,8)">
           <rect class="step" x="0" y="0" width="360" height="52" rx="6" />
-          <text class="t h" x="180" y="22" text-anchor="middle">1 · CLI: meister review</text>
+          <text class="t h" x="180" y="22" text-anchor="middle">1 · CLI: gegenlesen review</text>
           <text class="t s" x="180" y="40" text-anchor="middle">packs cwd · POST /api/jobs · optional --parent</text>
           <path class="arr" d="M180 52 V72" />
 
@@ -356,7 +356,7 @@
           <text class="t s" x="180" y="592" text-anchor="middle">pre-judge and post-judge findings both kept</text>
         </g>
       </svg>
-      <figcaption>Skipped reviewer: <code>MEISTER_SKIP_AGENT=1</code>, or incremental with no new hunks and no unmatched deterministic hits.</figcaption>
+      <figcaption>Skipped reviewer: <code>GEGENLESEN_SKIP_AGENT=1</code>, or incremental with no new hunks and no unmatched deterministic hits.</figcaption>
     </figure>
 
     <h2>Two ways to look at a change</h2>
@@ -373,7 +373,7 @@
         </defs>
         <rect class="card" x="16" y="16" width="310" height="198" rx="8" />
         <text class="t h" x="171" y="48" text-anchor="middle">Full change</text>
-        <text class="t s" x="36" y="78">meister review [base]</text>
+        <text class="t s" x="36" y="78">gegenlesen review [base]</text>
         <text class="t s" x="36" y="98">tree + embedded git diff</text>
         <text class="t s" x="36" y="128">Review every hunk in that diff</text>
         <text class="t s" x="36" y="148">against matching rules</text>
@@ -382,7 +382,7 @@
 
         <rect class="card" x="354" y="16" width="310" height="198" rx="8" />
         <text class="t h" x="509" y="48" text-anchor="middle">Incremental</text>
-        <text class="t s" x="374" y="78">meister review --parent &lt;id&gt;</text>
+        <text class="t s" x="374" y="78">gegenlesen review --parent &lt;id&gt;</text>
         <text class="t s" x="374" y="98">parent must have succeeded</text>
         <text class="t s" x="374" y="128">Only new hunks are reviewed</text>
         <text class="t s" x="374" y="148">old findings: still open / resolved / moved</text>
@@ -401,17 +401,17 @@
     <p>
       You also write <strong>context</strong> in <code>/context</code>: architecture
       notes, “never touch Payments”, which logger to use. Those notes are stored
-      and <strong>embedded</strong>. After each unpack Meister chunks the tree,
+      and <strong>embedded</strong>. After each unpack Gegenlesen chunks the tree,
       embeds new/changed files, and keeps a living architecture card (drafted
       by a short miner pass, applied only when you accept it).
     </p>
     <p>
       At review time the host vector-searches those chunks (plus FTS5 and path
-      globs) and writes a small pack to <code>.meister/context.md</code> for both
+      globs) and writes a small pack to <code>.gegenlesen/context.md</code> for both
       reviewers. Vectors live in SQLite, not a hosted vector DB.
     </p>
     <p>
-      After a run, <code>/learnings</code> lists what Meister wants to remember:
+      After a run, <code>/learnings</code> lists what Gegenlesen wants to remember:
     </p>
     <ul>
       <li>Suggested rules (from PRs, 👍/👎, “this should be a rule”, or Learn from this job).</li>
@@ -432,7 +432,7 @@
     <p>
       No accounts, no GitHub App, no merge gate, no auto-fix, no ACP.
       The browser does <strong>not</strong> start reviews — that is
-      <code>meister review</code>. The SPA is rules, context, learnings,
+      <code>gegenlesen review</code>. The SPA is rules, context, learnings,
       and reading jobs. One machine, Docker, Vapor on
       <code>127.0.0.1:8080</code>, OpenCode on loopback-mapped ports.
     </p>
@@ -440,7 +440,7 @@
 
   <footer>
     Narrative design:
-    <a href="meister-pr-review-service.md">meister-pr-review-service.md</a>
+    <a href="gegenlesen-pr-review-service.md">gegenlesen-pr-review-service.md</a>
     · Types and HTTP:
     <a href="technical-plan.md">technical-plan.md</a>
   </footer>

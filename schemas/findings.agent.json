@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meister.local/schemas/findings.agent.json",
+  "$id": "https://gegenlesen.local/schemas/findings.agent.json",
   "title": "AgentFindingsFile",
   "type": "object",
   "additionalProperties": false,

@@ -114,14 +114,14 @@ export function JobsPage() {
   return (
     <div className="layout">
       <div className="stream">
-        <div className="logline">$ meister status</div>
+        <div className="logline">$ gegenlesen status</div>
         <div className="logline">
           <b>queue:</b> {queued} queued · {running} running · {succeeded} succeeded · this UI is a
-          read-only tail — start work with <b>meister review</b>
+          read-only tail — start work with <b>gegenlesen review</b>
         </div>
         {items.length === 0 ? (
           <div className="empty">
-            No jobs yet. In a repo run <code>meister review</code>.
+            No jobs yet. In a repo run <code>gegenlesen review</code>.
             <br />
             Jobs appear here only after the CLI POSTs them.
           </div>

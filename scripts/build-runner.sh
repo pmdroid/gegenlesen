@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # Pins the runner tag. Bump when the Dockerfile or baked agents change.
-# Never tag :latest in meister.json.
+# Never tag :latest in gegenlesen.json.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="meister/opencode-runner:0.1.0"
+IMAGE="gegenlesen/opencode-runner:0.1.0"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.1.25}"
 
 arch="$(uname -m)"

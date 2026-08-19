@@ -1,10 +1,10 @@
-# Meister technical plan
+# Gegenlesen technical plan
 
-Implementation contract. Other agents and PRs **must** match these types, names, JSON keys, and HTTP shapes. Narrative and rationale live in [`meister-pr-review-service.md`](meister-pr-review-service.md). If this file and the design disagree on a type or wire field, **this file wins** and the design should be updated.
+Implementation contract. Other agents and PRs **must** match these types, names, JSON keys, and HTTP shapes. Narrative and rationale live in [`gegenlesen-pr-review-service.md`](gegenlesen-pr-review-service.md). If this file and the design disagree on a type or wire field, **this file wins** and the design should be updated.
 
 | Artifact | Role |
 | --- | --- |
-| [`contracts/MeisterTypes.swift`](contracts/MeisterTypes.swift) | Swift enums / structs / actors (copy into `Sources/` in PR 2) |
+| [`contracts/GegenlesenTypes.swift`](contracts/GegenlesenTypes.swift) | Swift enums / structs / actors (copy into `Sources/` in PR 2) |
 | [`contracts/api.ts`](contracts/api.ts) | TypeScript wire types (copy into `frontend/src/` in PR 1) |
 | [`../schemas/openapi.yaml`](../schemas/openapi.yaml) | HTTP surface |
 | [`../schemas/findings.agent.json`](../schemas/findings.agent.json) | Agent output file |
@@ -48,12 +48,12 @@ First systematic pass: design doc vs this plan vs Swift vs TypeScript vs OpenAPI
 - Error envelope `{ error: { code, message, details } }` and `ErrorCode`.
 - `GET /api/jobs` wrapper `{ jobs, total }` (design only said query params).
 - `POST /api/rules/:id/enable` and `/disable` (design already has PUT + CRUD).
-- `GET /api/health` `{ ok, version }` shape (`version` = Meister `0.1.0`).
+- `GET /api/health` `{ ok, version }` shape (`version` = Gegenlesen `0.1.0`).
 - `Finding.created_at` on HTTP (SQL has it; design example omitted it). **Keep it** — list/detail need a timestamp.
 
 **Still missing as a schema file**
 
-- `.meister/mined-rules.json` (miner output). Same objects as `Rule` with `provenance=mined`, `enabled=false`.
+- `.gegenlesen/mined-rules.json` (miner output). Same objects as `Rule` with `provenance=mined`, `enabled=false`.
 - Command-checker stdout JSONL (one `AgentFinding` per line).
 
 **Swift contract is domain, not wire**
@@ -86,19 +86,19 @@ First systematic pass: design doc vs this plan vs Swift vs TypeScript vs OpenAPI
 ## Module graph
 
 ```
-MeisterAPI (executable)
-  ├── MeisterCore
+GegenlesenAPI (executable)
+  ├── GegenlesenCore
   │     └── CLibArchive
-  ├── MeisterDeterministic
-  │     └── MeisterCore
-  ├── MeisterAgent
-  │     └── MeisterCore
-  └── MeisterMiner
-        ├── MeisterCore
-        └── MeisterAgent
+  ├── GegenlesenDeterministic
+  │     └── GegenlesenCore
+  ├── GegenlesenAgent
+  │     └── GegenlesenCore
+  └── GegenlesenMiner
+        ├── GegenlesenCore
+        └── GegenlesenAgent
 ```
 
-`Package.swift`: `// swift-tools-version: 6.0`. Products: executable `MeisterAPI`; libraries `MeisterCore`, `MeisterDeterministic`, `MeisterAgent`, `MeisterMiner`.
+`Package.swift`: `// swift-tools-version: 6.0`. Products: executable `GegenlesenAPI`; libraries `GegenlesenCore`, `GegenlesenDeterministic`, `GegenlesenAgent`, `GegenlesenMiner`.
 
 ---
 
@@ -167,7 +167,7 @@ Severity rank: `info = 0`, `warning = 1`, `error = 2`. Downgrade must strictly d
 
 Value types are `struct`. Process-owned mutable state is `actor`. No reference-type domain models.
 
-### `MeisterCore.Models`
+### `GegenlesenCore.Models`
 
 | Type | Kind | File | Notes |
 | --- | --- | --- | --- |
@@ -181,12 +181,12 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `CorpusItem` | struct | `Models/CorpusItem.swift` | Ingested historical PR |
 | `ChangeSet` | struct | `Git/ChangeSet.swift` | Identified diff |
 | `Hunk` | struct | `Git/ChangeSet.swift` | Optional; not persisted |
-| `MeisterConfig` | struct | `Models/MeisterConfig.swift` | `config/meister.json` |
-| `Limits` | struct | `Models/MeisterConfig.swift` | Nested |
+| `GegenlesenConfig` | struct | `Models/GegenlesenConfig.swift` | `config/gegenlesen.json` |
+| `Limits` | struct | `Models/GegenlesenConfig.swift` | Nested |
 | `Workspace` | struct | `Git/Workspace.swift` | Path helpers + `resolveForRead` |
 | `JobID` / `FindingID` / `RuleID` | struct (RawRepresentable) | `Models/IDs.swift` | Newtype wrappers |
 
-### `MeisterCore.Store`
+### `GegenlesenCore.Store`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -194,7 +194,7 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `BlobStore` | struct | `var/blobs/**` paths; no SQL |
 | `Migrations` | enum | `v1_initial` only |
 
-### `MeisterCore.Jobs`
+### `GegenlesenCore.Jobs`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -206,7 +206,7 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `BootReconcile` | struct | `func run(store:docker:jobs:)` on start |
 | `WorkspaceGCJob` | struct | 24h workspaces, 7d archives, 30d transcripts |
 
-### `MeisterCore.Git` / `Findings` / `Rules`
+### `GegenlesenCore.Git` / `Findings` / `Rules`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -221,7 +221,7 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `Fingerprint` | enum | `static func sha256(ruleID:path:snippet:)` |
 | `Normalize` | enum | `static func whitespace(_:)` |
 
-### `MeisterDeterministic`
+### `GegenlesenDeterministic`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -233,7 +233,7 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `FindingDraft` | struct | Pre-persist finding (no host id yet) |
 | `DeterministicEngine` | struct | Runs matching checkers; skips on throw |
 
-### `MeisterAgent`
+### `GegenlesenAgent`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -246,11 +246,11 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `Quarantine` | enum | `static func run(workspace:)` |
 | `FindingsParser` | enum | Agent file → `[Finding]` + discards |
 | `JudgeParser` | enum | Judge file → `JudgeFile` |
-| `PromptRenderer` | struct | Writes `.meister/*` before docker |
+| `PromptRenderer` | struct | Writes `.gegenlesen/*` before docker |
 | `SecretRedactor` | struct | `sk-`, `sk-ant-`, PEM, `xox*`, env dumps |
 | `CommandChecker` | struct | Phase `.command` docker, no keys |
 
-### `MeisterAPI`
+### `GegenlesenAPI`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
@@ -264,13 +264,13 @@ Value types are `struct`. Process-owned mutable state is `actor`. No reference-t
 | `CreateJobMeta` | struct | `meta` part |
 | `JobDTO` / `FindingDTO` / `RuleDTO` | struct | Response bodies = models + `CodingKeys` |
 
-### `MeisterMiner`
+### `GegenlesenMiner`
 
 | Type | Kind | Responsibility |
 | --- | --- | --- |
 | `CorpusIngest` | struct | Unpack `item` parts |
 | `MinerDedup` | enum | Normalized title / glob+FTS top-1 |
-| `MinedRulesFile` | struct | `.meister/mined-rules.json` |
+| `MinedRulesFile` | struct | `.gegenlesen/mined-rules.json` |
 
 ---
 
@@ -456,18 +456,18 @@ struct ChangeSet: Equatable {
 | `base_ref` / `head_ref` | no | Ignored if SHAs set |
 | `base_sha` / `head_sha` | no | 40-char hex |
 
-### `MeisterConfig`
+### `GegenlesenConfig`
 
-Matches `config/meister.json`. Secrets are **env only**, never this file.
+Matches `config/gegenlesen.json`. Secrets are **env only**, never this file.
 
 ```swift
-struct MeisterConfig: Codable {
+struct GegenlesenConfig: Codable {
     var bind: String                 // default 127.0.0.1
     var port: Int                    // 8080
     var dataDir: String              // var
     var models: ModelSlots           // model_a, model_b
     var judgeModel: String
-    var opencodeImage: String        // meister/opencode-runner:0.1.0
+    var opencodeImage: String        // gegenlesen/opencode-runner:0.1.0
     var limits: Limits
 }
 
@@ -487,7 +487,7 @@ struct Limits: Codable {
 }
 ```
 
-Env overrides: `MEISTER_MODEL_A`, `MEISTER_MODEL_B`, `MEISTER_JUDGE_MODEL`, `MEISTER_DATA_DIR`, `MEISTER_BIND`, `MEISTER_PORT`, `MEISTER_ALLOW_REMOTE` (`0`/`1`), `MEISTER_SKIP_AGENT`, `MEISTER_CONFIG`.
+Env overrides: `GEGENLESEN_MODEL_A`, `GEGENLESEN_MODEL_B`, `GEGENLESEN_JUDGE_MODEL`, `GEGENLESEN_DATA_DIR`, `GEGENLESEN_BIND`, `GEGENLESEN_PORT`, `GEGENLESEN_ALLOW_REMOTE` (`0`/`1`), `GEGENLESEN_SKIP_AGENT`, `GEGENLESEN_CONFIG`.
 
 ---
 
@@ -506,7 +506,7 @@ protocol JobQueue: Sendable {
 protocol DockerExecuting: Sendable {
     func run(_ request: DockerRequest) async throws -> DockerResult
     func kill(containerName: String) async
-    func removeAll(prefix: String) async  // "meister-"
+    func removeAll(prefix: String) async  // "gegenlesen-"
 }
 ```
 
@@ -688,7 +688,7 @@ See [`schemas/openapi.yaml`](../schemas/openapi.yaml) `JobDetail`. Includes `fin
     "model_b": "openrouter/google/gemini-3.7-flash"
   },
   "judge_model": "openrouter/openai/gpt-5.6-terra",
-  "opencode_image": "meister/opencode-runner:0.1.0",
+  "opencode_image": "gegenlesen/opencode-runner:0.1.0",
   "limits": {
     "archive_bytes": 104857600,
     "queued_archive_bytes": 2147483648,
@@ -707,7 +707,7 @@ See [`schemas/openapi.yaml`](../schemas/openapi.yaml) `JobDetail`. Includes `fin
 { "ok": true, "version": "0.1.0" }
 ```
 
-`version` is the Meister release, not the OpenCode pin.
+`version` is the Gegenlesen release, not the OpenCode pin.
 
 ---
 
@@ -717,24 +717,24 @@ Written under the unpacked job workspace. Paths are relative to workspace root.
 
 | Path | Writer | Reader |
 | --- | --- | --- |
-| `.meister/diff.patch` | pack-repo or `ChangeSetIdentifier` | reviewer, host |
-| `.meister/base_sha` / `head_sha` | pack-repo | identifier |
-| `.meister/history.bundle` | pack-repo (optional) | identifier via `git fetch` |
-| `.meister/rules.json` | `PromptRenderer` | reviewer |
-| `.meister/files.json` | `PromptRenderer` | reviewer |
-| `.meister/prompt.md` | `PromptRenderer` | reviewer `--file` |
-| `.meister/prompt-judge.md` | `PromptRenderer` | judge `--file` |
-| `.meister/parent-findings.json` | `PromptRenderer` | reviewer (incremental) |
-| `.meister/findings.schema.json` | `PromptRenderer` | reviewer |
-| `.meister/judge.schema.json` | `PromptRenderer` | judge |
-| `.meister/findings.json` | **agent only** | host parser |
-| `.meister/agent-findings.json` | host (copy of agent file) | blobs |
-| `.meister/judge-input.json` | **host after parse** | judge `--file` |
-| `.meister/judge.json` | **judge only** | host merge |
-| `.meister/mined-rules.json` | miner | host ingest |
-| `.meister/transcript.json` | entrypoint `opencode export --sanitize` | host |
-| `.meister/quarantine/<orig>` | `Quarantine` (copy) | `resolveForRead` |
-| `opencode.json.meister-disabled` | `Quarantine` (rename) | never loaded by OpenCode |
+| `.gegenlesen/diff.patch` | pack-repo or `ChangeSetIdentifier` | reviewer, host |
+| `.gegenlesen/base_sha` / `head_sha` | pack-repo | identifier |
+| `.gegenlesen/history.bundle` | pack-repo (optional) | identifier via `git fetch` |
+| `.gegenlesen/rules.json` | `PromptRenderer` | reviewer |
+| `.gegenlesen/files.json` | `PromptRenderer` | reviewer |
+| `.gegenlesen/prompt.md` | `PromptRenderer` | reviewer `--file` |
+| `.gegenlesen/prompt-judge.md` | `PromptRenderer` | judge `--file` |
+| `.gegenlesen/parent-findings.json` | `PromptRenderer` | reviewer (incremental) |
+| `.gegenlesen/findings.schema.json` | `PromptRenderer` | reviewer |
+| `.gegenlesen/judge.schema.json` | `PromptRenderer` | judge |
+| `.gegenlesen/findings.json` | **agent only** | host parser |
+| `.gegenlesen/agent-findings.json` | host (copy of agent file) | blobs |
+| `.gegenlesen/judge-input.json` | **host after parse** | judge `--file` |
+| `.gegenlesen/judge.json` | **judge only** | host merge |
+| `.gegenlesen/mined-rules.json` | miner | host ingest |
+| `.gegenlesen/transcript.json` | entrypoint `opencode export --sanitize` | host |
+| `.gegenlesen/quarantine/<orig>` | `Quarantine` (copy) | `resolveForRead` |
+| `opencode.json.gegenlesen-disabled` | `Quarantine` (rename) | never loaded by OpenCode |
 
 `files.json`:
 
@@ -775,10 +775,10 @@ Merge: host-forced `drop` iff `evidence_ok == false`. Missing verdict → `keep`
 
 | Phase | `--name` | Network | Provider keys |
 | --- | --- | --- | --- |
-| review | `meister-review-${JOB_ID}` | `meister-egress` | yes |
-| judge | `meister-judge-${JOB_ID}` | `meister-egress` | yes |
-| command | `meister-cmd-${JOB_ID}-${RULE_ID}` | `none` | **no** |
-| miner | `meister-mine-${CORPUS_JOB_ID}` | `meister-egress` | yes |
+| review | `gegenlesen-review-${JOB_ID}` | `gegenlesen-egress` | yes |
+| judge | `gegenlesen-judge-${JOB_ID}` | `gegenlesen-egress` | yes |
+| command | `gegenlesen-cmd-${JOB_ID}-${RULE_ID}` | `none` | **no** |
+| miner | `gegenlesen-mine-${CORPUS_JOB_ID}` | `gegenlesen-egress` | yes |
 
 Set `jobs.container_name` **before** `docker run`.
 
@@ -808,17 +808,17 @@ An implementation is wrong if any of these fail:
 2. `POST /api/jobs` preferred pack (no SHAs, no `patch` part) returns **202**.
 3. HTTP **422** only when meta lacks both SHAs **and** there is no `patch` part.
 4. Job id is UUID; finding id is `fnd_` + ULID assigned by the host.
-5. Agent cannot write anything except the four `.meister` contract files.
+5. Agent cannot write anything except the four `.gegenlesen` contract files.
 6. Judge reads `judge-input.json` with host ids, `evidence_ok`, `actual_slice`.
 7. `evidence_ok == false` ⇒ `judge_verdict=drop` even if the judge said keep.
 8. Judge container failure ⇒ job `succeeded`, verdicts `unavailable`.
 9. Incremental empty interdiff + no unmatched det hits ⇒ no `docker run`.
 10. `chown 1000:1000` failure on Darwin does not fail the job; on Linux it does.
-11. `opencode.json` is renamed `opencode.json.meister-disabled` before OpenCode starts.
+11. `opencode.json` is renamed `opencode.json.gegenlesen-disabled` before OpenCode starts.
 12. Command checkers get no provider keys and `--network none`.
-13. Job retries = 0. Boot reconcile kills `meister-*` and fails in-flight rows.
+13. Job retries = 0. Boot reconcile kills `gegenlesen-*` and fails in-flight rows.
 14. `GET /api/settings` never contains API keys.
-15. Bind is loopback or process refuses to start without `MEISTER_ALLOW_REMOTE=1`.
+15. Bind is loopback or process refuses to start without `GEGENLESEN_ALLOW_REMOTE=1`.
 16. `summary.dropped` counts `judge_verdict=drop` only.
 17. Fingerprint uses CryptoKit SHA-256 of `rule_id + "\n" + path + "\n" + normalize_ws(snippet)`.
 18. Collapse matches parent `path` **and** `old_path`.

@@ -2,16 +2,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "meister",
+    name: "gegenlesen",
     platforms: [
         .macOS(.v15),
     ],
     products: [
-        .executable(name: "MeisterAPI", targets: ["MeisterAPI"]),
-        .executable(name: "meister", targets: ["MeisterCLI"]),
-        .library(name: "MeisterCore", targets: ["MeisterCore"]),
-        .library(name: "MeisterDeterministic", targets: ["MeisterDeterministic"]),
-        .library(name: "MeisterAgent", targets: ["MeisterAgent"]),
+        .executable(name: "GegenlesenAPI", targets: ["GegenlesenAPI"]),
+        .executable(name: "gegenlesen", targets: ["GegenlesenCLI"]),
+        .library(name: "GegenlesenCore", targets: ["GegenlesenCore"]),
+        .library(name: "GegenlesenDeterministic", targets: ["GegenlesenDeterministic"]),
+        .library(name: "GegenlesenAgent", targets: ["GegenlesenAgent"]),
     ],
     dependencies: [
         .package(url: "https://github.com/vapor/vapor.git", from: "4.115.0"),
@@ -30,82 +30,82 @@ let package = Package(
             ]
         ),
         .target(
-            name: "MeisterCore",
+            name: "GegenlesenCore",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Yams", package: "Yams"),
                 "CLibArchive",
             ],
-            path: "Sources/MeisterCore",
+            path: "Sources/GegenlesenCore",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .target(
-            name: "MeisterDeterministic",
+            name: "GegenlesenDeterministic",
             dependencies: [
-                .target(name: "MeisterCore"),
+                .target(name: "GegenlesenCore"),
             ],
-            path: "Sources/MeisterDeterministic",
+            path: "Sources/GegenlesenDeterministic",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .target(
-            name: "MeisterAgent",
+            name: "GegenlesenAgent",
             dependencies: [
-                .target(name: "MeisterCore"),
+                .target(name: "GegenlesenCore"),
             ],
-            path: "Sources/MeisterAgent",
+            path: "Sources/GegenlesenAgent",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .executableTarget(
-            name: "MeisterAPI",
+            name: "GegenlesenAPI",
             dependencies: [
-                .target(name: "MeisterCore"),
-                .target(name: "MeisterDeterministic"),
-                .target(name: "MeisterAgent"),
+                .target(name: "GegenlesenCore"),
+                .target(name: "GegenlesenDeterministic"),
+                .target(name: "GegenlesenAgent"),
                 .product(name: "Vapor", package: "vapor"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Jobs", package: "swift-jobs"),
             ],
-            path: "Sources/MeisterAPI",
+            path: "Sources/GegenlesenAPI",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .executableTarget(
-            name: "MeisterCLI",
+            name: "GegenlesenCLI",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources/MeisterCLI",
+            path: "Sources/GegenlesenCLI",
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .testTarget(
-            name: "MeisterCoreTests",
+            name: "GegenlesenCoreTests",
             dependencies: [
-                .target(name: "MeisterCore"),
-                .target(name: "MeisterDeterministic"),
+                .target(name: "GegenlesenCore"),
+                .target(name: "GegenlesenDeterministic"),
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .testTarget(
-            name: "MeisterAgentTests",
+            name: "GegenlesenAgentTests",
             dependencies: [
-                .target(name: "MeisterAgent"),
-                .target(name: "MeisterCore"),
+                .target(name: "GegenlesenAgent"),
+                .target(name: "GegenlesenCore"),
             ]
         ),
         .testTarget(
-            name: "MeisterAPITests",
+            name: "GegenlesenAPITests",
             dependencies: [
-                .target(name: "MeisterAPI"),
-                .target(name: "MeisterCore"),
+                .target(name: "GegenlesenAPI"),
+                .target(name: "GegenlesenCore"),
                 .product(name: "VaporTesting", package: "vapor"),
             ]
         ),

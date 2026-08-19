@@ -25,7 +25,7 @@ export function App() {
   return (
     <>
       <div className="topbar">
-        <span className="brand">MEISTER</span>
+        <span className="brand">Gegenlesen</span>
         <nav>
           <NavLink to="/" className={jobsOn ? "on" : undefined}>
             jobs
