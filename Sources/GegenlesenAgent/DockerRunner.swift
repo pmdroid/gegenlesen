@@ -210,7 +210,11 @@ public final class LoopbackPortLease: @unchecked Sendable {
     private var closed = false
 
     public static func acquire() throws -> LoopbackPortLease {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        #if os(Linux)
+        let fd = Glibc.socket(Int32(AF_INET), Int32(SOCK_STREAM.rawValue), 0)
+        #else
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { throw POSIXError(.EPERM) }
         var reuse: Int32 = 1
         _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
