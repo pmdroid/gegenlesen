@@ -139,7 +139,7 @@ struct CorpusRouteTests {
                 atomically: true,
                 encoding: .utf8
             )
-            try await app.meisterStore.insertFindings(
+            let inserted = try await app.meisterStore.insertFindings(
                 [
                     FindingDraft(
                         ruleID: nil,
@@ -154,6 +154,13 @@ struct CorpusRouteTests {
                     ),
                 ],
                 jobID: job.id,
+                now: now
+            )
+            _ = try await app.meisterStore.applyFindingFeedback(
+                finding: inserted[0],
+                verdict: .agree,
+                reaction: .thumbsUp,
+                comment: nil,
                 now: now
             )
 
@@ -179,6 +186,58 @@ struct CorpusRouteTests {
                 #expect(kinds.contains("rule"))
                 #expect(kinds.contains("architecture"))
                 #expect(kinds.contains("context"))
+            }
+        }
+    }
+
+    @Test
+    func learnWithoutFeedbackDoesNotInboxEveryFinding() async throws {
+        try await withMeisterApp(startQueue: true) { app in
+            let now = Date()
+            let job = Job(
+                id: JobID("aaaaaaaa-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                status: .succeeded,
+                scope: .full,
+                title: "Noisy unique unused finding",
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j"
+            )
+            try await app.meisterStore.insertJob(job)
+            try await app.meisterStore.insertFindings(
+                [
+                    FindingDraft(
+                        ruleID: nil,
+                        phase: .agent,
+                        severity: .warning,
+                        title: "Noisy unique unused finding",
+                        message: "one-off",
+                        filePath: "Sources/A.swift",
+                        startLine: 1,
+                        endLine: 1,
+                        snippet: "let x = 1"
+                    ),
+                ],
+                jobID: job.id,
+                now: now
+            )
+
+            var captured: TestingHTTPResponse?
+            try await app.testing().test(.POST, "/api/jobs/\(job.id.rawValue)/learn") { res async in
+                captured = res
+            }
+            let res = try #require(captured)
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(MineAccepted.self, from: bodyData(res))
+            try await waitSucceeded(app, jobID: accepted.jobID)
+
+            try await app.testing().test(.GET, "/api/learnings?status=pending") { response async throws in
+                let items = try #require(try jsonObject(response)["learnings"] as? [[String: Any]])
+                let kinds = Set(items.compactMap { $0["kind"] as? String })
+                #expect(!kinds.contains("rule"))
+                #expect(!kinds.contains("context"))
             }
         }
     }

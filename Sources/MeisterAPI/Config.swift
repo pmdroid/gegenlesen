@@ -71,6 +71,8 @@ struct Limits: Content, Sendable, Equatable {
     var deterministicTimeoutSec: Int
     var identifyTimeoutSec: Int
     var ruleTokenBudget: Int
+    /// 0 disables the sweeper. Otherwise learn jobs with new feedback at most this often.
+    var learnIntervalMinutes: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -80,6 +82,7 @@ struct Limits: Content, Sendable, Equatable {
         case deterministicTimeoutSec = "deterministic_timeout_sec"
         case identifyTimeoutSec = "identify_timeout_sec"
         case ruleTokenBudget = "rule_token_budget"
+        case learnIntervalMinutes = "learn_interval_minutes"
     }
 
     static let v1 = Limits(
@@ -89,8 +92,43 @@ struct Limits: Content, Sendable, Equatable {
         judgeTimeoutSec: 300,
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
-        ruleTokenBudget: 6000
+        ruleTokenBudget: 6000,
+        learnIntervalMinutes: 15
     )
+
+    init(
+        archiveBytes: Int,
+        queuedArchiveBytes: Int,
+        agentTimeoutSec: Int,
+        judgeTimeoutSec: Int,
+        deterministicTimeoutSec: Int,
+        identifyTimeoutSec: Int,
+        ruleTokenBudget: Int,
+        learnIntervalMinutes: Int = 15
+    ) {
+        self.archiveBytes = archiveBytes
+        self.queuedArchiveBytes = queuedArchiveBytes
+        self.agentTimeoutSec = agentTimeoutSec
+        self.judgeTimeoutSec = judgeTimeoutSec
+        self.deterministicTimeoutSec = deterministicTimeoutSec
+        self.identifyTimeoutSec = identifyTimeoutSec
+        self.ruleTokenBudget = ruleTokenBudget
+        self.learnIntervalMinutes = max(0, learnIntervalMinutes)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            archiveBytes: try container.decode(Int.self, forKey: .archiveBytes),
+            queuedArchiveBytes: try container.decode(Int.self, forKey: .queuedArchiveBytes),
+            agentTimeoutSec: try container.decode(Int.self, forKey: .agentTimeoutSec),
+            judgeTimeoutSec: try container.decode(Int.self, forKey: .judgeTimeoutSec),
+            deterministicTimeoutSec: try container.decode(Int.self, forKey: .deterministicTimeoutSec),
+            identifyTimeoutSec: try container.decode(Int.self, forKey: .identifyTimeoutSec),
+            ruleTokenBudget: try container.decode(Int.self, forKey: .ruleTokenBudget),
+            learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 15
+        )
+    }
 }
 
 struct MeisterConfig: Content, Sendable, Equatable {
@@ -222,6 +260,9 @@ struct MeisterConfig: Content, Sendable, Equatable {
         }
         if let value = environment["MEISTER_RULE_TOKEN_BUDGET"], let budget = Int(value) {
             next.limits.ruleTokenBudget = budget
+        }
+        if let value = environment["MEISTER_LEARN_INTERVAL_MINUTES"], let minutes = Int(value) {
+            next.limits.learnIntervalMinutes = max(0, minutes)
         }
         return next
     }

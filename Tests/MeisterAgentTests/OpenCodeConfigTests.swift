@@ -22,6 +22,10 @@ struct OpenCodeConfigTests {
         #expect(edit[".meister/findings.json"] == "allow")
         #expect(edit[".meister/findings-model_a.json"] == "allow")
         #expect(edit[".meister/findings-model_b.json"] == "allow")
+        #expect(edit["*/.meister/findings-model_a.json"] == "allow")
+        #expect(edit["*/.meister/findings-model_b.json"] == "allow")
+        #expect(edit["*/.meister/judge.json"] == "allow")
+        #expect(edit["*/.meister/suggestion-judge.json"] == "allow")
         #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
 
         let bash = try #require(permission["bash"] as? [String: String])
@@ -62,6 +66,8 @@ struct OpenCodeConfigTests {
         let edit = try #require(permission["edit"] as? [String: String])
         #expect(edit["*"] == "deny")
         #expect(edit[".meister/findings.json"] == "allow")
+        #expect(edit[".meister/suggestion-judge.json"] == "allow")
+        #expect(edit["*/.meister/findings-model_a.json"] == "allow")
         #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
     }
 }

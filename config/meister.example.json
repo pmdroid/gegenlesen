@@ -21,6 +21,7 @@
     "judge_timeout_sec": 300,
     "deterministic_timeout_sec": 30,
     "identify_timeout_sec": 60,
-    "rule_token_budget": 6000
+    "rule_token_budget": 6000,
+    "learn_interval_minutes": 15
   }
 }

@@ -541,6 +541,76 @@ extension Store {
         }
     }
 
+    public func hasActiveJobs() throws -> Bool {
+        try read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM jobs
+                    WHERE status NOT IN ('succeeded', 'failed', 'cancelled')
+                    """
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    public func learnedWithin(minutes: Int, now: Date) throws -> Bool {
+        guard minutes > 0 else { return false }
+        let cutoff = ISO8601Dates.string(from: now.addingTimeInterval(TimeInterval(-minutes * 60)))
+        return try read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM jobs
+                    WHERE title LIKE 'learn %'
+                      AND created_at >= ?
+                    """,
+                arguments: [cutoff]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    public func nextJobNeedingLearn() throws -> JobID? {
+        try read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                    SELECT j.id
+                    FROM jobs j
+                    WHERE j.status = 'succeeded'
+                      AND (j.title IS NULL OR j.title NOT LIKE 'learn %')
+                      AND EXISTS (
+                        SELECT 1 FROM finding_feedback f WHERE f.job_id = j.id
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM jobs c
+                        WHERE c.parent_job_id = j.id
+                          AND c.title LIKE 'learn %'
+                          AND c.status NOT IN ('succeeded', 'failed', 'cancelled')
+                      )
+                      AND (
+                        SELECT MAX(f.ts) FROM finding_feedback f WHERE f.job_id = j.id
+                      ) > COALESCE(
+                        (
+                          SELECT MAX(c.finished_at)
+                          FROM jobs c
+                          WHERE c.parent_job_id = j.id
+                            AND c.title LIKE 'learn %'
+                            AND c.status = 'succeeded'
+                            AND c.finished_at IS NOT NULL
+                        ),
+                        '0000-01-01T00:00:00Z'
+                      )
+                    ORDER BY (
+                      SELECT MAX(f.ts) FROM finding_feedback f WHERE f.job_id = j.id
+                    ) ASC
+                    LIMIT 1
+                    """
+            ).map { JobID($0) }
+        }
+    }
+
     public func queuedUnstartedIDs() throws -> [JobID] {
         try read { db in
             try String.fetchAll(

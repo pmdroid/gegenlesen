@@ -30,7 +30,9 @@ export function LearningsPage() {
       <div className="neverapply">nothing auto-applies — accept writes, dismiss hides</div>
       {items.length === 0 ? (
         <div className="empty">
-          Rule, architecture, and context suggestions land here after <code>POST /api/jobs/:id/learn</code>.
+          Rule, architecture, and context suggestions land here after learn
+          (manual <code>POST /api/jobs/:id/learn</code>, or the background
+          sweeper on jobs with new thumbs or comments).
         </div>
       ) : (
         items.map((item) => (

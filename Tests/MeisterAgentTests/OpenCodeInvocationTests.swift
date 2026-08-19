@@ -28,15 +28,12 @@ struct OpenCodeInvocationTests {
             jobID: JobID("job-1"),
             slot: .modelA,
             workspace: URL(fileURLWithPath: "/tmp/ws"),
-            hostPort: 41234,
-            password: "secret",
-            model: "anthropic/claude-sonnet-4-5",
-            fallbackRun: false
+            model: "anthropic/claude-sonnet-4-5"
         )
         let args = request.dockerCLIArguments()
         #expect(args.contains("--rm"))
         #expect(args.contains("meister-review-job-1-a"))
-        #expect(args.contains("127.0.0.1:41234:4096"))
+        #expect(!args.contains { $0.contains(":4096") })
         #expect(!args.contains { $0.hasPrefix("0.0.0.0:") })
         #expect(args.contains("meister-egress"))
         #expect(args.contains("1000:1000"))
@@ -44,7 +41,9 @@ struct OpenCodeInvocationTests {
         #expect(args.contains("/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m"))
         #expect(args.contains("/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m"))
         #expect(args.contains("/home/meister/.cache:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+        #expect(args.contains("/home/meister/.config/opencode:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
         #expect(args.contains("/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+        #expect(args.contains { $0.contains("dst=/opt/meister/opencode") && $0.contains("readonly") })
         #expect(request.env["XDG_CACHE_HOME"] == "/home/meister/.cache")
         #expect(args.contains("--cpus"))
         #expect(args.contains("--memory"))
@@ -52,9 +51,14 @@ struct OpenCodeInvocationTests {
         #expect(args.contains("ALL"))
         #expect(args.contains("no-new-privileges"))
         #expect(args.contains("opencode"))
-        #expect(args.contains("serve"))
-        #expect(args.contains("0.0.0.0"))
-        #expect(args.contains("4096"))
+        #expect(args.contains("run"))
+        #expect(args.contains("--agent"))
+        #expect(args.contains("reviewer"))
+        #expect(args.contains("/workspace/.meister/prompt-model_a.md"))
+        #expect(!args.contains("serve"))
+        let messageIndex = try #require(args.firstIndex(of: "Review the change and write findings as instructed."))
+        let fileFlagIndex = try #require(args.firstIndex(of: "-f"))
+        #expect(messageIndex < fileFlagIndex)
 
         let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
         #expect(content.contains(#""mcp":{}"#) || content.contains(#""mcp": {}"#))
@@ -67,9 +71,7 @@ struct OpenCodeInvocationTests {
         #expect(request.env["OPENCODE_AUTO_SHARE"] == "false")
         #expect(request.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] == "true")
         #expect(request.env["OPENCODE_DISABLE_CLAUDE_CODE"] == "true")
-        #expect(args.contains("OPENCODE_SERVER_PASSWORD"))
-        #expect(!args.contains { $0.contains("OPENCODE_SERVER_PASSWORD=") })
-        #expect(!args.contains("secret"))
+        #expect(!args.contains("OPENCODE_SERVER_PASSWORD"))
         #expect(args.contains("ANTHROPIC_API_KEY"))
         #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })
     }
@@ -81,45 +83,36 @@ struct OpenCodeInvocationTests {
             image: "meister/opencode-runner:0.1.0",
             runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
         )
-        for fallback in [false, true] {
-            let request = try invocation.minerDockerRequest(
-                jobID: JobID("job-9"),
-                workspace: URL(fileURLWithPath: "/tmp/ws"),
-                hostPort: 41235,
-                password: "secret",
-                model: "anthropic/claude-sonnet-4-5",
-                fallbackRun: fallback
-            )
-            let args = request.dockerCLIArguments()
-            #expect(args.contains("meister-mine-job-9"))
-            #expect(args.contains("meister-egress"))
-            #expect(args.contains("1000:1000"))
-            #expect(args.contains("--read-only"))
-            #expect(args.contains("/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m"))
-            #expect(args.contains("/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m"))
-            #expect(args.contains("/home/meister/.cache:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
-            #expect(args.contains("/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
-            #expect(request.env["XDG_CACHE_HOME"] == "/home/meister/.cache")
-            #expect(args.contains("ALL"))
-            #expect(args.contains("no-new-privileges"))
-            #expect(args.contains("ANTHROPIC_API_KEY"))
-            #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })
-            #expect(args.contains("OPENCODE_SERVER_PASSWORD"))
-            #expect(!args.contains { $0.contains("OPENCODE_SERVER_PASSWORD=") })
-            #expect(!args.contains("secret"))
-            #expect(request.injectProviderKeys)
-            let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
-            let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
-            #expect(object["default_agent"] as? String == "miner")
-            if fallback {
-                #expect(args.contains("--agent"))
-                #expect(args.contains("miner"))
-                #expect(args.contains("run"))
-            } else {
-                #expect(args.contains("serve"))
-                #expect(args.contains("127.0.0.1:41235:4096"))
-            }
-        }
+        let request = try invocation.minerDockerRequest(
+            jobID: JobID("job-9"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            model: "anthropic/claude-sonnet-4-5"
+        )
+        let args = request.dockerCLIArguments()
+        #expect(args.contains("meister-mine-job-9"))
+        #expect(args.contains("meister-egress"))
+        #expect(args.contains("1000:1000"))
+        #expect(args.contains("--read-only"))
+        #expect(args.contains("/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m"))
+        #expect(args.contains("/home/meister/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m"))
+        #expect(args.contains("/home/meister/.cache:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+        #expect(args.contains("/home/meister/.config/opencode:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+        #expect(args.contains("/home/meister/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m"))
+        #expect(request.env["XDG_CACHE_HOME"] == "/home/meister/.cache")
+        #expect(args.contains("ALL"))
+        #expect(args.contains("no-new-privileges"))
+        #expect(args.contains("ANTHROPIC_API_KEY"))
+        #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })
+        #expect(!args.contains("OPENCODE_SERVER_PASSWORD"))
+        #expect(request.injectProviderKeys)
+        let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
+        let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+        #expect(object["default_agent"] as? String == "miner")
+        #expect(args.contains("--agent"))
+        #expect(args.contains("miner"))
+        #expect(args.contains("run"))
+        #expect(!args.contains("serve"))
+        #expect(!args.contains { $0.contains(":4096") })
     }
 
     @Test
@@ -184,7 +177,6 @@ struct OpenCodeInvocationTests {
             let docker = FindingsWritingDocker(workspace: root)
             let invocation = OpenCodeInvocation(
                 docker: docker,
-                http: UnhealthyOpenCodeHTTP(),
                 image: "meister/opencode-runner:0.1.0",
                 runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
@@ -230,18 +222,18 @@ struct OpenCodeInvocationTests {
         let request = try invocation.judgeDockerRequest(
             jobID: JobID("job-1"),
             workspace: URL(fileURLWithPath: "/tmp/ws"),
-            hostPort: 41235,
-            password: "secret",
-            model: "anthropic/claude-sonnet-4-5",
-            fallbackRun: false
+            model: "anthropic/claude-sonnet-4-5"
         )
         let args = request.dockerCLIArguments()
         #expect(args.contains("meister-judge-job-1"))
-        #expect(args.contains("127.0.0.1:41235:4096"))
+        #expect(!args.contains { $0.contains(":4096") })
         #expect(args.contains("meister-egress"))
         #expect(args.contains("--read-only"))
         #expect(args.contains("ANTHROPIC_API_KEY"))
-        #expect(request.env["OPENCODE_SERVER_PASSWORD"] == "secret")
+        #expect(args.contains("run"))
+        #expect(args.contains("judge"))
+        #expect(args.contains("/workspace/.meister/prompt-judge.md"))
+        #expect(request.env["OPENCODE_SERVER_PASSWORD"] == nil)
         let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
         let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
         #expect(object["default_agent"] as? String == "judge")
@@ -249,8 +241,8 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
-    func fakeJudgeHTTPWritesVerdicts() async throws {
-        try await withTempDir("judge-http") { root in
+    func fakeJudgeRunWritesVerdicts() async throws {
+        try await withTempDir("judge-run") { root in
             try writeFile("Sources/A.swift", "print(2)\n", in: root)
             try writeFile(".meister/prompt-judge.md", "judge\n", in: root)
             let job = sampleJob()
@@ -274,17 +266,16 @@ struct OpenCodeInvocationTests {
             try encoder.encode(input).write(
                 to: root.appendingPathComponent(".meister/judge-input.json")
             )
-            let http = JudgeWritingHTTP(workspace: root, findingID: findingID)
+            let docker = JudgeWritingDocker(workspace: root, findingID: findingID)
             let invocation = OpenCodeInvocation(
-                docker: NoopDocker(),
-                http: http,
+                docker: docker,
                 image: "meister/opencode-runner:0.1.0",
                 runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
             let result = await invocation.run(
                 JudgeRequest(job: job, workspace: Workspace(root: root))
             )
-            #expect(http.agent == "judge")
+            #expect(await docker.wroteJudge)
             guard case .verdicts(let file) = result.outcome else {
                 Issue.record("expected parsed verdicts")
                 return
@@ -301,7 +292,6 @@ struct OpenCodeInvocationTests {
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
             let invocation = OpenCodeInvocation(
                 docker: NoopDocker(),
-                http: UnhealthyOpenCodeHTTP(),
                 image: "meister/opencode-runner:0.1.0",
                 runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
@@ -324,42 +314,29 @@ struct OpenCodeInvocationTests {
     }
 }
 
-final class JudgeWritingHTTP: OpenCodeHTTPClienting, @unchecked Sendable {
+actor JudgeWritingDocker: DockerExecuting {
     let workspace: URL
     let findingID: FindingID
-    var agent: String?
+    var wroteJudge = false
 
     init(workspace: URL, findingID: FindingID) {
         self.workspace = workspace
         self.findingID = findingID
     }
 
-    func waitUntilHealthy(baseURL: URL, password: String, timeout: Duration) async -> Bool {
-        true
-    }
-
-    func createSession(baseURL: URL, password: String, title: String) async throws -> String {
-        "ses_judge"
-    }
-
-    func sendReview(
-        baseURL: URL,
-        password: String,
-        sessionID: String,
-        agent: String,
-        model: String,
-        prompt: String,
-        filePaths: [String],
-        timeout: Duration
-    ) async throws {
-        self.agent = agent
+    func run(_ request: DockerRequest) async throws -> DockerResult {
         let payload = """
         {"verdicts":[{"finding_id":"\(findingID.rawValue)","verdict":"keep","rationale":"ok"}]}
         """
-        try Data(payload.utf8).write(to: workspace.appendingPathComponent(".meister/judge.json"))
+        let meister = workspace.appendingPathComponent(".meister", isDirectory: true)
+        try FileManager.default.createDirectory(at: meister, withIntermediateDirectories: true)
+        try Data(payload.utf8).write(to: meister.appendingPathComponent("judge.json"))
+        wroteJudge = true
+        return DockerResult(exitCode: 0, stdout: Data())
     }
 
-    func abort(baseURL: URL, password: String, sessionID: String) async {}
+    func kill(containerName: String) async {}
+    func removeAll(prefix: String) async {}
 }
 
 actor FindingsWritingDocker: DockerExecuting {

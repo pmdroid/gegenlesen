@@ -18,9 +18,18 @@
       ".meister/findings-model_a.json": "allow",
       ".meister/findings-model_b.json": "allow",
       ".meister/judge.json": "allow",
+      ".meister/suggestion-judge.json": "allow",
       ".meister/mined-rules.json": "allow",
       ".meister/architecture-draft.md": "allow",
-      ".meister/transcript.json": "allow"
+      ".meister/transcript.json": "allow",
+      "*/.meister/findings.json": "allow",
+      "*/.meister/findings-model_a.json": "allow",
+      "*/.meister/findings-model_b.json": "allow",
+      "*/.meister/judge.json": "allow",
+      "*/.meister/suggestion-judge.json": "allow",
+      "*/.meister/mined-rules.json": "allow",
+      "*/.meister/architecture-draft.md": "allow",
+      "*/.meister/transcript.json": "allow"
     },
     "bash": {
       "*": "deny",

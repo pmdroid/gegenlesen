@@ -85,6 +85,7 @@ export interface Limits {
   deterministic_timeout_sec: number;
   identify_timeout_sec: number;
   rule_token_budget: number;
+  learn_interval_minutes: number;
 }
 
 export interface ModelSlots {

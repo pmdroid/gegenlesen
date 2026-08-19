@@ -10,10 +10,15 @@ public enum OpenCodeConfig: Sendable {
         ".meister/findings-model_a.json",
         ".meister/findings-model_b.json",
         ".meister/judge.json",
+        ".meister/suggestion-judge.json",
         ".meister/mined-rules.json",
         ".meister/architecture-draft.md",
         ".meister/transcript.json",
     ]
+
+    /// OpenCode matches the tool path as a raw string (`*` = any chars). Agents
+    /// pass `/workspace/.meister/…`, which does not match a relative allow rule.
+    public static let editAllowPatterns = findingsAllowlist + findingsAllowlist.map { "*/\($0)" }
 
     public static func policyObject(model: String, defaultAgent: String = "reviewer") -> [String: Any] {
         var object = basePolicyObject(defaultAgent: defaultAgent)
@@ -32,16 +37,7 @@ public enum OpenCodeConfig: Sendable {
             "websearch": "deny",
             "external_directory": "deny",
             "question": "deny",
-            "edit": [
-                "*": "deny",
-                ".meister/findings.json": "allow",
-                ".meister/findings-model_a.json": "allow",
-                ".meister/findings-model_b.json": "allow",
-                ".meister/judge.json": "allow",
-                ".meister/mined-rules.json": "allow",
-                ".meister/architecture-draft.md": "allow",
-                ".meister/transcript.json": "allow",
-            ],
+            "edit": editAllowObject(),
             "bash": [
                 "*": "deny",
                 "git diff*": "allow",
@@ -63,6 +59,14 @@ public enum OpenCodeConfig: Sendable {
 
     public static func permissionJSON() throws -> String {
         try jsonString(permissionObject())
+    }
+
+    public static func editAllowObject() -> [String: String] {
+        var edit = ["*": "deny"]
+        for pattern in editAllowPatterns {
+            edit[pattern] = "allow"
+        }
+        return edit
     }
 
     public static func splitModel(_ model: String) -> (providerID: String, modelID: String) {

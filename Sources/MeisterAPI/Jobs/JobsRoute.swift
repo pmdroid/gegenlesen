@@ -191,12 +191,8 @@ enum JobsRoute {
 
     static func learn(_ req: Request) async throws -> Response {
         let job = try await requireJob(req)
-        return try await CorpusRoute.enqueueMine(
-            on: req,
-            spec: MineJobSpec(source: .job, sourceJobID: job.id),
-            title: "learn \(job.title ?? job.id.rawValue)",
-            parentJobID: job.id
-        )
+        let id = try await req.application.meisterJobs.enqueueLearn(sourceJobID: job.id)
+        return try encoded(MineAccepted(jobID: id), status: .accepted, on: req)
     }
 
     private static func requireJob(_ req: Request) async throws -> Job {

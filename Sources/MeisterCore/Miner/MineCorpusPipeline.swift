@@ -4,6 +4,7 @@ public struct MineCorpusPipeline: Sendable {
     public var store: Store
     public var skipAgent: Bool
     public var miner: (any MinerRunning)?
+    public var suggestionJudge: (any SuggestionJudging)?
     public var model: String
     public var embedder: (any EmbeddingClient)?
     public var maxChunks: Int
@@ -12,6 +13,7 @@ public struct MineCorpusPipeline: Sendable {
         store: Store,
         skipAgent: Bool,
         miner: (any MinerRunning)? = nil,
+        suggestionJudge: (any SuggestionJudging)? = nil,
         model: String,
         embedder: (any EmbeddingClient)? = nil,
         maxChunks: Int = 20_000
@@ -19,6 +21,7 @@ public struct MineCorpusPipeline: Sendable {
         self.store = store
         self.skipAgent = skipAgent
         self.miner = miner
+        self.suggestionJudge = suggestionJudge
         self.model = model
         self.embedder = embedder
         self.maxChunks = maxChunks
@@ -71,12 +74,13 @@ public struct MineCorpusPipeline: Sendable {
                 }
             }
 
+            let filtered = try await filterDrafts(drafts, spec: spec)
             let provenance: RuleProvenance = spec.source == .job ? .suggested : .mined
             let now = Date()
             var inserted = 0
             var attached = 0
             var insertedRules: [Rule] = []
-            for draft in drafts {
+            for draft in filtered {
                 let rule = Self.rule(
                     from: draft,
                     provenance: provenance,
@@ -94,7 +98,13 @@ public struct MineCorpusPipeline: Sendable {
                 }
             }
 
-            try await fillInbox(spec: spec, inserted: insertedRules, workspace: workspaceURL, now: now)
+            try await fillInbox(
+                spec: spec,
+                inserted: insertedRules,
+                workspace: workspaceURL,
+                jobID: jobID,
+                now: now
+            )
 
             try await store.markCorpusMined(ids: items.map(\.id), at: now)
             try await store.appendEvent(
@@ -163,10 +173,13 @@ public struct MineCorpusPipeline: Sendable {
             }
         }
         let prompt = """
-            Extract candidate review rules from this workspace.
+            Extract a small set of reusable review rules from this workspace.
             Write only `.meister/mined-rules.json` as `{"rules":[...]}`.
             Each rule must include title, path_globs, and a semantic instruction.
             Set enabled to false. Do not edit other files.
+            Prefer rules that would catch the same class of defect on a future change.
+            Do not turn every finding into a rule. Prefer operator thumbs-up
+            and should_be_rule feedback when job/feedback.json is present.
             For job sources, read job/change.patch, job/findings.json, and job/feedback.json when present.
             """
         try prompt.write(
@@ -227,27 +240,25 @@ public struct MineCorpusPipeline: Sendable {
         }
     }
 
+    private func filterDrafts(_ drafts: [MinedRuleDraft], spec: MineJobSpec) async throws -> [MinedRuleDraft] {
+        guard spec.source == .job, let sourceID = spec.sourceJobID else {
+            return drafts
+        }
+        let findings = try await store.findings(jobID: sourceID)
+        let feedback = try await store.feedback(jobID: sourceID)
+        return drafts.filter { SuggestionFilter.keepJobRule(draft: $0, findings: findings, feedback: feedback) }
+    }
+
     private func fillInbox(
         spec: MineJobSpec,
         inserted: [Rule],
-        workspace _: URL,
+        workspace: URL,
+        jobID: JobID,
         now: Date
     ) async throws {
         let sourceID = spec.sourceJobID
-        for rule in inserted {
-            let payload = #"{"rule_id":"\#(rule.id.rawValue)"}"#
-            try await store.insertLearning(
-                Learning(
-                    jobID: sourceID,
-                    kind: .rule,
-                    title: rule.title,
-                    body: rule.body.isEmpty ? PromptBudget.render(rule) : rule.body,
-                    payloadJSON: payload,
-                    createdAt: now
-                )
-            )
-        }
-
+        var contextTitle: String?
+        var contextBody: String?
         if spec.source == .job, let sourceID {
             let indexer = ArchitectureIndexJob(
                 store: store,
@@ -272,20 +283,83 @@ public struct MineCorpusPipeline: Sendable {
             }
 
             let findings = try await store.findings(jobID: sourceID)
-            let job = try await store.job(id: sourceID)
-            let title = job?.title ?? sourceID.rawValue
-            let body: String
-            if findings.isEmpty {
-                body = "Suggested house note from job \(title)."
-            } else {
-                body = findings.map { "- \($0.title): \($0.message)" }.joined(separator: "\n")
+            let feedback = try await store.feedback(jobID: sourceID)
+            if let body = SuggestionFilter.contextBody(findings: findings, feedback: feedback) {
+                let job = try await store.job(id: sourceID)
+                contextTitle = "Notes from \(job?.title ?? sourceID.rawValue)"
+                contextBody = body
             }
+        }
+
+        var ruleCandidates: [(rule: Rule, candidate: SuggestionCandidate)] = []
+        for (index, rule) in inserted.enumerated() {
+            let body = rule.body.isEmpty ? PromptBudget.render(rule) : rule.body
+            ruleCandidates.append(
+                (
+                    rule,
+                    SuggestionCandidate(
+                        id: "sug_rule_\(index)",
+                        kind: .rule,
+                        title: rule.title,
+                        body: body
+                    )
+                )
+            )
+        }
+        var candidates = ruleCandidates.map(\.candidate)
+        if let contextTitle, let contextBody {
+            candidates.append(
+                SuggestionCandidate(
+                    id: "sug_context",
+                    kind: .context,
+                    title: contextTitle,
+                    body: contextBody
+                )
+            )
+        }
+
+        let endorsedIDs = Set(candidates.map(\.id))
+        var kept = endorsedIDs
+        if !skipAgent, let suggestionJudge, !candidates.isEmpty, let mineJob = try await store.job(id: jobID) {
+            try SuggestionJudge.writeInput(candidates, workspace: workspace)
+            let judged = await suggestionJudge.runSuggestionJudge(
+                job: mineJob,
+                workspace: Workspace(root: workspace)
+            )
+            kept = SuggestionJudge.keptIDs(
+                from: judged.outcome,
+                candidates: candidates,
+                fallbackIDs: endorsedIDs
+            )
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .info,
+                message: "suggestion_judged",
+                payloadJSON: #"{"candidates":\#(candidates.count),"kept":\#(kept.count)}"#
+            )
+        }
+
+        for pair in ruleCandidates where kept.contains(pair.candidate.id) {
+            let payload = #"{"rule_id":"\#(pair.rule.id.rawValue)"}"#
+            try await store.insertLearning(
+                Learning(
+                    jobID: sourceID,
+                    kind: .rule,
+                    title: pair.rule.title,
+                    body: pair.candidate.body,
+                    payloadJSON: payload,
+                    createdAt: now
+                )
+            )
+        }
+
+        if kept.contains("sug_context"), let contextTitle, let contextBody {
             try await store.insertLearning(
                 Learning(
                     jobID: sourceID,
                     kind: .context,
-                    title: "Notes from \(title)",
-                    body: body,
+                    title: contextTitle,
+                    body: contextBody,
                     payloadJSON: #"{"kind":"context"}"#,
                     createdAt: now
                 )

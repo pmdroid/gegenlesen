@@ -472,6 +472,7 @@ struct Limits: Codable, Sendable, Equatable {
     var deterministicTimeoutSec: Int
     var identifyTimeoutSec: Int
     var ruleTokenBudget: Int
+    var learnIntervalMinutes: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -481,6 +482,7 @@ struct Limits: Codable, Sendable, Equatable {
         case deterministicTimeoutSec = "deterministic_timeout_sec"
         case identifyTimeoutSec = "identify_timeout_sec"
         case ruleTokenBudget = "rule_token_budget"
+        case learnIntervalMinutes = "learn_interval_minutes"
     }
 
     static let v1 = Limits(
@@ -490,7 +492,8 @@ struct Limits: Codable, Sendable, Equatable {
         judgeTimeoutSec: 300,
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
-        ruleTokenBudget: 6000
+        ruleTokenBudget: 6000,
+        learnIntervalMinutes: 15
     )
 }
 

@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest, type JobListItem, type JobStatus } from "../api";
-import { getJob, getJobFeedback, isNotFound, postFindingFeedback } from "../client";
+import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -76,6 +76,13 @@ export function JobDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ["rules"] });
     },
   });
+  const learn = useMutation({
+    mutationFn: () => learnFromJob(id ?? ""),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["learnings"] });
+    },
+  });
 
   if (!id) {
     return (
@@ -104,6 +111,10 @@ export function JobDetailPage() {
 
   const detail = job.data;
   const live = !isTerminal(detail.status);
+  const canLearn =
+    isTerminal(detail.status) &&
+    detail.status !== "cancelled" &&
+    !(detail.title ?? "").startsWith("learn ");
   const events = detail.events.slice(-40);
   const droppedCount = detail.findings.filter((finding) => finding.judge_verdict === "drop").length;
   const visibleFindings = showDropped
@@ -114,8 +125,29 @@ export function JobDetailPage() {
     <div className="page">
       <div className="pagehead">
         <h1>{detail.title ?? detail.id}</h1>
-        <Link to="/">← jobs</Link>
+        <div className="formrow" style={{ marginTop: 0 }}>
+          {canLearn ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={learn.isPending}
+              onClick={() => learn.mutate()}
+            >
+              {learn.isPending ? "learning…" : "learn from this job"}
+            </button>
+          ) : null}
+          <Link to="/">← jobs</Link>
+        </div>
       </div>
+      {learn.isSuccess ? (
+        <div className="logline">
+          learn queued ·{" "}
+          <Link to={`/jobs/${learn.data.job_id}`}>{learn.data.job_id.slice(0, 8)}</Link>
+          {" · "}
+          <Link to="/learnings">learnings</Link>
+        </div>
+      ) : null}
+      {learn.isError ? <div className="formerr">could not start learn</div> : null}
       <div className="jobblock">
         <div className="jobhead">
           <span className="t">{detail.title ?? detail.id}</span>

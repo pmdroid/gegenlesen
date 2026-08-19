@@ -20,12 +20,17 @@ public enum ReviewContainers: Sendable {
         "meister-mine-\(jobID.rawValue)"
     }
 
+    public static func suggestionJudge(_ jobID: JobID) -> String {
+        "meister-sugjudge-\(jobID.rawValue)"
+    }
+
     public static func all(_ jobID: JobID) -> [String] {
         [
             slot(jobID, .modelA),
             slot(jobID, .modelB),
             judge(jobID),
             miner(jobID),
+            suggestionJudge(jobID),
         ]
     }
 }

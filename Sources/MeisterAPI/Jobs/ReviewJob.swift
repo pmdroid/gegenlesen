@@ -21,6 +21,10 @@ struct WorkspaceGCJobParameters: JobParameters {
     static let jobName = "meister.gc"
 }
 
+struct LearnSweepJobParameters: JobParameters {
+    static let jobName = "meister.learn-sweep"
+}
+
 actor QueueHandles {
     private var map: [String: UUID] = [:]
 
@@ -38,6 +42,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let service: JobService<MemoryQueue>
     let handles: QueueHandles
     let blobs: BlobStore
+    let store: Store
+    let config: MeisterConfig
     private var task: Task<Void, Never>?
 
     init(
@@ -78,7 +84,6 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             do {
                 let invocation = OpenCodeInvocation(
                     docker: docker,
-                    http: OpenCodeHTTPClient(),
                     image: config.opencodeImage,
                     runnerConfig: runnerConfig,
                     agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
@@ -111,7 +116,6 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     embedder: embedder,
                     miner: skipAgent ? nil : OpenCodeInvocation(
                         docker: docker,
-                        http: OpenCodeHTTPClient(),
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
@@ -136,7 +140,6 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     skipAgent: skipAgent,
                     miner: skipAgent ? nil : OpenCodeInvocation(
                         docker: docker,
-                        http: OpenCodeHTTPClient(),
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
@@ -150,6 +153,14 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             )
                             try? data.write(to: url, options: .atomic)
                         }
+                    ),
+                    suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
+                        docker: docker,
+                        image: config.opencodeImage,
+                        runnerConfig: runnerConfig,
+                        judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
+                        providerEnv: providerEnv,
+                        schemasDirectory: schemasDirectory
                     ),
                     model: config.judgeModel,
                     embedder: embedder,
@@ -168,10 +179,29 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             try await WorkspaceGCJob(store: store).run()
         }
         service.addScheduledJob(WorkspaceGCJobParameters(), schedule: .hourly())
+        let runtimeRef = JobRuntimeRef()
+        service.registerJob(
+            parameters: LearnSweepJobParameters.self,
+            retryStrategy: .dontRetry
+        ) { _, _ in
+            guard let runtime = runtimeRef.runtime else { return }
+            try await LearnSweepJob(
+                store: runtime.store,
+                intervalMinutes: runtime.config.limits.learnIntervalMinutes
+            ) { sourceID in
+                _ = try await runtime.enqueueLearn(sourceJobID: sourceID)
+            }.run()
+        }
+        if config.limits.learnIntervalMinutes > 0 {
+            service.addScheduledJob(LearnSweepJobParameters(), schedule: .everyMinute())
+        }
         self.memory = memory
         self.service = service
         self.handles = handles
         self.blobs = store.blobs
+        self.store = store
+        self.config = config
+        runtimeRef.runtime = self
     }
 
     func start() {
@@ -197,6 +227,49 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         await handles.set(id, handle: handle)
     }
 
+    func enqueueLearn(sourceJobID: JobID) async throws -> JobID {
+        try await Self.enqueueLearn(
+            sourceJobID: sourceJobID,
+            store: store,
+            blobs: blobs,
+            config: config,
+            push: pushMine
+        )
+    }
+
+    static func enqueueLearn(
+        sourceJobID: JobID,
+        store: Store,
+        blobs: BlobStore,
+        config: MeisterConfig,
+        push: (JobID) async throws -> Void
+    ) async throws -> JobID {
+        guard let source = try await store.job(id: sourceJobID) else {
+            throw Abort(.notFound)
+        }
+        let id = JobID.generate()
+        let now = Date()
+        let job = Job(
+            id: id,
+            createdAt: now,
+            updatedAt: now,
+            status: .queued,
+            scope: .full,
+            parentJobID: source.id,
+            title: "learn \(source.title ?? source.id.rawValue)",
+            reviewerAModelID: config.models.modelA,
+            reviewerBModelID: config.models.modelB,
+            judgeModelID: config.judgeModel
+        )
+        let spec = MineJobSpec(source: .job, sourceJobID: source.id)
+        try blobs.ensureLayout()
+        try JSONEncoder().encode(spec).write(to: blobs.mineSpecURL(jobID: id.rawValue), options: .atomic)
+        try await store.insertJob(job)
+        try await store.appendEvent(jobID: id, level: .info, message: "mine_queued")
+        try await push(id)
+        return id
+    }
+
     private func loadMineSpec(_ id: JobID) -> MineJobSpec? {
         let url = blobs.mineSpecURL(jobID: id.rawValue)
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -208,6 +281,10 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             try? await service.cancelJob(jobID: handle)
         }
     }
+}
+
+private final class JobRuntimeRef: @unchecked Sendable {
+    var runtime: JobRuntime?
 }
 
 private struct JobRuntimeKey: StorageKey {

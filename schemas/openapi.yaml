@@ -460,6 +460,7 @@ components:
         deterministic_timeout_sec: { type: integer }
         identify_timeout_sec: { type: integer }
         rule_token_budget: { type: integer }
+        learn_interval_minutes: { type: integer, minimum: 0, description: "0 disables. Else learn jobs with new feedback at most this often." }
     ModelSlots:
       type: object
       additionalProperties: false

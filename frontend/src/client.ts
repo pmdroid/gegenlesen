@@ -7,6 +7,7 @@ import type {
   JobDetail,
   JobListResponse,
   Learning,
+  MineAccepted,
   LearningKind,
   LearningListResponse,
   LearningStatus,
@@ -91,6 +92,10 @@ export function postFindingFeedback(
   body: FindingFeedbackRequest,
 ): Promise<FindingFeedback | undefined> {
   return sendJSON(`/api/findings/${id}/feedback`, "POST", body);
+}
+
+export function learnFromJob(id: string): Promise<MineAccepted> {
+  return sendJSON(`/api/jobs/${id}/learn`, "POST");
 }
 
 export async function listInboxRules(): Promise<Rule[]> {
