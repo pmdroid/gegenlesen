@@ -323,8 +323,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 "opencode", "run",
                 "--agent", defaultAgent,
                 "--model", model,
-                "--auto",
                 "--format", "json",
+                "-f", "/workspace/.meister/prompt.md",
+                "Review the change and write findings as instructed.",
             ]
         } else {
             argv = ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
@@ -397,8 +398,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 "opencode", "run",
                 "--agent", "miner",
                 "--model", model,
-                "--auto",
                 "--format", "json",
+                "-f", "/workspace/.meister/prompt.md",
+                "Mine candidate rules as instructed.",
             ]
         } else {
             argv = ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]

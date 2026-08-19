@@ -13,7 +13,7 @@ struct OpenCodeConfigTests {
         let plugin = try #require(object["plugin"] as? [Any])
         #expect(plugin.isEmpty)
         #expect(object["share"] as? String == "disabled")
-        #expect(object["subagent_depth"] as? Int == 0)
+        #expect(object["subagent_depth"] == nil)
         #expect(object["model"] as? String == "anthropic/claude-sonnet-4-5")
 
         let permission = try #require(object["permission"] as? [String: Any])

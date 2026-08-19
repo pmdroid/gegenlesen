@@ -3,7 +3,6 @@
   "autoupdate": false,
   "share": "disabled",
   "snapshot": false,
-  "subagent_depth": 0,
   "default_agent": "reviewer",
   "mcp": {},
   "plugin": [],

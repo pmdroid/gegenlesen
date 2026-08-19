@@ -78,7 +78,6 @@ public enum OpenCodeConfig: Sendable {
             "autoupdate": false,
             "share": "disabled",
             "snapshot": false,
-            "subagent_depth": 0,
             "default_agent": defaultAgent,
             "mcp": [String: Any](),
             "plugin": [Any](),
