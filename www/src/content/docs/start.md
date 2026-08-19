@@ -1,31 +1,35 @@
 ---
 title: Start
-description: Build gegenlesen and run the first review.
+description: Pull the image, open Ledger, run the first review.
 order: 1
 ---
 
-Use Xcode’s Swift. Mixing it with Command Line Tools `/usr/bin/swift` produces a module version error. `./scripts/swift` and `make` set `DEVELOPER_DIR` for you.
-
-## Run the service
+Pull two images. Start the API with host network and the Docker socket. Open Ledger on loopback.
 
 ```bash
-scripts/build-runner.sh
-make run
+DATA="$HOME/gegenlesen-data"
+mkdir -p "$DATA" "$HOME/gegenlesen-config"
+
+docker pull ghcr.io/pmdroid/gegenlesen:main
+docker pull ghcr.io/pmdroid/gegenlesen/runner:main
+
+docker run --rm --name gegenlesen \
+  --network host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$DATA:$DATA" \
+  -v "$HOME/gegenlesen-config:/app/config" \
+  -e GEGENLESEN_DATA_DIR="$DATA" \
+  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen/runner:main \
+  ghcr.io/pmdroid/gegenlesen:main
 ```
 
-`make run` starts the API on `127.0.0.1:8080` and the Ledger Vite app on port 5173. Open Ledger and use **setup** to pick the two reviewers, the judge, and paste an OpenRouter key. That writes `config/gegenlesen.json`. You can still export `OPENROUTER_API_KEY` instead.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Use **setup** to pick the two reviewers, the judge, and paste an OpenRouter key. That writes `gegenlesen.json` in the mounted config dir.
 
-To start only the API:
-
-```bash
-./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
-```
-
-Linux can run the published image instead. See [Docker](/docs/docker).
+`--network host` and the matching data path are required. The API starts runner containers and talks to OpenCode on `127.0.0.1`. Details: [Docker](/docs/docker).
 
 ## Start a review
 
-From the repo you want read:
+From the repo you want read, on the host:
 
 ```bash
 gegenlesen review
@@ -37,20 +41,21 @@ That packs the working tree with `scripts/pack-repo.sh` and `POST`s `/api/jobs`.
 gegenlesen review --parent <job-id>
 ```
 
-## Docs site
+The CLI talks to `http://127.0.0.1:8080` unless you set `GEGENLESEN_URL`.
+
+## From source
+
+On a Mac, Docker Desktop does not share loopback the way a Linux box does. Build with Xcode’s Swift. Mixing it with Command Line Tools `/usr/bin/swift` produces a module version error. `./scripts/swift` and `make` set `DEVELOPER_DIR` for you.
 
 ```bash
-cd www && npm install && npm run dev
+scripts/build-runner.sh
+make run
 ```
 
-The public site is [gegenlesen.dev](https://gegenlesen.dev). `make docs` serves the same pages on port 4321.
+`make run` starts the API on `127.0.0.1:8080` and the Ledger Vite app on port 5173.
 
-## After the rename
-
-If you still have a `var/meister.sqlite` from the old name, stop the API and rename it:
+API only:
 
 ```bash
-mv var/meister.sqlite var/gegenlesen.sqlite
+./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
 ```
-
-Rebuild the runner image. The tag is now `gegenlesen/opencode-runner:0.1.0`.

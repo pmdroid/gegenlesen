@@ -36,8 +36,7 @@ img { max-width: 100%; height: auto; }
   color: #e8f5e9; font-weight: 700; letter-spacing: 0.1em;
 }
 .brand img {
-  height: 28px; width: auto;
-  mix-blend-mode: lighten;
+  height: 22px; width: auto;
 }
 .topbar nav { display: flex; gap: 16px; }
 .topbar nav a { color: #557a58; }
@@ -53,9 +52,8 @@ img { max-width: 100%; height: auto; }
   padding: 4.2rem 0 2.6rem;
 }
 .hero-mark {
-  width: min(460px, 100%);
+  width: min(420px, 100%);
   justify-self: center;
-  mix-blend-mode: lighten;
 }
 .kicker {
   color: #81c784;

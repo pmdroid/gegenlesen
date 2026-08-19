@@ -163,22 +163,25 @@ gegenlesen/
 
 ## Run
 
-Use Xcode’s Swift, not `/usr/bin/swift` from Command Line Tools. Mixing them produces:
-
-`module compiled with Swift 6.3 cannot be imported by the Swift 6.2.3 compiler`
+Published images. Linux, host network, Docker socket. Full copy: [gegenlesen.dev/docs/start](https://gegenlesen.dev/docs/start).
 
 ```bash
-export OPENROUTER_API_KEY=…         # both reviewers + judge; no Anthropic key
-make build                          # or: ./scripts/swift build
-make run                            # scripts/dev.sh; API :8080 + Vite
-# or:
-./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
-cd frontend && npm run dev
-scripts/build-runner.sh             # gegenlesen/opencode-runner:0.1.0
-make image                          # API + Ledger image, ghcr.io/pmdroid/gegenlesen:local
-make docs                           # Astro site on :4321
+DATA="$HOME/gegenlesen-data"
+mkdir -p "$DATA" "$HOME/gegenlesen-config"
+docker pull ghcr.io/pmdroid/gegenlesen:main
+docker pull ghcr.io/pmdroid/gegenlesen/runner:main
+docker run --rm --name gegenlesen \
+  --network host \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$DATA:$DATA" \
+  -v "$HOME/gegenlesen-config:/app/config" \
+  -e GEGENLESEN_DATA_DIR="$DATA" \
+  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen/runner:main \
+  ghcr.io/pmdroid/gegenlesen:main
 ```
 
-Linux can run the GHCR image instead of `make run`. See [gegenlesen.dev/docs/docker](https://gegenlesen.dev/docs/docker). CI builds `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner` from `main` and from `v*` tags.
+Open `http://127.0.0.1:8080`, then `gegenlesen review` from the repo you want read.
 
-`make clean` if you already mixed toolchains (`rm -rf .build`).
+From source (Mac / Xcode Swift): `scripts/build-runner.sh` then `make run`. Mixing Xcode’s Swift with `/usr/bin/swift` produces a module version error. `make clean` if you already mixed toolchains.
+
+CI builds `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner` from `main` and from `v*` tags.
