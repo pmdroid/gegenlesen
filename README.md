@@ -4,6 +4,8 @@ Single-tenant PR review. The **CLI** starts a review (`gegenlesen review`). The 
 
 There is no auth in v1. Bind `127.0.0.1`. One agent job at a time.
 
+**Site (Astro):** `cd www && npm run dev` or `make docs` → [http://127.0.0.1:4321](http://127.0.0.1:4321)
+
 **How it works (HTML):** [`docs/overview.html`](docs/overview.html)
 
 **Admin UI (locked: Ledger):** [`docs/ui-ledger.html`](docs/ui-ledger.html)
@@ -154,6 +156,7 @@ gegenlesen/
   docker/opencode-runner/      # image that contains opencode
   scripts/pack-repo.sh         # preferred upload producer
   config/gegenlesen.example.json
+  www/                         # Astro landing + docs
   var/                         # sqlite, blobs, workspaces (gitignored)
 ```
 
@@ -171,6 +174,7 @@ make run                            # scripts/dev.sh; API :8080 + Vite
 ./scripts/swift run GegenlesenAPI serve --data-dir ./var --bind 127.0.0.1 --port 8080
 cd frontend && npm run dev
 scripts/build-runner.sh             # gegenlesen/opencode-runner:0.1.0
+make docs                           # Astro site on :4321
 ```
 
 `make clean` if you already mixed toolchains (`rm -rf .build`).

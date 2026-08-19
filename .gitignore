@@ -10,6 +10,7 @@ DerivedData/
 
 # Operator secrets and runtime data
 config/gegenlesen.json
+config/meister.json
 /var/
 
 # Frontend

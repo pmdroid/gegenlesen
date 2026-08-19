@@ -1,4 +1,4 @@
-.PHONY: build test run clean
+.PHONY: build test run docs clean
 
 export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
 
@@ -10,6 +10,9 @@ test:
 
 run:
 	./scripts/dev.sh
+
+docs:
+	cd www && npm run dev
 
 clean:
 	rm -rf .build
