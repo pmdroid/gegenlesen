@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
+COPY Tests ./Tests
 RUN swift build -c release --static-swift-stdlib --product GegenlesenAPI
 RUN BIN="$(swift build -c release --product GegenlesenAPI --show-bin-path)" \
     && install -m 0755 "$BIN/GegenlesenAPI" /usr/local/bin/GegenlesenAPI

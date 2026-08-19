@@ -6,7 +6,6 @@
 var
 www
 docs
-Tests
 /README.md
 frontend/node_modules
 frontend/dist
