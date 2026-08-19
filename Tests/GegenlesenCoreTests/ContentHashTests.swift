@@ -1,4 +1,4 @@
-import CryptoKit
+import Crypto
 import Foundation
 import Testing
 @testable import GegenlesenCore
@@ -29,7 +29,7 @@ struct ContentHashTests {
     }
 
     @Test
-    func matchesCryptoKitDirectly() {
+    func matchesSHA256Directly() {
         let data = Data("gegenlesen".utf8)
         let expected = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         #expect(ContentHash.sha256(data) == expected)

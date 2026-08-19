@@ -19,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/hummingbird-project/swift-jobs.git", from: "1.4.0"),
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.3.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.0.0"),
     ],
     targets: [
         .target(
@@ -34,6 +35,7 @@ let package = Package(
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Yams", package: "Yams"),
+                .product(name: "Crypto", package: "swift-crypto"),
                 "CLibArchive",
             ],
             path: "Sources/GegenlesenCore",
