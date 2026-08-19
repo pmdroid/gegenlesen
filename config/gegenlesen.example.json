@@ -25,5 +25,29 @@
     "rule_token_budget": 6000,
     "scanner_timeout_sec": 120,
     "learn_interval_minutes": 15
+  },
+  "risk": {
+    "mode": "shadow",
+    "max_files": 5,
+    "max_lines": 200,
+    "sensitive_globs": [
+      "**/auth/**",
+      "**/Auth/**",
+      "**/*secret*",
+      "**/.env",
+      "**/.env.*",
+      "**/migrations/**",
+      "**/.github/workflows/**",
+      "**/Dockerfile",
+      "**/Dockerfile.*",
+      "**/*.pem",
+      "**/*.key",
+      "**/payments/**",
+      "**/crypto/**",
+      "**/compose.yaml",
+      "**/compose.yml",
+      "**/docker-compose.yaml",
+      "**/docker-compose.yml"
+    ]
   }
 }

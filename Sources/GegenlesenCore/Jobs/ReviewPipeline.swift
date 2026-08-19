@@ -16,6 +16,7 @@ public struct ReviewPipeline: Sendable {
     public var embedder: (any EmbeddingClient)?
     public var miner: (any MinerRunning)?
     public var minerModel: String
+    public var risk: RiskConfig
 
     public init(
         store: Store,
@@ -32,7 +33,8 @@ public struct ReviewPipeline: Sendable {
         maxChunks: Int = 20_000,
         embedder: (any EmbeddingClient)? = nil,
         miner: (any MinerRunning)? = nil,
-        minerModel: String = "openrouter/openai/gpt-5.6-terra"
+        minerModel: String = "openrouter/openai/gpt-5.6-terra",
+        risk: RiskConfig = .v1
     ) {
         self.store = store
         self.skipAgent = skipAgent
@@ -49,6 +51,7 @@ public struct ReviewPipeline: Sendable {
         self.embedder = embedder
         self.miner = miner ?? (reviewer as? any MinerRunning)
         self.minerModel = minerModel
+        self.risk = risk
     }
 
     public func run(jobID: JobID) async throws {
@@ -97,9 +100,12 @@ public struct ReviewPipeline: Sendable {
         var parentFindings: [Finding] = []
         var interdiffEmpty = false
         var incrementalScope = false
+        var changeSource: ChangeSet.Source?
+        var patchBytes: Data?
         do {
             let meta = loadIdentifyMeta(jobID: jobID)
             let patch = loadMultipartPatch(jobID: jobID)
+            patchBytes = patch
             let identifier = ChangeSetIdentifier(
                 workspace: workspaceURL,
                 blobs: store.blobs,
@@ -123,6 +129,7 @@ public struct ReviewPipeline: Sendable {
                 parentFindings = incremental.parentFindings
                 interdiffEmpty = changeSet.files.isEmpty
             }
+            changeSource = changeSet.source
             try await store.replaceJobFiles(changeSet.files)
             try await store.appendEvent(
                 jobID: jobID,
@@ -317,7 +324,19 @@ public struct ReviewPipeline: Sendable {
             level: .info,
             message: skipReviewer ? "succeeded" : "reviewing"
         )
-        if skipReviewer { return }
+        if skipReviewer {
+            try await persistRisk(
+                jobID: jobID,
+                source: changeSource,
+                files: files,
+                rules: rules,
+                patch: patchBytes,
+                reviewersInvoked: false,
+                validReviewerFiles: 0,
+                judgeUnavailable: false
+            )
+            return
+        }
         if try await stopped(jobID) { return }
 
         guard let job = try await store.job(id: jobID) else { return }
@@ -405,6 +424,16 @@ public struct ReviewPipeline: Sendable {
                 event: .reviewOK(validFindingCount: 0)
             )
             try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
+            try await persistRisk(
+                jobID: jobID,
+                source: changeSource,
+                files: files,
+                rules: rules,
+                patch: patchBytes,
+                reviewersInvoked: true,
+                validReviewerFiles: review.validFileCount,
+                judgeUnavailable: false
+            )
             return
         }
 
@@ -445,6 +474,16 @@ public struct ReviewPipeline: Sendable {
         JudgeHandoff.persistPostJudge(persisted, blobs: store.blobs, jobID: jobID)
         _ = try await store.apply(jobID: jobID, event: .judgeFinished)
         try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
+        try await persistRisk(
+            jobID: jobID,
+            source: changeSource,
+            files: files,
+            rules: rules,
+            patch: patchBytes,
+            reviewersInvoked: true,
+            validReviewerFiles: review.validFileCount,
+            judgeUnavailable: outcome == .containerFailed || outcome == .invalidFile
+        )
     }
 
     private func resolveIncremental(
@@ -640,6 +679,40 @@ public struct ReviewPipeline: Sendable {
 
     private func stopped(_ jobID: JobID) async throws -> Bool {
         try await store.job(id: jobID)?.status.isTerminal ?? true
+    }
+
+    private func persistRisk(
+        jobID: JobID,
+        source: ChangeSet.Source?,
+        files: [JobFile],
+        rules: [Rule],
+        patch: Data?,
+        reviewersInvoked: Bool,
+        validReviewerFiles: Int,
+        judgeUnavailable: Bool
+    ) async throws {
+        guard let job = try await store.job(id: jobID) else { return }
+        let findings = try await store.findings(jobID: jobID)
+        let assessment = RiskGate.evaluate(
+            RiskGate.Input(
+                scope: job.scope,
+                changeSetSource: source,
+                files: files,
+                findings: findings,
+                rules: rules,
+                changedLines: RiskGate.changedLines(in: patch),
+                reviewersInvoked: reviewersInvoked,
+                validReviewerFiles: validReviewerFiles,
+                judgeUnavailable: judgeUnavailable,
+                config: risk
+            )
+        )
+        try await store.updateJobRisk(jobID: jobID, assessment: assessment)
+        try await store.appendEvent(
+            jobID: jobID,
+            level: .info,
+            message: "risk_\(assessment.verdict.rawValue)"
+        )
     }
 
     private func loadIdentifyMeta(jobID: JobID) -> IdentifyMeta {

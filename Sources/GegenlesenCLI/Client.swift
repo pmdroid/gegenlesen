@@ -124,6 +124,7 @@ struct JobJSON: Decodable {
     var baseSHA: String?
     var repository: String?
     var errorMessage: String?
+    var risk: RiskJSON?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status
@@ -131,6 +132,24 @@ struct JobJSON: Decodable {
         case baseSHA = "base_sha"
         case repository
         case errorMessage = "error_message"
+        case risk
+    }
+}
+
+struct RiskJSON: Decodable {
+    var verdict: String
+    var mode: String
+    var reasons: [Reason]
+    var safeUnread: Bool?
+
+    struct Reason: Decodable {
+        var code: String
+        var detail: String
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case verdict, mode, reasons
+        case safeUnread = "safe_unread"
     }
 }
 

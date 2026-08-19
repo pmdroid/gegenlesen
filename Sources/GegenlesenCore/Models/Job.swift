@@ -79,6 +79,7 @@ public struct Job: Sendable, Equatable {
     public var containerNameA: String?
     public var containerNameB: String?
     public var timings: JobTimings?
+    public var risk: RiskAssessment?
 
     public init(
         id: JobID,
@@ -104,7 +105,8 @@ public struct Job: Sendable, Equatable {
         containerName: String? = nil,
         containerNameA: String? = nil,
         containerNameB: String? = nil,
-        timings: JobTimings? = nil
+        timings: JobTimings? = nil,
+        risk: RiskAssessment? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -130,5 +132,6 @@ public struct Job: Sendable, Equatable {
         self.containerNameA = containerNameA
         self.containerNameB = containerNameB
         self.timings = timings
+        self.risk = risk
     }
 }

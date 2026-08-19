@@ -198,6 +198,11 @@ export function JobsPage() {
                 <span className="sha">{repoLabel(job.repository)}</span>
                 <span className="sha">{shortSHA(job.head_sha ?? job.base_sha)}</span>
                 <span className={statusClass(job.status)}>{job.status}</span>
+                {job.risk ? (
+                  <span className={job.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
+                    {job.risk.verdict}
+                  </span>
+                ) : null}
               </div>
               <div className="pipe">{pipelineLine(job)}</div>
               <div className="pipe" style={{ borderBottom: summaryLine(job) ? undefined : 0 }}>
