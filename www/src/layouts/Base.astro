@@ -8,8 +8,7 @@ interface Props {
 
 const { title, description = 'Two reviewers, house rules, a conservative judge.' } = Astro.props;
 const path = Astro.url.pathname;
-const reviewOn = path.startsWith('/docs/review');
-const docsOn = path.startsWith('/docs') && !reviewOn;
+const docsOn = path.startsWith('/docs');
 ---
 <!doctype html>
 <html lang="en">
@@ -22,18 +21,21 @@ const docsOn = path.startsWith('/docs') && !reviewOn;
 	</head>
 	<body>
 		<header class="topbar">
-			<a class="brand" href="/">gegenlesen</a>
-			<nav>
-				<a href="/docs/start" class={docsOn ? 'on' : undefined}>docs</a>
-				<a href="/docs/review" class={reviewOn ? 'on' : undefined}>pipeline</a>
-				<a href="https://github.com/pmdroid/gegenlesen">github</a>
-			</nav>
-			<span class="srv">gegenlesen.dev</span>
+			<div class="wrap">
+				<a class="brand" href="/">gegenlesen</a>
+				<nav>
+					<a href="/docs/start" class={docsOn ? 'on' : undefined}>docs</a>
+					<a href="https://github.com/pmdroid/gegenlesen">github</a>
+				</nav>
+				<span class="srv">gegenlesen.dev</span>
+			</div>
 		</header>
 		<slot />
 		<footer class="foot">
-			<span>CLI starts the review. Ledger keeps the book.</span>
-			<span>no login · bind 127.0.0.1</span>
+			<div class="wrap">
+				<span>CLI starts the review. Ledger keeps the book.</span>
+				<span>no login · bind 127.0.0.1</span>
+			</div>
 		</footer>
 	</body>
 </html>

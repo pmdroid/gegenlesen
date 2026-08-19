@@ -19,12 +19,12 @@ const { Content } = await render(doc);
 		<nav class="side" aria-label="Docs">
 			{docs.map((item) => (
 				<a href={`/docs/${item.id}`} class={item.id === doc.id ? 'on' : undefined} aria-current={item.id === doc.id ? 'page' : undefined}>
-					{item.data.title.toLowerCase()}
+					{item.data.title}
 				</a>
 			))}
 		</nav>
 		<article class="article">
-			<h1>{doc.data.title.toLowerCase()}</h1>
+			<h1>{doc.data.title}</h1>
 			<p class="desc">{doc.data.description}</p>
 			<Content />
 		</article>
