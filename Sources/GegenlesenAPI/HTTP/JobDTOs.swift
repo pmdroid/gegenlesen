@@ -122,6 +122,7 @@ struct JobListItem: Content {
     var startedAt: Date?
     var finishedAt: Date?
     var errorMessage: String?
+    var risk: RiskAssessment?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
@@ -138,6 +139,7 @@ struct JobListItem: Content {
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
+        case risk
     }
 
     func encode(to encoder: Encoder) throws {
@@ -159,6 +161,7 @@ struct JobListItem: Content {
         try container.encodeNilIfNeeded(startedAt, forKey: .startedAt)
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
+        try container.encodeNilIfNeeded(risk, forKey: .risk)
     }
 
     static func from(_ job: Job, queuePosition: Int?, summary: JobSummary?) -> JobListItem {
@@ -179,7 +182,8 @@ struct JobListItem: Content {
             createdAt: job.createdAt,
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
-            errorMessage: job.errorMessage
+            errorMessage: job.errorMessage,
+            risk: job.risk
         )
     }
 }
@@ -202,6 +206,7 @@ struct JobDetail: Content {
     var startedAt: Date?
     var finishedAt: Date?
     var errorMessage: String?
+    var risk: RiskAssessment?
     var findings: [FindingDTO]
     var events: [JobEventDTO]
 
@@ -220,6 +225,7 @@ struct JobDetail: Content {
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
+        case risk
         case findings, events
     }
 
@@ -242,6 +248,7 @@ struct JobDetail: Content {
         try container.encodeNilIfNeeded(startedAt, forKey: .startedAt)
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
+        try container.encodeNilIfNeeded(risk, forKey: .risk)
         try container.encode(findings, forKey: .findings)
         try container.encode(events, forKey: .events)
     }
@@ -271,9 +278,18 @@ struct JobDetail: Content {
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
             errorMessage: job.errorMessage,
+            risk: job.risk,
             findings: findings.map(FindingDTO.init(finding:)),
             events: events.map(JobEventDTO.init(event:))
         )
+    }
+}
+
+struct RiskLabelRequest: Content {
+    var safeUnread: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case safeUnread = "safe_unread"
     }
 }
 

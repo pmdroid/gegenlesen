@@ -1,4 +1,5 @@
 import Foundation
+import GegenlesenCore
 import Vapor
 
 enum GegenlesenVersion {
@@ -140,6 +141,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var opencodeImage: String
     var embeddings: EmbeddingsConfig
     var limits: Limits
+    var risk: RiskConfig
     /// Persisted in config/gegenlesen.json. Never returned by GET /api/settings.
     var openrouterApiKey: String?
 
@@ -151,6 +153,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case opencodeImage = "opencode_image"
         case embeddings
         case limits
+        case risk
         case openrouterApiKey = "openrouter_api_key"
     }
 
@@ -163,6 +166,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         opencodeImage: String,
         embeddings: EmbeddingsConfig = .v1,
         limits: Limits,
+        risk: RiskConfig = .v1,
         openrouterApiKey: String? = nil
     ) {
         self.bind = bind
@@ -173,6 +177,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.opencodeImage = opencodeImage
         self.embeddings = embeddings
         self.limits = limits
+        self.risk = risk
         self.openrouterApiKey = openrouterApiKey
     }
 
@@ -186,6 +191,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
+        risk = try container.decodeIfPresent(RiskConfig.self, forKey: .risk) ?? .v1
         openrouterApiKey = try container.decodeIfPresent(String.self, forKey: .openrouterApiKey)
     }
 
@@ -199,6 +205,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(opencodeImage, forKey: .opencodeImage)
         try container.encode(embeddings, forKey: .embeddings)
         try container.encode(limits, forKey: .limits)
+        try container.encode(risk, forKey: .risk)
         if let openrouterApiKey, !openrouterApiKey.isEmpty {
             try container.encode(openrouterApiKey, forKey: .openrouterApiKey)
         }
@@ -336,6 +343,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_LEARN_INTERVAL_MINUTES"], let minutes = Int(value) {
             next.limits.learnIntervalMinutes = max(0, minutes)
         }
+        if let value = environment["GEGENLESEN_RISK_MODE"], let mode = RiskMode(rawValue: value) {
+            next.risk.mode = mode
+        }
         return next
     }
 
@@ -353,7 +363,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             judgeModel: judgeModel,
             opencodeImage: opencodeImage,
             limits: limits,
-            openrouterConfigured: isOpenRouterConfigured(environment: environment)
+            openrouterConfigured: isOpenRouterConfigured(environment: environment),
+            risk: risk
         )
     }
 }
@@ -371,6 +382,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var opencodeImage: String
     var limits: Limits
     var openrouterConfigured: Bool
+    var risk: RiskConfig
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
@@ -378,6 +390,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
         case opencodeImage = "opencode_image"
         case limits
         case openrouterConfigured = "openrouter_configured"
+        case risk
     }
 }
 

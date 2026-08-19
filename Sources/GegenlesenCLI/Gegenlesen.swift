@@ -22,6 +22,9 @@ struct Review: AsyncParsableCommand {
     @Option(name: .long, help: "Parent job id for an incremental review.")
     var parent: String?
 
+    @Flag(name: .long, help: "Exit 1 unless the job succeeded with risk verdict auto_approve.")
+    var requireAutoApprove = false
+
     func run() async throws {
         let client = GegenlesenClient()
         let archive = try packCWD(baseRef: baseRef)
@@ -45,7 +48,16 @@ struct Review: AsyncParsableCommand {
         } else {
             print(terminal.status)
         }
+        if let risk = terminal.risk {
+            print("risk \(risk.verdict) \(risk.mode)")
+            for reason in risk.reasons {
+                print("  \(reason.code)  \(reason.detail)")
+            }
+        }
         if terminal.status == "failed" || terminal.status == "cancelled" {
+            throw ExitCode(1)
+        }
+        if requireAutoApprove, terminal.risk?.verdict != "auto_approve" {
             throw ExitCode(1)
         }
     }
@@ -104,7 +116,8 @@ struct Status: AsyncParsableCommand {
         let sha = job.headSHA ?? job.baseSHA ?? "-"
         let repo = job.repository ?? "-"
         let err = job.errorMessage.map { " \($0)" } ?? ""
-        print("\(job.id)  \(job.status)  \(job.title ?? "-")  \(repo)  \(sha)\(err)")
+        let risk = job.risk.map { "  \($0.verdict)" } ?? ""
+        print("\(job.id)  \(job.status)\(risk)  \(job.title ?? "-")  \(repo)  \(sha)\(err)")
     }
 }
 

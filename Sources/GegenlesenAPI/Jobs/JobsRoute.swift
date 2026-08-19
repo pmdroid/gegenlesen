@@ -14,6 +14,7 @@ enum JobsRoute {
         app.get("api", "jobs", ":id", "feedback", use: feedback)
         app.post("api", "jobs", ":id", "cancel", use: cancel)
         app.post("api", "jobs", ":id", "learn", use: learn)
+        app.post("api", "jobs", ":id", "risk-label", use: riskLabel)
     }
 
     static func create(_ req: Request) async throws -> Response {
@@ -197,6 +198,49 @@ enum JobsRoute {
         }
         await docker.removeAll(prefix: ReviewContainers.commandPrefix(job.id))
         try await req.application.gegenlesenStore.appendEvent(jobID: job.id, level: .info, message: "cancelled")
+        guard let updated = try await req.application.gegenlesenStore.job(id: job.id) else {
+            throw APIError.notFound()
+        }
+        return try await jobDetail(updated, store: req.application.gegenlesenStore)
+    }
+
+    static func riskLabel(_ req: Request) async throws -> JobDetail {
+        let job = try await requireJob(req)
+        guard job.status == .succeeded else {
+            throw APIError.conflict("risk labels require a succeeded job")
+        }
+        guard var assessment = job.risk else {
+            throw APIError.conflict("job has no risk assessment")
+        }
+        let body: RiskLabelRequest
+        do {
+            body = try req.content.decode(RiskLabelRequest.self)
+        } catch {
+            throw APIError.badRequest("invalid risk-label payload")
+        }
+        assessment.safeUnread = body.safeUnread
+        try await req.application.gegenlesenStore.updateJobRisk(jobID: job.id, assessment: assessment)
+        try await req.application.gegenlesenStore.appendEvent(
+            jobID: job.id,
+            level: .info,
+            message: body.safeUnread ? "risk_label_safe" : "risk_label_unsafe"
+        )
+        if !body.safeUnread, assessment.verdict == .autoApprove {
+            var config = req.application.gegenlesenConfig
+            if config.risk.mode == .enforce {
+                config.risk.mode = .shadow
+                if let url = req.application.gegenlesenConfigFileURL {
+                    try config.persist(to: url)
+                }
+                req.application.gegenlesenConfig = config
+                req.application.gegenlesenJobs.apply(config)
+                try await req.application.gegenlesenStore.appendEvent(
+                    jobID: job.id,
+                    level: .warning,
+                    message: "risk_mode_shadow"
+                )
+            }
+        }
         guard let updated = try await req.application.gegenlesenStore.job(id: job.id) else {
             throw APIError.notFound()
         }

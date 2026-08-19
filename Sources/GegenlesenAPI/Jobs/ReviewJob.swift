@@ -144,7 +144,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory
                     ),
-                    minerModel: config.judgeModel
+                    minerModel: config.judgeModel,
+                    risk: config.risk
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

@@ -385,6 +385,51 @@ struct JobsRouteTests {
                 try await Task.sleep(for: .milliseconds(100))
             }
             #expect(status == .succeeded, "ended \(status.rawValue) \(error ?? "")")
+            try await app.testing().test(.GET, "/api/jobs/\(accepted.id.rawValue)") { res async throws in
+                let object = try jsonObject(res)
+                let risk = try #require(object["risk"] as? [String: Any])
+                #expect(risk["verdict"] as? String == "needs_human")
+                let reasons = try #require(risk["reasons"] as? [[String: Any]])
+                #expect(reasons.contains { $0["code"] as? String == "reviewers_skipped" })
+            }
+        }
+    }
+
+    @Test
+    func riskLabelRequiresSucceededJobWithAssessment() async throws {
+        try await withGegenlesenApp { app in
+            let now = Date()
+            let assessment = RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                reasons: []
+            )
+            let job = Job(
+                id: JobID("11111111-1111-4111-8111-111111111111"),
+                createdAt: now,
+                updatedAt: now,
+                finishedAt: now,
+                status: .succeeded,
+                scope: .full,
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j",
+                risk: assessment
+            )
+            try await app.gegenlesenStore.insertJob(job)
+            try await app.testing().test(
+                .POST,
+                "/api/jobs/\(job.id.rawValue)/risk-label",
+                beforeRequest: { req async throws in
+                    try req.content.encode(RiskLabelRequest(safeUnread: true))
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let object = try jsonObject(res)
+                let risk = try #require(object["risk"] as? [String: Any])
+                #expect(risk["safe_unread"] as? Bool == true)
+                #expect(risk["verdict"] as? String == "auto_approve")
+            }
         }
     }
 
@@ -421,7 +466,7 @@ private let jobListKeys: Set<String> = [
     "id", "title", "status", "scope", "parent_job_id", "repository",
     "reviewer_a_model_id", "reviewer_b_model_id", "judge_model_id",
     "base_sha", "head_sha", "queue_position", "summary",
-    "created_at", "started_at", "finished_at", "error_message",
+    "created_at", "started_at", "finished_at", "error_message", "risk",
 ]
 
 private func postJob(

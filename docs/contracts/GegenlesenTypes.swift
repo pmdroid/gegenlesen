@@ -146,6 +146,15 @@ enum EventLevel: String, Codable, Sendable {
     case debug, info, warning, error
 }
 
+enum RiskMode: String, Codable, Sendable {
+    case off, shadow, enforce
+}
+
+enum RiskVerdict: String, Codable, Sendable {
+    case autoApprove = "auto_approve"
+    case needsHuman = "needs_human"
+}
+
 enum AgentPhase: String, Codable, Sendable {
     case review, judge, command, miner
 }
@@ -524,6 +533,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     var opencodeImage: String
     var limits: Limits
     var openrouterConfigured: Bool
+    var risk: RiskConfig
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
@@ -531,6 +541,21 @@ struct SettingsDTO: Codable, Sendable, Equatable {
         case opencodeImage = "opencode_image"
         case limits
         case openrouterConfigured = "openrouter_configured"
+        case risk
+    }
+}
+
+struct RiskConfig: Codable, Sendable, Equatable {
+    var mode: RiskMode
+    var maxFiles: Int
+    var maxLines: Int
+    var sensitiveGlobs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case maxFiles = "max_files"
+        case maxLines = "max_lines"
+        case sensitiveGlobs = "sensitive_globs"
     }
 }
 
@@ -586,6 +611,7 @@ struct JobListItem: Codable, Sendable, Equatable {
     var startedAt: Date?
     var finishedAt: Date?
     var errorMessage: String?
+    var risk: RiskAssessment?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
@@ -602,6 +628,30 @@ struct JobListItem: Codable, Sendable, Equatable {
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
+        case risk
+    }
+}
+
+struct RiskReason: Codable, Sendable, Equatable {
+    var code: String
+    var detail: String
+    var findingID: FindingID?
+
+    enum CodingKeys: String, CodingKey {
+        case code, detail
+        case findingID = "finding_id"
+    }
+}
+
+struct RiskAssessment: Codable, Sendable, Equatable {
+    var verdict: RiskVerdict
+    var mode: RiskMode
+    var reasons: [RiskReason]
+    var safeUnread: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case verdict, mode, reasons
+        case safeUnread = "safe_unread"
     }
 }
 
@@ -623,6 +673,7 @@ struct JobDetail: Codable, Sendable, Equatable {
     var startedAt: Date?
     var finishedAt: Date?
     var errorMessage: String?
+    var risk: RiskAssessment?
     var findings: [Finding]
     var events: [JobEvent]
 
@@ -641,6 +692,7 @@ struct JobDetail: Codable, Sendable, Equatable {
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
+        case risk
         case findings, events
     }
 }

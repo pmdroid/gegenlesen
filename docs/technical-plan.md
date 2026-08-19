@@ -135,6 +135,10 @@ enum DeterministicCheckerKind: String, Codable { case regex, denyApi = "deny_api
 
 enum EventLevel: String, Codable { case debug, info, warning, error }
 
+enum RiskMode: String, Codable { case off, shadow, enforce }
+
+enum RiskVerdict: String, Codable { case autoApprove = "auto_approve", needsHuman = "needs_human" }
+
 enum AgentPhase: String, Codable { case review, judge, command, openapiBreak = "openapi_break", miner }
 
 enum TranscriptPhase: String, Codable { case review, reviewA = "review_a", reviewB = "review_b", judge } // query param only
@@ -303,6 +307,7 @@ HTTP list/detail use `JobListItem` / `JobDetail`, **not** this struct. Those DTO
 | `archiveBytes` | `archive_bytes` | `Int?` |
 | `fileCount` | `file_count` | `Int?` |
 | `errorMessage` | `error_message` | `String?` |
+| `risk` | `risk_verdict` + `risk_json` | `RiskAssessment?` |
 | `containerName` | `container_name` | `String?` |
 | `timings` | `timings_json` | `JobTimings?` |
 | `queuePosition` | `queue_position` | `Int?` (computed, not a column) |

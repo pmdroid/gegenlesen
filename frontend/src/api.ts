@@ -93,6 +93,29 @@ export interface ModelSlots {
   model_b: string;
 }
 
+export type RiskMode = "off" | "shadow" | "enforce";
+export type RiskVerdict = "auto_approve" | "needs_human";
+
+export interface RiskConfig {
+  mode: RiskMode;
+  max_files: number;
+  max_lines: number;
+  sensitive_globs: string[];
+}
+
+export interface RiskReason {
+  code: string;
+  detail: string;
+  finding_id: FindingId | null;
+}
+
+export interface RiskAssessment {
+  verdict: RiskVerdict;
+  mode: RiskMode;
+  reasons: RiskReason[];
+  safe_unread: boolean | null;
+}
+
 export interface SettingsDTO {
   bind: string;
   port: number;
@@ -101,6 +124,7 @@ export interface SettingsDTO {
   opencode_image: string;
   limits: Limits;
   openrouter_configured: boolean;
+  risk: RiskConfig;
 }
 
 export interface SettingsUpdate {
@@ -170,6 +194,7 @@ export interface JobListItem {
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
+  risk: RiskAssessment | null;
 }
 
 export interface JobEvent {
