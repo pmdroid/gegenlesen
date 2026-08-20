@@ -211,12 +211,15 @@ export function JobDetailPage() {
           events.map((event) => (
             <div className="logline" key={event.id}>
               {event.ts} · {event.level} · {event.message}
+              {event.payload_json && (event.level === "warning" || event.level === "error")
+                ? ` · ${event.payload_json}`
+                : ""}
             </div>
           ))
         )}
       </div>
 
-      <TranscriptViewer jobId={detail.id} live={live} />
+      <TranscriptViewer jobId={detail.id} live={live} title={detail.title} />
     </div>
   );
 }

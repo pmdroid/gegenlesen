@@ -241,6 +241,75 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
+    func suggestionJudgeDockerRequestUsesDedicatedAgent() throws {
+        let invocation = OpenCodeInvocation(
+            docker: NoopDocker(),
+            image: "gegenlesen/opencode-runner:0.1.0",
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config"),
+            judgeTimeout: .seconds(300)
+        )
+        let request = try invocation.suggestionJudgeDockerRequest(
+            jobID: JobID("job-1"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            model: "openrouter/openai/gpt-5.6-terra"
+        )
+        let args = request.dockerCLIArguments()
+        #expect(args.contains("gegenlesen-sugjudge-job-1"))
+        #expect(args.contains("suggestion-judge"))
+        #expect(args.contains("/workspace/.gegenlesen/prompt-suggestion-judge.md"))
+        #expect(args.contains("/workspace/.gegenlesen/suggestion-judge-input.json"))
+        #expect(!args.contains("prompt-judge.md"))
+        let content = try #require(request.env["OPENCODE_CONFIG_CONTENT"])
+        let object = try #require(JSONSerialization.jsonObject(with: Data(content.utf8)) as? [String: Any])
+        #expect(object["default_agent"] as? String == "suggestion-judge")
+        let agents = try #require(object["agent"] as? [String: Any])
+        #expect(agents["suggestion-judge"] != nil)
+    }
+
+    @Test
+    func suggestionJudgeMissingFileRecordsReason() async throws {
+        try await withTempDir("sugjudge-missing") { root in
+            try writeFile("Sources/A.swift", "print(1)\n", in: root)
+            let invocation = OpenCodeInvocation(
+                docker: RecordingDocker(result: DockerResult(exitCode: 0)),
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let result = await invocation.runSuggestionJudge(
+                job: sampleJob(),
+                workspace: Workspace(root: root)
+            )
+            #expect(result.failed)
+            #expect(result.errorMessage == "missing_suggestion_judge_file")
+        }
+    }
+
+    @Test
+    func suggestionJudgeRunWritesVerdicts() async throws {
+        try await withTempDir("sugjudge-run") { root in
+            let docker = SuggestionJudgeWritingDocker(workspace: root)
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let result = await invocation.runSuggestionJudge(
+                job: sampleJob(),
+                workspace: Workspace(root: root)
+            )
+            #expect(await docker.wrote)
+            guard case .verdicts(let rows) = result.outcome else {
+                Issue.record("expected parsed verdicts")
+                return
+            }
+            #expect(rows.count == 1)
+            #expect(rows[0].id == "sug_rule_0")
+            #expect(rows[0].verdict == .keep)
+            #expect(result.errorMessage == nil)
+        }
+    }
+
+    @Test
     func fakeJudgeRunWritesVerdicts() async throws {
         try await withTempDir("judge-run") { root in
             try writeFile("Sources/A.swift", "print(2)\n", in: root)
@@ -312,6 +381,29 @@ struct OpenCodeInvocationTests {
             #expect(result.errorMessage == "reviewer_no_findings_file")
         }
     }
+}
+
+actor SuggestionJudgeWritingDocker: DockerExecuting {
+    let workspace: URL
+    var wrote = false
+
+    init(workspace: URL) {
+        self.workspace = workspace
+    }
+
+    func run(_ request: DockerRequest) async throws -> DockerResult {
+        let payload = """
+        {"verdicts":[{"finding_id":"sug_rule_0","verdict":"keep","rationale":"reusable"}]}
+        """
+        let gegenlesen = workspace.appendingPathComponent(".gegenlesen", isDirectory: true)
+        try FileManager.default.createDirectory(at: gegenlesen, withIntermediateDirectories: true)
+        try Data(payload.utf8).write(to: gegenlesen.appendingPathComponent("suggestion-judge.json"))
+        wrote = true
+        return DockerResult(exitCode: 0, stdout: Data())
+    }
+
+    func kill(containerName: String) async {}
+    func removeAll(prefix: String) async {}
 }
 
 actor JudgeWritingDocker: DockerExecuting {

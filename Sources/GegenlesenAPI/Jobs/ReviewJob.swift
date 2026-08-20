@@ -187,7 +187,18 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             runnerConfig: runnerConfig,
                             judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                             providerEnv: providerEnv,
-                            schemasDirectory: schemasDirectory
+                            schemasDirectory: schemasDirectory,
+                            transcriptWriter: { jobID, data in
+                                let url = store.blobs.transcriptURL(
+                                    jobID: jobID.rawValue,
+                                    phase: "suggestion_judge"
+                                )
+                                try? FileManager.default.createDirectory(
+                                    at: url.deletingLastPathComponent(),
+                                    withIntermediateDirectories: true
+                                )
+                                try? data.write(to: url, options: .atomic)
+                            }
                         ),
                         model: config.models.modelA,
                         embedder: embedder,
@@ -219,7 +230,18 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         runnerConfig: runnerConfig,
                         judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                         providerEnv: providerEnv,
-                        schemasDirectory: schemasDirectory
+                        schemasDirectory: schemasDirectory,
+                        transcriptWriter: { jobID, data in
+                            let url = store.blobs.transcriptURL(
+                                jobID: jobID.rawValue,
+                                phase: "suggestion_judge"
+                            )
+                            try? FileManager.default.createDirectory(
+                                at: url.deletingLastPathComponent(),
+                                withIntermediateDirectories: true
+                            )
+                            try? data.write(to: url, options: .atomic)
+                        }
                     ),
                     model: config.models.modelA,
                     embedder: embedder,

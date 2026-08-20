@@ -87,6 +87,24 @@ struct SuggestionFilterTests {
         #expect(kept[0].title == "Log hop failures")
         #expect(kept[0].body.contains("credential-free"))
     }
+
+    @Test
+    func suggestionJudgeEventPayloadIncludesFailureReason() {
+        let payload = SuggestionJudge.eventPayload(
+            candidates: 13,
+            kept: 13,
+            result: SuggestionJudgeRunResult(
+                outcome: .failed,
+                containerName: "sugjudge",
+                errorMessage: "missing_suggestion_judge_file",
+                exitCode: 0
+            )
+        )
+        #expect(payload.contains("\"candidates\":13"))
+        #expect(payload.contains("\"judged\":false"))
+        #expect(payload.contains("missing_suggestion_judge_file"))
+        #expect(payload.contains("\"exit_code\":0"))
+    }
 }
 
 private func sampleFinding(title: String, verdict: JudgeVerdict) -> Finding {

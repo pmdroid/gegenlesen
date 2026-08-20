@@ -45,16 +45,27 @@ public struct SuggestionJudgeRunResult: Sendable {
     public var outcome: SuggestionJudgeOutcome
     public var transcript: Data
     public var containerName: String
+    public var errorMessage: String?
+    public var exitCode: Int32?
+    public var timedOut: Bool
 
     public init(
         outcome: SuggestionJudgeOutcome,
         transcript: Data = Data(),
-        containerName: String
+        containerName: String,
+        errorMessage: String? = nil,
+        exitCode: Int32? = nil,
+        timedOut: Bool = false
     ) {
         self.outcome = outcome
         self.transcript = transcript
         self.containerName = containerName
+        self.errorMessage = errorMessage
+        self.exitCode = exitCode
+        self.timedOut = timedOut
     }
+
+    public var failed: Bool { outcome == .failed }
 }
 
 public enum SuggestionJudge: Sendable {
@@ -183,6 +194,33 @@ public enum SuggestionJudge: Sendable {
             )
         }
         return .verdicts(rows)
+    }
+
+    public static func eventPayload(
+        candidates: Int,
+        kept: Int,
+        result: SuggestionJudgeRunResult
+    ) -> String {
+        var object: [String: Any] = [
+            "candidates": candidates,
+            "kept": kept,
+            "judged": !result.failed,
+        ]
+        if let error = result.errorMessage, !error.isEmpty {
+            object["error"] = error
+        }
+        if let code = result.exitCode {
+            object["exit_code"] = Int(code)
+        }
+        if result.timedOut {
+            object["timed_out"] = true
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return text
     }
 
     /// Keep + optional rewrite. Judge file missing falls back to host-endorsed ids.

@@ -84,9 +84,9 @@ public struct HarvestPipeline: Sendable {
             }
 
             bundle = HarvestFile.cap(HarvestFile.dropUncited(bundle))
-            let kept = try await judge(bundle, workspace: workspaceURL, jobID: jobID)
+            let judged = try await judge(bundle, workspace: workspaceURL, jobID: jobID)
             let now = Date()
-            let counts = try await persist(kept, jobID: jobID, now: now)
+            let counts = try await persist(judged.bundle, jobID: jobID, now: now, judged: judged.judged)
 
             let indexer = ArchitectureIndexJob(
                 store: store,
@@ -102,7 +102,11 @@ public struct HarvestPipeline: Sendable {
                 jobID: jobID,
                 level: .info,
                 message: "harvest_done",
-                payloadJSON: #"{"rules":\#(counts.rules),"notes":\#(counts.notes)}"#
+                payloadJSON: Self.jsonObject([
+                    "rules": counts.rules,
+                    "notes": counts.notes,
+                    "judged": judged.judged,
+                ])
             )
             _ = try await store.finishJob(id: jobID, status: .succeeded)
         } catch {
@@ -126,7 +130,7 @@ public struct HarvestPipeline: Sendable {
             throw HarvestIngestError.missingHarvestFile
         }
         let bundle = HarvestFile.cap(HarvestFile.dropUncited(parsed))
-        let counts = try await persist(bundle, jobID: jobID, now: Date())
+        let counts = try await persist(bundle, jobID: jobID, now: Date(), judged: false)
         try await store.appendEvent(
             jobID: jobID,
             level: .info,
@@ -151,7 +155,7 @@ public struct HarvestPipeline: Sendable {
         _ bundle: HarvestBundle,
         workspace: URL,
         jobID: JobID
-    ) async throws -> HarvestBundle {
+    ) async throws -> (bundle: HarvestBundle, judged: Bool) {
         var candidates: [SuggestionCandidate] = []
         for (index, rule) in bundle.rules.enumerated() {
             candidates.append(
@@ -174,6 +178,7 @@ public struct HarvestPipeline: Sendable {
             )
         }
         var kept = candidates
+        var didJudge = false
         if !skipAgent, let suggestionJudge, !candidates.isEmpty, let job = try await store.job(id: jobID) {
             try SuggestionJudge.writeInput(
                 candidates,
@@ -184,7 +189,7 @@ public struct HarvestPipeline: Sendable {
                 job: job,
                 workspace: Workspace(root: workspace)
             )
-            let failed = judged.outcome == .failed
+            didJudge = !judged.failed
             kept = SuggestionJudge.apply(
                 outcome: judged.outcome,
                 candidates: candidates,
@@ -192,9 +197,13 @@ public struct HarvestPipeline: Sendable {
             )
             try await store.appendEvent(
                 jobID: jobID,
-                level: failed ? .warning : .info,
-                message: failed ? "suggestion_judge_failed" : "suggestion_judged",
-                payloadJSON: #"{"candidates":\#(candidates.count),"kept":\#(kept.count)}"#
+                level: judged.failed ? .warning : .info,
+                message: judged.failed ? "suggestion_judge_failed" : "suggestion_judged",
+                payloadJSON: SuggestionJudge.eventPayload(
+                    candidates: candidates.count,
+                    kept: kept.count,
+                    result: judged
+                )
             )
         }
         let byID = Dictionary(uniqueKeysWithValues: kept.map { ($0.id, $0) })
@@ -214,13 +223,14 @@ public struct HarvestPipeline: Sendable {
             guard let keptItem = byID["sug_note_\(index)"] else { continue }
             notes.append(HarvestNoteDraft(title: keptItem.title, body: keptItem.body, evidence: draft.evidence))
         }
-        return HarvestFile.cap(HarvestBundle(rules: rules, notes: notes))
+        return (HarvestFile.cap(HarvestBundle(rules: rules, notes: notes)), didJudge)
     }
 
     private func persist(
         _ bundle: HarvestBundle,
         jobID: JobID,
-        now: Date
+        now: Date,
+        judged: Bool
     ) async throws -> (rules: Int, notes: Int) {
         let repository = try await store.job(id: jobID)?.repository
         var ruleCount = 0
@@ -254,9 +264,10 @@ public struct HarvestPipeline: Sendable {
                     kind: .rule,
                     title: draft.title,
                     body: draft.body,
-                    payloadJSON: Self.json([
+                    payloadJSON: Self.jsonObject([
                         "source": "harvest",
                         "rule_id": ruleID.rawValue,
+                        "judged": judged,
                     ]),
                     createdAt: now
                 )
@@ -271,7 +282,10 @@ public struct HarvestPipeline: Sendable {
                     kind: .context,
                     title: note.title,
                     body: note.body,
-                    payloadJSON: Self.json(["source": "harvest"]),
+                    payloadJSON: Self.jsonObject([
+                        "source": "harvest",
+                        "judged": judged,
+                    ]),
                     createdAt: now
                 )
             )
@@ -291,8 +305,9 @@ public struct HarvestPipeline: Sendable {
         }
     }
 
-    private static func json(_ object: [String: String]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+    private static func jsonObject(_ object: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
               let text = String(data: data, encoding: .utf8)
         else {
             return "{}"

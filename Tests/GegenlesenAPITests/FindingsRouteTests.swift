@@ -179,9 +179,17 @@ struct FindingsRouteTests {
                 #expect(res.status == .badRequest)
                 try assertError(res, code: "bad_request")
             }
-            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/transcript?phase=miner") {
+            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/transcript?phase=bogus") {
                 res async throws in
                 #expect(res.status == .badRequest)
+            }
+            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/transcript?phase=mine") {
+                res async throws in
+                #expect(res.status == .notFound)
+            }
+            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/transcript?phase=suggestion_judge") {
+                res async throws in
+                #expect(res.status == .notFound)
             }
             try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/transcript?phase=review_a") {
                 res async throws in

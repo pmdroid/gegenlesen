@@ -190,7 +190,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             name: ReviewContainers.suggestionJudge(jobID),
             workspace: workspace,
             model: model,
-            defaultAgent: "judge",
+            defaultAgent: "suggestion-judge",
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-suggestion-judge.md",
             extraFiles: ["/workspace/.gegenlesen/suggestion-judge-input.json"],
@@ -249,34 +249,84 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
     public func runSuggestionJudge(job: Job, workspace: Workspace) async -> SuggestionJudgeRunResult {
         let name = ReviewContainers.suggestionJudge(job.id)
-        let dockerRequest: DockerRequest
         do {
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
+            try DockerRunner.chownWorkspace(workspace.root)
+        } catch {
+            return SuggestionJudgeRunResult(
+                outcome: .failed,
+                containerName: name,
+                errorMessage: String(describing: error)
+            )
+        }
+        let dockerRequest: DockerRequest
+        do {
             dockerRequest = try suggestionJudgeDockerRequest(
                 jobID: job.id,
                 workspace: workspace.root,
                 model: job.judgeModelID
             )
         } catch {
-            return SuggestionJudgeRunResult(outcome: .failed, containerName: name)
+            return SuggestionJudgeRunResult(
+                outcome: .failed,
+                containerName: name,
+                errorMessage: String(describing: error)
+            )
         }
         var transcript = Data()
-        if let result = try? await docker.run(dockerRequest) {
+        let result: DockerResult
+        do {
+            result = try await docker.run(dockerRequest)
             transcript.append(SecretRedactor().redact(result.stdout))
             transcript.append(SecretRedactor().redact(result.stderr))
+        } catch {
+            persistTranscripts(jobID: job.id, chunks: [transcript])
+            return SuggestionJudgeRunResult(
+                outcome: .failed,
+                transcript: transcript,
+                containerName: name,
+                errorMessage: String(describing: error)
+            )
         }
-        transcriptWriter?(job.id, transcript)
+        persistTranscripts(jobID: job.id, chunks: [transcript])
         let url = workspace.root.appendingPathComponent(".gegenlesen/suggestion-judge.json")
         guard let data = try? Data(contentsOf: url) else {
-            return SuggestionJudgeRunResult(outcome: .failed, transcript: transcript, containerName: name)
+            return SuggestionJudgeRunResult(
+                outcome: .failed,
+                transcript: transcript,
+                containerName: name,
+                errorMessage: Self.suggestionJudgeMissingReason(result),
+                exitCode: result.exitCode,
+                timedOut: result.timedOut
+            )
+        }
+        let outcome = SuggestionJudge.parse(data)
+        if case .failed = outcome {
+            return SuggestionJudgeRunResult(
+                outcome: .failed,
+                transcript: transcript,
+                containerName: name,
+                errorMessage: "invalid_suggestion_judge_file",
+                exitCode: result.exitCode,
+                timedOut: result.timedOut
+            )
         }
         return SuggestionJudgeRunResult(
-            outcome: SuggestionJudge.parse(data),
+            outcome: outcome,
             transcript: transcript,
-            containerName: name
+            containerName: name,
+            exitCode: result.exitCode,
+            timedOut: result.timedOut
         )
+    }
+
+    private static func suggestionJudgeMissingReason(_ result: DockerResult) -> String {
+        if result.timedOut { return "timed_out" }
+        if result.oom { return "oom" }
+        if result.exitCode != 0 { return "exit_\(result.exitCode)" }
+        return "missing_suggestion_judge_file"
     }
 
     public func runMiner(

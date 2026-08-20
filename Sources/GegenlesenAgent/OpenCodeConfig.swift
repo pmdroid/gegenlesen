@@ -113,6 +113,11 @@ public enum OpenCodeConfig: Sendable {
                     "mode": "primary",
                     "temperature": 0.2,
                 ],
+                "suggestion-judge": [
+                    "description": "Filters harvest and mine drafts into .gegenlesen/suggestion-judge.json",
+                    "mode": "primary",
+                    "temperature": 0.0,
+                ],
             ],
         ]
     }

@@ -70,7 +70,11 @@ struct HarvestPipelineTests {
             #expect(learnings.contains { $0.kind == .rule && $0.title.contains("project logger") })
             #expect(learnings.contains { $0.kind == .context && $0.title.contains("CI is optional") })
             let events = try await store.events(jobID: jobID)
-            #expect(events.contains { $0.message == "suggestion_judge_failed" })
+            let failed = try #require(events.first { $0.message == "suggestion_judge_failed" })
+            #expect(failed.level == .warning)
+            #expect(failed.payloadJSON?.contains("\"judged\":false") == true)
+            #expect(failed.payloadJSON?.contains("missing_suggestion_judge_file") == true)
+            #expect(learnings.contains { $0.payloadJSON?.contains("\"judged\":false") == true })
         }
     }
 
@@ -86,6 +90,10 @@ struct HarvestPipelineTests {
             ).run(jobID: jobID)
             let learnings = try await store.listLearnings(status: .pending)
             #expect(!learnings.contains { $0.payloadJSON?.contains("harvest") == true })
+            let events = try await store.events(jobID: jobID)
+            #expect(events.contains {
+                $0.message == "suggestion_judged" && $0.payloadJSON?.contains("\"judged\":true") == true
+            })
         }
     }
 
@@ -151,7 +159,11 @@ private struct HarvestMinerStub: MinerRunning {
 
 private struct FailedSuggestionJudge: SuggestionJudging {
     func runSuggestionJudge(job: Job, workspace: Workspace) async -> SuggestionJudgeRunResult {
-        SuggestionJudgeRunResult(outcome: .failed, containerName: "judge")
+        SuggestionJudgeRunResult(
+            outcome: .failed,
+            containerName: "judge",
+            errorMessage: "missing_suggestion_judge_file"
+        )
     }
 }
 

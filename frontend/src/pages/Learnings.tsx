@@ -40,6 +40,7 @@ export function LearningsPage() {
               <span className="rn">{item.title}</span>
               <span className="rk">
                 {item.kind} · {item.status}
+                {item.judged === false ? " · unjudged draft" : ""}
               </span>
             </div>
             <div className="ctx">{item.body}</div>

@@ -28,6 +28,9 @@ struct OpenCodeConfigTests {
         #expect(edit["*/.gegenlesen/suggestion-judge.json"] == "allow")
         #expect(edit[".gegenlesen/harvest.json"] == "allow")
         #expect(edit["*/.gegenlesen/harvest.json"] == "allow")
+        let agents = try #require(object["agent"] as? [String: Any])
+        #expect(agents["suggestion-judge"] != nil)
+        #expect(agents["harvester"] != nil)
         #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
 
         let bash = try #require(permission["bash"] as? [String: String])
@@ -69,6 +72,8 @@ struct OpenCodeConfigTests {
         #expect(edit["*"] == "deny")
         #expect(edit[".gegenlesen/findings.json"] == "allow")
         #expect(edit[".gegenlesen/suggestion-judge.json"] == "allow")
+        let agents = try #require(object["agent"] as? [String: Any])
+        #expect(agents["suggestion-judge"] != nil)
         #expect(edit["*/.gegenlesen/findings-model_a.json"] == "allow")
         #expect(edit.keys.contains { $0.hasPrefix("Sources") } == false)
     }

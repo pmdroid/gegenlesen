@@ -3,16 +3,28 @@ import { useState } from "react";
 import type { TranscriptPhase } from "../api";
 import { getJobTranscript, isNotFound } from "../client";
 
-const phases: TranscriptPhase[] = ["review_a", "review_b", "judge"];
+const reviewPhases: TranscriptPhase[] = ["review_a", "review_b", "judge"];
+const harvestPhases: TranscriptPhase[] = ["mine", "suggestion_judge"];
+
+function phasesForTitle(title: string | null | undefined): TranscriptPhase[] {
+  const value = title ?? "";
+  if (value.startsWith("harvest") || value.startsWith("learn ")) {
+    return harvestPhases;
+  }
+  return reviewPhases;
+}
 
 export function TranscriptViewer({
   jobId,
   live,
+  title,
 }: {
   jobId: string;
   live: boolean;
+  title?: string | null;
 }) {
-  const [phase, setPhase] = useState<TranscriptPhase>("review_a");
+  const phases = phasesForTitle(title);
+  const [phase, setPhase] = useState<TranscriptPhase>(phases[0] ?? "review_a");
   const transcript = useQuery({
     queryKey: ["job", jobId, "transcript", phase],
     queryFn: () => getJobTranscript(jobId, phase),

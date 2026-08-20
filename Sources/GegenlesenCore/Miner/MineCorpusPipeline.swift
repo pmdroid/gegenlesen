@@ -314,9 +314,13 @@ public struct MineCorpusPipeline: Sendable {
             )
             try await store.appendEvent(
                 jobID: jobID,
-                level: .info,
-                message: "suggestion_judged",
-                payloadJSON: #"{"candidates":\#(candidates.count),"kept":\#(keptCandidates.count)}"#
+                level: judged.failed ? .warning : .info,
+                message: judged.failed ? "suggestion_judge_failed" : "suggestion_judged",
+                payloadJSON: SuggestionJudge.eventPayload(
+                    candidates: candidates.count,
+                    kept: keptCandidates.count,
+                    result: judged
+                )
             )
         }
 

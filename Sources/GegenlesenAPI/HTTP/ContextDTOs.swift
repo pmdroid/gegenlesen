@@ -78,12 +78,13 @@ struct LearningDTO: Content {
     var status: LearningStatus
     var title: String
     var body: String
+    var judged: Bool?
     var createdAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id
         case jobID = "job_id"
-        case kind, status, title, body
+        case kind, status, title, body, judged
         case createdAt = "created_at"
     }
 
@@ -95,6 +96,7 @@ struct LearningDTO: Content {
         try container.encode(status, forKey: .status)
         try container.encode(title, forKey: .title)
         try container.encode(body, forKey: .body)
+        try container.encodeNilIfNeeded(judged, forKey: .judged)
         try container.encode(createdAt, forKey: .createdAt)
     }
 
@@ -105,6 +107,22 @@ struct LearningDTO: Content {
         status = learning.status
         title = learning.title
         body = learning.body
+        judged = Self.payloadBool(learning.payloadJSON, key: "judged")
         createdAt = learning.createdAt
+    }
+
+    private static func payloadBool(_ raw: String?, key: String) -> Bool? {
+        guard let raw, let data = raw.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        if let value = object[key] as? Bool { return value }
+        if let value = object[key] as? String {
+            switch value.lowercased() {
+            case "true", "1", "yes": return true
+            case "false", "0", "no": return false
+            default: return nil
+            }
+        }
+        return nil
     }
 }

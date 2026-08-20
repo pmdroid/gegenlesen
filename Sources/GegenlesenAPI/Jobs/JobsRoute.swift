@@ -334,7 +334,7 @@ enum JobsRoute {
         switch phase {
         case "review_a", "review_b":
             return [phase, "review"]
-        case "review", "judge":
+        case "review", "judge", "mine", "suggestion_judge":
             return [phase]
         default:
             return []
