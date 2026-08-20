@@ -193,13 +193,15 @@ export function JobDetailPage() {
             <span className={detail.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
               {detail.risk.verdict}
             </span>
-            <span className="sha">{detail.risk.mode}</span>
+            <span className="sha">
+              score {detail.risk.score} ≤ appetite {detail.risk.appetite} · {detail.risk.mode}
+            </span>
             {detail.risk.safe_unread === true ? <span className="st ok">labeled safe unread</span> : null}
             {detail.risk.safe_unread === false ? <span className="st fail">labeled unsafe</span> : null}
           </div>
           {detail.risk.reasons.length === 0 ? (
             <div className="pipe" style={{ borderBottom: 0 }}>
-              no vetoes
+              no vetoes · score 1
             </div>
           ) : (
             detail.risk.reasons.map((reason, index) => (
@@ -208,7 +210,11 @@ export function JobDetailPage() {
                 style={{ borderBottom: index === detail.risk!.reasons.length - 1 ? 0 : undefined }}
                 key={`${reason.code}-${index}`}
               >
-                {reason.code} · {reason.detail}
+                {reason.code}
+                {reason.points != null
+                  ? ` ${reason.points > 0 ? "+" : ""}${reason.points}`
+                  : ""}{" "}
+                · {reason.detail}
               </div>
             ))
           )}

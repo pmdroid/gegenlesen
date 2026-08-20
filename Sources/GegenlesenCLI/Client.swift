@@ -139,16 +139,19 @@ struct JobJSON: Decodable {
 struct RiskJSON: Decodable {
     var verdict: String
     var mode: String
+    var score: Int?
+    var appetite: Int?
     var reasons: [Reason]
     var safeUnread: Bool?
 
     struct Reason: Decodable {
         var code: String
         var detail: String
+        var points: Int?
     }
 
     enum CodingKeys: String, CodingKey {
-        case verdict, mode, reasons
+        case verdict, mode, score, appetite, reasons
         case safeUnread = "safe_unread"
     }
 }

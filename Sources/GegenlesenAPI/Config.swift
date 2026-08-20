@@ -346,6 +346,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_RISK_MODE"], let mode = RiskMode(rawValue: value) {
             next.risk.mode = mode
         }
+        if let value = environment["GEGENLESEN_RISK_APPETITE"], let appetite = Int(value) {
+            next.risk.appetite = min(max(appetite, 1), 5)
+        }
         return next
     }
 
@@ -394,15 +397,26 @@ struct SettingsDTO: Content, Sendable, Equatable {
     }
 }
 
+struct RiskSettingsUpdate: Content, Sendable, Equatable {
+    var mode: RiskMode?
+    var appetite: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case mode, appetite
+    }
+}
+
 struct SettingsUpdate: Content, Sendable, Equatable {
     var models: ModelSlots?
     var judgeModel: String?
     var openrouterApiKey: String?
+    var risk: RiskSettingsUpdate? = nil
 
     enum CodingKeys: String, CodingKey {
         case models
         case judgeModel = "judge_model"
         case openrouterApiKey = "openrouter_api_key"
+        case risk
     }
 }
 

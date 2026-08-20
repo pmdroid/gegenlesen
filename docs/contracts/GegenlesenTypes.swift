@@ -140,6 +140,7 @@ enum DeterministicCheckerKind: String, Codable, Sendable {
     case siblingTest = "sibling_test"
     case command
     case openapiBreak = "openapi_break"
+    case riskWeight = "risk_weight"
 }
 
 enum EventLevel: String, Codable, Sendable {
@@ -370,6 +371,7 @@ enum RulePayload: Equatable, Sendable {
     case siblingTest(sourceGlob: String, testTemplate: String)
     case command(argv: [String], timeoutSec: Int)
     case openapiBreak(specGlobs: [String], failOn: String, message: String)
+    case riskWeight(weight: Int, match: String, veto: Bool)
     case semantic(instruction: String, fewShots: [String])
 }
 
@@ -547,12 +549,13 @@ struct SettingsDTO: Codable, Sendable, Equatable {
 
 struct RiskConfig: Codable, Sendable, Equatable {
     var mode: RiskMode
+    var appetite: Int
     var maxFiles: Int
     var maxLines: Int
     var sensitiveGlobs: [String]
 
     enum CodingKeys: String, CodingKey {
-        case mode
+        case mode, appetite
         case maxFiles = "max_files"
         case maxLines = "max_lines"
         case sensitiveGlobs = "sensitive_globs"
@@ -636,9 +639,10 @@ struct RiskReason: Codable, Sendable, Equatable {
     var code: String
     var detail: String
     var findingID: FindingID?
+    var points: Int?
 
     enum CodingKeys: String, CodingKey {
-        case code, detail
+        case code, detail, points
         case findingID = "finding_id"
     }
 }
@@ -646,11 +650,13 @@ struct RiskReason: Codable, Sendable, Equatable {
 struct RiskAssessment: Codable, Sendable, Equatable {
     var verdict: RiskVerdict
     var mode: RiskMode
+    var score: Int
+    var appetite: Int
     var reasons: [RiskReason]
     var safeUnread: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case verdict, mode, reasons
+        case verdict, mode, score, appetite, reasons
         case safeUnread = "safe_unread"
     }
 }

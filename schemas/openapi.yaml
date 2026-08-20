@@ -612,9 +612,10 @@ components:
     RiskConfig:
       type: object
       additionalProperties: false
-      required: [mode, max_files, max_lines, sensitive_globs]
+      required: [mode, appetite, max_files, max_lines, sensitive_globs]
       properties:
         mode: { $ref: "#/components/schemas/RiskMode" }
+        appetite: { type: integer, minimum: 1, maximum: 5 }
         max_files: { type: integer, minimum: 0 }
         max_lines: { type: integer, minimum: 0 }
         sensitive_globs:
@@ -623,18 +624,21 @@ components:
     RiskReason:
       type: object
       additionalProperties: false
-      required: [code, detail, finding_id]
+      required: [code, detail, finding_id, points]
       properties:
         code: { type: string }
         detail: { type: string }
         finding_id: { type: ["string", "null"] }
+        points: { type: ["integer", "null"] }
     RiskAssessment:
       type: object
       additionalProperties: false
-      required: [verdict, mode, reasons, safe_unread]
+      required: [verdict, mode, score, appetite, reasons, safe_unread]
       properties:
         verdict: { $ref: "#/components/schemas/RiskVerdict" }
         mode: { $ref: "#/components/schemas/RiskMode" }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        appetite: { type: integer, minimum: 1, maximum: 5 }
         reasons:
           type: array
           items: { $ref: "#/components/schemas/RiskReason" }
@@ -659,6 +663,12 @@ components:
         models: { $ref: "#/components/schemas/ModelSlots" }
         judge_model: { type: string }
         openrouter_api_key: { type: string }
+        risk:
+          type: object
+          additionalProperties: false
+          properties:
+            mode: { $ref: "#/components/schemas/RiskMode" }
+            appetite: { type: integer, minimum: 1, maximum: 5 }
     OpenRouterModel:
       type: object
       additionalProperties: false
@@ -940,6 +950,17 @@ components:
               enum: [breaking, changelog]
               default: breaking
             message: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [checker, weight]
+          properties:
+            checker: { const: risk_weight }
+            weight: { type: integer, minimum: -2, maximum: 3 }
+            match:
+              type: string
+              enum: [any, all]
+              default: any
+            veto: { type: boolean, default: false }
         - type: object
           additionalProperties: false
           required: [instruction]

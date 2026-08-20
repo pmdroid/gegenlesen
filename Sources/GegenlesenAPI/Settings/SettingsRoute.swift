@@ -31,6 +31,17 @@ enum SettingsRoute {
             }
             next.judgeModel = trimmed
         }
+        if let risk = body.risk {
+            if let mode = risk.mode {
+                next.risk.mode = mode
+            }
+            if let appetite = risk.appetite {
+                guard (1...5).contains(appetite) else {
+                    throw APIError.unprocessable("risk.appetite must be 1-5")
+                }
+                next.risk.appetite = appetite
+            }
+        }
         if let rawKey = body.openrouterApiKey {
             let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else {

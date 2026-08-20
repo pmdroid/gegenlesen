@@ -200,7 +200,7 @@ export function JobsPage() {
                 <span className={statusClass(job.status)}>{job.status}</span>
                 {job.risk ? (
                   <span className={job.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
-                    {job.risk.verdict}
+                    {job.risk.verdict} {job.risk.score}/{job.risk.appetite}
                   </span>
                 ) : null}
               </div>

@@ -29,10 +29,15 @@ struct RiskGateTests {
     }
 
     @Test
-    func keptWarningBlocks() {
+    func keptWarningBlocksAtAppetiteOne() {
         var input = baseInput()
         input.findings = [finding(severity: .warning, verdict: .keep)]
-        #expect(RiskGate.evaluate(input).reasons.contains { $0.code == "kept_warning" })
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "kept_warning" })
+        #expect(report.score == 2)
+        #expect(report.verdict == .needsHuman)
+        input.config.appetite = 2
+        #expect(RiskGate.evaluate(input).verdict == .autoApprove)
     }
 
     @Test
@@ -135,6 +140,135 @@ struct RiskGateTests {
         +also
         """.utf8)
         #expect(RiskGate.changedLines(in: patch) == 3)
+    }
+
+    @Test
+    func appetiteOneMatchesEmptySoftSignals() {
+        let report = RiskGate.evaluate(baseInput())
+        #expect(report.score == 1)
+        #expect(report.appetite == 1)
+        #expect(report.verdict == .autoApprove)
+    }
+
+    @Test
+    func weightVetoAlwaysBlocks() {
+        var input = baseInput()
+        input.files = [
+            JobFile(
+                jobID: JobID("11111111-1111-4111-8111-111111111111"),
+                path: "db/migrations/1.sql",
+                status: .added
+            ),
+        ]
+        input.rules = [
+            Rule(
+                id: RuleID("no-migrations"),
+                title: "no migrations",
+                severity: .info,
+                kind: .deterministic,
+                languages: ["*"],
+                pathGlobs: ["**/migrations/**"],
+                payload: .riskWeight(weight: 3, match: .any, veto: true),
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+        ]
+        input.config.appetite = 5
+        let report = RiskGate.evaluate(input)
+        #expect(report.verdict == .needsHuman)
+        #expect(report.reasons.contains { $0.code == "weight_veto" })
+    }
+
+    @Test
+    func docsOnlyDiscountLowersScore() {
+        var input = baseInput()
+        input.files = [
+            JobFile(
+                jobID: JobID("11111111-1111-4111-8111-111111111111"),
+                path: "docs/guide.md",
+                status: .modified
+            ),
+        ]
+        input.findings = [finding(severity: .warning, verdict: .keep)]
+        input.rules = [
+            Rule(
+                id: RuleID("docs-only"),
+                title: "docs only",
+                severity: .info,
+                kind: .deterministic,
+                languages: ["*"],
+                pathGlobs: ["docs/**", "**/*.md"],
+                payload: .riskWeight(weight: -2, match: .all, veto: false),
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+        ]
+        let withDiscount = RiskGate.evaluate(input)
+        #expect(withDiscount.score == 1)
+        #expect(withDiscount.verdict == .autoApprove)
+        input.rules = []
+        let without = RiskGate.evaluate(input)
+        #expect(without.score == 2)
+        #expect(without.verdict == .needsHuman)
+    }
+
+    @Test
+    func secretPathStaysHard() {
+        var input = baseInput()
+        input.files = [
+            JobFile(
+                jobID: JobID("11111111-1111-4111-8111-111111111111"),
+                path: ".env",
+                status: .modified
+            ),
+        ]
+        input.config.appetite = 5
+        let report = RiskGate.evaluate(input)
+        #expect(report.verdict == .needsHuman)
+        #expect(report.reasons.contains { $0.code == "secret_path" })
+    }
+
+    @Test
+    func keptErrorStaysHardAtAppetiteFive() {
+        var input = baseInput()
+        input.findings = [finding(severity: .error, verdict: .keep)]
+        input.config.appetite = 5
+        #expect(RiskGate.evaluate(input).reasons.contains { $0.code == "kept_error" })
+        #expect(RiskGate.evaluate(input).verdict == .needsHuman)
+    }
+
+    @Test
+    func negativeWeightsCannotDropBelowFloor() {
+        var input = baseInput()
+        input.findings = [finding(severity: .warning, verdict: .keep)]
+        input.rules = [
+            Rule(
+                id: RuleID("a"),
+                title: "a",
+                severity: .info,
+                kind: .deterministic,
+                languages: ["*"],
+                pathGlobs: ["Sources/**"],
+                payload: .riskWeight(weight: -2, match: .any, veto: false),
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+            Rule(
+                id: RuleID("b"),
+                title: "b",
+                severity: .info,
+                kind: .deterministic,
+                languages: ["*"],
+                pathGlobs: ["Sources/**"],
+                payload: .riskWeight(weight: -2, match: .any, veto: false),
+                createdAt: Date(),
+                updatedAt: Date()
+            ),
+        ]
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "weight_floor" })
+        let net = report.reasons.compactMap(\.points).reduce(0, +)
+        #expect(net >= -1)
     }
 }
 

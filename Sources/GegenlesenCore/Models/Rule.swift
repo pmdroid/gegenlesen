@@ -18,10 +18,16 @@ public enum RulePayload: Equatable, Sendable {
     case siblingTest(sourceGlob: String, testTemplate: String)
     case command(argv: [String], timeoutSec: Int)
     case openapiBreak(specGlobs: [String], failOn: String, message: String)
+    case riskWeight(weight: Int, match: RiskWeightMatch, veto: Bool)
     case semantic(instruction: String, fewShots: [String])
 
     public var isSemantic: Bool {
         if case .semantic = self { return true }
+        return false
+    }
+
+    public var isRiskWeight: Bool {
+        if case .riskWeight = self { return true }
         return false
     }
 }
@@ -97,6 +103,7 @@ extension RulePayload: Codable {
         case failOn = "fail_on"
         case instruction
         case fewShots = "few_shots"
+        case weight, match, veto
     }
 
     public init(from decoder: Decoder) throws {
@@ -136,6 +143,13 @@ extension RulePayload: Codable {
                 failOn: try container.decodeIfPresent(String.self, forKey: .failOn) ?? "breaking",
                 message: try container.decode(String.self, forKey: .message)
             )
+        case .riskWeight:
+            let raw = try container.decode(Int.self, forKey: .weight)
+            self = .riskWeight(
+                weight: min(max(raw, RiskGate.minRuleWeight), RiskGate.maxRuleWeight),
+                match: try container.decodeIfPresent(RiskWeightMatch.self, forKey: .match) ?? .any,
+                veto: try container.decodeIfPresent(Bool.self, forKey: .veto) ?? false
+            )
         }
     }
 
@@ -164,6 +178,11 @@ extension RulePayload: Codable {
             try container.encode(specGlobs, forKey: .specGlobs)
             try container.encode(failOn, forKey: .failOn)
             try container.encode(message, forKey: .message)
+        case .riskWeight(let weight, let match, let veto):
+            try container.encode(DeterministicCheckerKind.riskWeight, forKey: .checker)
+            try container.encode(weight, forKey: .weight)
+            try container.encode(match, forKey: .match)
+            try container.encode(veto, forKey: .veto)
         case .semantic(let instruction, let fewShots):
             try container.encode(instruction, forKey: .instruction)
             try container.encode(fewShots, forKey: .fewShots)

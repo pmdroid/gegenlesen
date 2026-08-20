@@ -6,6 +6,49 @@ import VaporTesting
 @Suite
 struct SettingsRouteTests {
     @Test
+    func putRejectsAppetiteOutOfRange() async throws {
+        try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: nil,
+                        judgeModel: nil,
+                        openrouterApiKey: nil,
+                        risk: RiskSettingsUpdate(mode: nil, appetite: 9)
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .unprocessableEntity)
+            }
+        }
+    }
+
+    @Test
+    func putPersistsAppetite() async throws {
+        try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: nil,
+                        judgeModel: nil,
+                        openrouterApiKey: nil,
+                        risk: RiskSettingsUpdate(mode: .shadow, appetite: 3)
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let settings = try res.content.decode(SettingsDTO.self)
+                #expect(settings.risk.appetite == 3)
+                #expect(settings.risk.mode == .shadow)
+            }
+        }
+    }
+
+    @Test
     func putRejectsBlankModels() async throws {
         try await withGegenlesenApp { app in
             try await app.testing().test(
