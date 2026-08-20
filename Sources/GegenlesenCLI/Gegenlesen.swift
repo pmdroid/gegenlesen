@@ -210,8 +210,10 @@ func packCWD(baseRef: String?) throws -> Data {
     process.standardError = stderr
     process.standardInput = FileHandle.nullDevice
     try process.run()
-    process.waitUntilExit()
+    // Drain stdout before waitUntilExit. A multi-MB tarball fills the pipe
+    // (~64 KiB) and pack-repo.sh blocks forever if we wait first.
     let data = stdout.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
     if process.terminationStatus != 0 {
         let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         throw CLIError("pack-repo.sh failed: \(err)")
