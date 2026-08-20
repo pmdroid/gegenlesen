@@ -81,6 +81,7 @@ let package = Package(
         .executableTarget(
             name: "GegenlesenCLI",
             dependencies: [
+                .target(name: "GegenlesenCore"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/GegenlesenCLI",

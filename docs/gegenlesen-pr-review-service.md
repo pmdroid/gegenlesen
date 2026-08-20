@@ -55,8 +55,8 @@ Pain points this design is built to remove:
 ### Non-goals (v1)
 
 - Multi-tenancy, users, SSO, API keys, or any authn/authz.
-- GitHub / GitLab App, webhooks, or comment-on-PR. (A later PR; not a blocker.)
-- Replacing CI. gegenlesen does not gate merges and does not publish check runs.
+- GitHub / GitLab App, inbound webhooks, or the Check Runs API. PR comments and SHA-pinned approvals go through a composite Action on a co-located self-hosted runner (K31). The workflow job is the status check.
+- Auto-merge. Approve is not merge.
 - Auto-commit / auto-fix applied back to the user’s repo. Findings only. A suggested patch as text is allowed if the agent produces one cheaply; it is never applied.
 - Kubernetes, multi-host workers, Redis, or Postgres. The in-process memory queue is **not durable**.
 - Training or fine-tuning models. No embedding cluster. Retrieval is SQLite FTS5.
@@ -118,6 +118,7 @@ These are the defaults. Do not re-litigate them in implementation PRs unless a c
 | K28 | **Admin UI direction = Ledger.** | Implement `frontend/` as stream + rail, not a card/kanban/report layout. Dark green monospace. |
 | K29 | **Auto-approve is a host-side veto list, not a third model pass.** After judge merge the host writes `jobs.risk_verdict` / `risk_json`. `auto_approve` only if every veto is quiet: full scope, git change-set, both reviewer files, judge available, no sensitive-path touch, size under `risk.max_files` / `risk.max_lines`, no kept warning/error, no `evidence_ok=false`. Default `risk.mode=shadow`. Gegenlesen does not merge. `gegenlesen review --require-auto-approve` is the CI gate. A `safe_unread=false` label on an `auto_approve` job in `enforce` flips the instance back to `shadow`. | LLM risk judges are uncalibrated. Agent `confidence` is display-only. Incremental jobs and hash interdiff are vetoed in this version. |
 | K30 | **Setup appetite 1–5 plus weight rules.** Hard floor from K29 still blocks errors, secrets, judge/reviewer failure, unverifiable evidence, incremental/hash-interdiff. Soft signals become points mapped to a 1–5 score. Auto-approve iff no hard veto and score ≤ `risk.appetite` (default 1, identical to K29). Operator `sensitive_globs` cost +2; built-in secret globs stay hard. Weight rules are payload `risk_weight` (any/all path match, −2…+3, optional veto). They never go to reviewers. PUT `/api/settings` accepts `risk.mode` and `risk.appetite`. | A 1–5 knob with no score is a placebo. Finding rules must not double as discounts. |
+| K31 | **GitHub publish is a composite Action, not an App.** A self-hosted runner co-located with the host runs `gegenlesen review --format json` against `127.0.0.1`. The workflow job is queued/in-progress/pass/fail. A sticky comment upserts findings. In `risk.mode=enforce` (or Action `mode=enforce`) a `needs_human` verdict fails the required check; `auto_approve` calls `gh pr review --approve` only if live PR head SHA equals the reviewed SHA. Shadow comments, never approves, never fails on verdict. No merge permission. Bot approval is informational; humans still satisfy required reviewers. Fork PRs are out of scope. | Loopback-first. The API never holds a GitHub token. `github-actions[bot]` must not count toward required reviewers (workflow-file forgery). |
 
 ---
 

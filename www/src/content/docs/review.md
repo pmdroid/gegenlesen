@@ -47,3 +47,7 @@ The findings judge defaults to keep. The host still drops a finding when the cit
 ## Deterministic checks
 
 Regex, deny-lists, sibling-test files, optional sandbox `command`, and an OpenAPI break check run on the host or in the runner **without** OpenCode and **without** provider keys. They never skip the reviewers by themselves.
+
+## GitHub
+
+`gegenlesen review --format json` is the machine-readable result. A composite Action on a self-hosted runner posts a sticky comment and, in enforce mode, a SHA-pinned approval. Details: [GitHub Action](/docs/github).

@@ -125,6 +125,7 @@ struct JobJSON: Decodable {
     var repository: String?
     var errorMessage: String?
     var risk: RiskJSON?
+    var findings: [FindingJSON]
 
     enum CodingKeys: String, CodingKey {
         case id, title, status
@@ -133,6 +134,42 @@ struct JobJSON: Decodable {
         case repository
         case errorMessage = "error_message"
         case risk
+        case findings
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        status = try container.decode(String.self, forKey: .status)
+        headSHA = try container.decodeIfPresent(String.self, forKey: .headSHA)
+        baseSHA = try container.decodeIfPresent(String.self, forKey: .baseSHA)
+        repository = try container.decodeIfPresent(String.self, forKey: .repository)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        risk = try container.decodeIfPresent(RiskJSON.self, forKey: .risk)
+        findings = try container.decodeIfPresent([FindingJSON].self, forKey: .findings) ?? []
+    }
+}
+
+struct FindingJSON: Decodable {
+    var severity: String
+    var title: String
+    var message: String
+    var filePath: String?
+    var startLine: Int?
+    var endLine: Int?
+    var judgeVerdict: String?
+    var judgeSeverity: String?
+    var lifecycle: String?
+
+    enum CodingKeys: String, CodingKey {
+        case severity, title, message
+        case filePath = "file_path"
+        case startLine = "start_line"
+        case endLine = "end_line"
+        case judgeVerdict = "judge_verdict"
+        case judgeSeverity = "judge_severity"
+        case lifecycle
     }
 }
 

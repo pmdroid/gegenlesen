@@ -43,6 +43,8 @@ gegenlesen review --parent <job-id>
 
 The CLI talks to `http://127.0.0.1:8080` unless you set `GEGENLESEN_URL`.
 
+`--format json` prints the verdict, findings, and a GitHub comment body. A self-hosted Action can post that on a PR. See [GitHub Action](/docs/github).
+
 ## From source
 
 On a Mac, Docker Desktop does not share loopback the way a Linux box does. Build with Xcode’s Swift. Mixing it with Command Line Tools `/usr/bin/swift` produces a module version error. `./scripts/swift` and `make` set `DEVELOPER_DIR` for you.

@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import GegenlesenCore
 
 @main
 struct Gegenlesen: AsyncParsableCommand {
@@ -8,6 +9,10 @@ struct Gegenlesen: AsyncParsableCommand {
         abstract: "Pack a repo and start a gegenlesen review",
         subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self]
     )
+}
+
+enum ReviewFormat: String, ExpressibleByArgument {
+    case text, json, markdown
 }
 
 struct Review: AsyncParsableCommand {
@@ -25,6 +30,18 @@ struct Review: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit 1 unless the job succeeded with risk verdict auto_approve.")
     var requireAutoApprove = false
 
+    @Option(name: .long, help: "stdout: text (default), json, or markdown.")
+    var format: ReviewFormat = .text
+
+    @Option(name: .long, help: "Seconds to wait for the job. Default 1800.")
+    var timeout: Int = 1800
+
+    @Option(name: .long, help: "Max findings in json/markdown output. Default 10.")
+    var maxFindings: Int = GitHubReviewReport.defaultMaxFindings
+
+    @Option(name: .long, help: "Ledger job URL baked into json/markdown when it is not loopback.")
+    var ledgerURL: String?
+
     func run() async throws {
         let client = GegenlesenClient()
         let archive = try packCWD(baseRef: baseRef)
@@ -41,8 +58,68 @@ struct Review: AsyncParsableCommand {
             meta["repository"] = repository
         }
         let accepted = try await client.createJob(archive: archive, meta: meta)
-        print(accepted.id)
-        let terminal = try await client.poll(id: accepted.id)
+        if format == .text {
+            print(accepted.id)
+        } else {
+            eprint(accepted.id)
+        }
+        let terminal = try await client.poll(id: accepted.id, timeout: TimeInterval(max(timeout, 1)))
+        let report = makeReport(terminal, client: client)
+        switch format {
+        case .text:
+            printText(terminal)
+        case .json:
+            FileHandle.standardOutput.write(try report.jsonData())
+            FileHandle.standardOutput.write(Data("\n".utf8))
+        case .markdown:
+            print(report.markdown)
+        }
+        if terminal.status == "failed" || terminal.status == "cancelled" {
+            throw ExitCode(1)
+        }
+        if requireAutoApprove, terminal.risk?.verdict != "auto_approve" {
+            throw ExitCode(1)
+        }
+    }
+
+    private func makeReport(_ job: JobJSON, client: GegenlesenClient) -> GitHubReviewReport {
+        let ledger = ledgerURL ?? client.baseURL.appendingPathComponent("jobs/\(job.id)").absoluteString
+        let risk = job.risk.map {
+            GitHubReviewReport.RiskSnapshot(
+                verdict: $0.verdict,
+                mode: $0.mode,
+                score: $0.score ?? 0,
+                appetite: $0.appetite ?? 0,
+                reasons: $0.reasons.map {
+                    GitHubReviewReport.ReasonSnapshot(code: $0.code, detail: $0.detail, points: $0.points)
+                }
+            )
+        }
+        return GitHubReviewReport.make(
+            jobID: job.id,
+            status: job.status,
+            headSHA: job.headSHA,
+            baseSHA: job.baseSHA,
+            repository: job.repository,
+            ledgerURL: ledger,
+            risk: risk,
+            findings: job.findings.map {
+                GitHubReviewReport.FindingSnapshot(
+                    severity: $0.judgeSeverity ?? $0.severity,
+                    title: $0.title,
+                    message: $0.message,
+                    filePath: $0.filePath,
+                    startLine: $0.startLine,
+                    endLine: $0.endLine,
+                    judgeVerdict: $0.judgeVerdict,
+                    lifecycle: $0.lifecycle
+                )
+            },
+            maxFindings: maxFindings
+        )
+    }
+
+    private func printText(_ terminal: JobJSON) {
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
         } else {
@@ -55,13 +132,11 @@ struct Review: AsyncParsableCommand {
                 print("  \(reason.code)\(points)  \(reason.detail)")
             }
         }
-        if terminal.status == "failed" || terminal.status == "cancelled" {
-            throw ExitCode(1)
-        }
-        if requireAutoApprove, terminal.risk?.verdict != "auto_approve" {
-            throw ExitCode(1)
-        }
     }
+}
+
+func eprint(_ string: String) {
+    FileHandle.standardError.write(Data((string + "\n").utf8))
 }
 
 struct Harvest: AsyncParsableCommand {

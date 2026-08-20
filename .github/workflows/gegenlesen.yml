@@ -1,0 +1,26 @@
+name: gegenlesen
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: gegenlesen-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >
+      vars.GEGENLESEN_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.GEGENLESEN_RUNNER || 'self-hosted' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gegenlesen-review
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

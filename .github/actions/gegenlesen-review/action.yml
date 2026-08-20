@@ -1,0 +1,79 @@
+name: gegenlesen-review
+description: Run gegenlesen on the checked-out tree, post a sticky PR comment, optionally approve.
+author: gegenlesen
+
+inputs:
+  mode:
+    description: auto uses the job's risk.mode. shadow never fails or approves. enforce fails on needs_human and approves on auto_approve.
+    required: false
+    default: auto
+  gegenlesen-url:
+    description: Local API URL. The runner must share loopback with the gegenlesen host.
+    required: false
+    default: http://127.0.0.1:8080
+  ledger-url:
+    description: Public Ledger job base URL. Loopback URLs are omitted from comments.
+    required: false
+    default: ""
+  timeout:
+    description: Seconds to wait for the review job.
+    required: false
+    default: "3600"
+  max-findings:
+    description: Max findings in the sticky comment.
+    required: false
+    default: "10"
+  command:
+    description: gegenlesen CLI to run.
+    required: false
+    default: gegenlesen
+  github-token:
+    description: Token with pull-requests: write.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  verdict:
+    description: auto_approve or needs_human
+    value: ${{ steps.publish.outputs.verdict }}
+  mode:
+    description: Publisher mode after auto/host resolution
+    value: ${{ steps.publish.outputs.mode }}
+  job-id:
+    description: gegenlesen job id
+    value: ${{ steps.publish.outputs.job-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Review
+      id: review
+      shell: bash
+      env:
+        GEGENLESEN_URL: ${{ inputs.gegenlesen-url }}
+      run: |
+        set -euo pipefail
+        extra=()
+        if [ -n "${{ inputs.ledger-url }}" ]; then
+          extra+=(--ledger-url "${{ inputs.ledger-url }}")
+        fi
+        set +e
+        "${{ inputs.command }}" review \
+          --format json \
+          --timeout "${{ inputs.timeout }}" \
+          --max-findings "${{ inputs.max-findings }}" \
+          "${extra[@]}" > "${RUNNER_TEMP}/gegenlesen-review.json"
+        rc=$?
+        set -e
+        if [ ! -s "${RUNNER_TEMP}/gegenlesen-review.json" ]; then
+          exit "$rc"
+        fi
+
+    - name: Publish
+      id: publish
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GEGENLESEN_PUBLISH_MODE: ${{ inputs.mode }}
+        GEGENLESEN_JSON: ${{ runner.temp }}/gegenlesen-review.json
+      run: bash "${{ github.action_path }}/publish.sh"
