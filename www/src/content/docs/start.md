@@ -13,7 +13,7 @@ mkdir -p "$DATA" "$HOME/gegenlesen-config"
 docker pull ghcr.io/pmdroid/gegenlesen:main
 docker pull ghcr.io/pmdroid/gegenlesen:runner-main
 
-docker run --rm --name gegenlesen \
+docker run --rm --init --name gegenlesen \
   --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$DATA:$DATA" \

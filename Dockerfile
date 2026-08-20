@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4 \
     libsqlite3-0 \
     libxml2 \
+    tini \
     tzdata \
     zlib1g \
     && rm -rf /var/lib/apt/lists/*
@@ -57,5 +58,7 @@ ENV GEGENLESEN_DATA_DIR=/data
 ENV GEGENLESEN_BIND=127.0.0.1
 ENV GEGENLESEN_OPENCODE_IMAGE=${GEGENLESEN_OPENCODE_IMAGE}
 EXPOSE 8080
-ENTRYPOINT ["GegenlesenAPI"]
+# PID 1 must reap docker children. Foundation also fails CFSocket wakeup
+# pairs when GegenlesenAPI is PID 1 ("Could not create wakeup socket pair").
+ENTRYPOINT ["tini", "--", "GegenlesenAPI"]
 CMD ["serve"]

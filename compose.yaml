@@ -4,6 +4,7 @@ services:
   gegenlesen:
     image: ghcr.io/pmdroid/gegenlesen:main
     build: .
+    init: true
     network_mode: host
     environment:
       GEGENLESEN_DATA_DIR: ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}

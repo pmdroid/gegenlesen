@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
-# Build, codesign, and package macOS (Darwin) gegenlesen binaries for GitHub Releases.
+# Build, codesign, notarize, and package macOS (Darwin) gegenlesen binaries
+# for GitHub Releases.
 #
 # CI only ships Linux Docker images. Darwin is built by hand on a Mac with a
-# Developer ID (or ad-hoc sign for local use).
+# Developer ID. Gatekeeper needs notarization, not just codesign.
 #
 # Usage:
-#   ./scripts/release-darwin.sh v0.1.0
-#   ./scripts/release-darwin.sh v0.1.0 --upload          # attach to GH release
-#   ./scripts/release-darwin.sh v0.1.0 --arch arm64      # this arch only
-#   ./scripts/release-darwin.sh v0.1.0 --adhoc           # force ad-hoc sign
-#   ./scripts/release-darwin.sh v0.1.0 --install         # copy to ~/.local/share + ~/.local/bin
+#   ./scripts/release-darwin.sh v0.1.1
+#   ./scripts/release-darwin.sh v0.1.1 --upload
+#   ./scripts/release-darwin.sh v0.1.1 --arch arm64
+#   ./scripts/release-darwin.sh v0.1.1 --adhoc
+#   ./scripts/release-darwin.sh v0.1.1 --skip-notarize
+#   ./scripts/release-darwin.sh v0.1.1 --install
+#
+# One-time notary login (app-specific password from appleid.apple.com):
+#   xcrun notarytool store-credentials gegenlesen-notarize \
+#     --apple-id <apple-id> --team-id W363QN58YY
 #
 # Env:
-#   CODESIGN_IDENTITY  Override identity (default: first "Developer ID Application")
-#   GEGENLESEN_SIGN_ADHOC=1  Same as --adhoc
+#   CODESIGN_IDENTITY          Override identity
+#   GEGENLESEN_SIGN_ADHOC=1    Same as --adhoc
+#   NOTARY_KEYCHAIN_PROFILE    Default gegenlesen-notarize
+#   APPLE_ID APPLE_TEAM_ID NOTARY_PASSWORD
+#   NOTARY_KEY NOTARY_KEY_ID NOTARY_ISSUER   App Store Connect API key
 #
 set -euo pipefail
 
@@ -32,16 +41,18 @@ ARCHS=()
 UPLOAD=0
 INSTALL=0
 FORCE_ADHOC=0
+SKIP_NOTARIZE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '2,17p' "$0"
+      sed -n '2,26p' "$0"
       exit 0
       ;;
     --upload) UPLOAD=1; shift ;;
     --install) INSTALL=1; shift ;;
     --adhoc) FORCE_ADHOC=1; shift ;;
+    --skip-notarize) SKIP_NOTARIZE=1; shift ;;
     --arch)
       [[ $# -ge 2 ]] || die "--arch needs arm64 or x64"
       ARCHS+=("$2")
@@ -52,12 +63,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      die "unknown arg: $1 (pass version like v0.1.0)"
+      die "unknown arg: $1 (pass version like v0.1.1)"
       ;;
   esac
 done
 
-[[ -n "$VERSION" ]] || die "usage: $0 v0.1.0 [--upload] [--install] [--arch arm64|x64] [--adhoc]"
+[[ -n "$VERSION" ]] || die "usage: $0 v0.1.1 [--upload] [--install] [--arch arm64|x64] [--adhoc] [--skip-notarize]"
 case "$VERSION" in
   v*) ;;
   *) VERSION="v${VERSION}" ;;
@@ -80,23 +91,35 @@ elif [[ -z "$IDENTITY" ]]; then
       | head -1
   )"
   if [[ -z "$IDENTITY" ]]; then
-    log "no Developer ID found — using ad-hoc sign (-)"
+    log "no Developer ID found, using ad-hoc sign (-)"
     IDENTITY="-"
   fi
 fi
 
+NOTARIZE=0
+if [[ "$IDENTITY" != "-" && "$SKIP_NOTARIZE" -eq 0 ]]; then
+  NOTARIZE=1
+fi
+
 if [[ "$IDENTITY" == "-" ]]; then
-  log "signing: ad-hoc (Gatekeeper may block downloads)"
+  log "signing: ad-hoc (Gatekeeper will block downloads)"
 else
   log "signing: $IDENTITY"
+  if [[ "$NOTARIZE" -eq 1 ]]; then
+    log "notarize: yes"
+  else
+    log "notarize: skipped"
+  fi
 fi
 
 sign_bin() {
   local bin="$1"
+  local ident="$2"
   if [[ "$IDENTITY" == "-" ]]; then
-    codesign --force --sign - "$bin"
+    codesign --force --identifier "$ident" --sign - "$bin"
   else
     codesign --force --options runtime --timestamp \
+      --identifier "$ident" \
       --sign "$IDENTITY" \
       "$bin"
   fi
@@ -129,6 +152,51 @@ darwin_suffix_for() {
   esac
 }
 
+notary_auth() {
+  if [[ -n "${NOTARY_KEY:-}" && -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_ISSUER:-}" ]]; then
+    echo --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
+  elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${NOTARY_PASSWORD:-}" ]]; then
+    echo --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$NOTARY_PASSWORD"
+  else
+    echo --keychain-profile "${NOTARY_KEYCHAIN_PROFILE:-gegenlesen-notarize}"
+  fi
+}
+
+ensure_notary() {
+  # shellcheck disable=SC2046
+  if xcrun notarytool history $(notary_auth) >/dev/null 2>&1; then
+    return 0
+  fi
+  cat >&2 <<EOF
+error: notary credentials missing. Gatekeeper will keep blocking downloads.
+
+One-time:
+  xcrun notarytool store-credentials ${NOTARY_KEYCHAIN_PROFILE:-gegenlesen-notarize} \\
+    --apple-id <apple-id> --team-id W363QN58YY
+
+Create an app-specific password at https://appleid.apple.com (Sign-In and Security).
+Or set APPLE_ID, APPLE_TEAM_ID, NOTARY_PASSWORD, or an App Store Connect API key
+(NOTARY_KEY, NOTARY_KEY_ID, NOTARY_ISSUER).
+
+Pass --skip-notarize only for a local ad-hoc experiment.
+EOF
+  exit 1
+}
+
+notarize_stage() {
+  local stage="$1"
+  local name="$2"
+  local zip="dist/${name}.zip"
+  rm -f "$zip"
+  ditto -c -k --keepParent "$stage" "$zip"
+  log "notarize ${name}.zip"
+  # shellcheck disable=SC2046
+  xcrun notarytool submit "$zip" $(notary_auth) --wait --timeout 20m
+  rm -f "$zip"
+  # Naked Mach-O cannot be stapled. The ticket is on Apple's servers, keyed
+  # by CDHash. First launch needs network so Gatekeeper can look it up.
+}
+
 stage_shared() {
   local stage="$1"
   mkdir -p "$stage/frontend" "$stage/scripts" "$stage/config" "$stage/docker"
@@ -136,6 +204,9 @@ stage_shared() {
   cp -R "$ROOT/rules" "$stage/rules"
   cp -R "$ROOT/schemas" "$stage/schemas"
   cp -R "$ROOT/docker/opencode-runner" "$stage/docker/opencode-runner"
+  if [[ -d "$ROOT/skills" ]]; then
+    cp -R "$ROOT/skills" "$stage/skills"
+  fi
   cp "$ROOT/scripts/pack-repo.sh" "$stage/scripts/pack-repo.sh"
   chmod +x "$stage/scripts/pack-repo.sh"
   cp "$ROOT/config/gegenlesen.example.json" "$stage/config/gegenlesen.example.json"
@@ -157,6 +228,10 @@ if n != 1:
     raise SystemExit("could not stamp Sources/GegenlesenAPI/Version.swift")
 path.write_text(next_text)
 PY
+
+if [[ "$NOTARIZE" -eq 1 ]]; then
+  ensure_notary
+fi
 
 log "frontend"
 if [[ ! -d frontend/node_modules ]]; then
@@ -196,8 +271,12 @@ for arch in "${ARCHS[@]}"; do
   assert_portable_links "$stage/gegenlesen"
 
   log "codesign ${name}"
-  sign_bin "$stage/GegenlesenAPI"
-  sign_bin "$stage/gegenlesen"
+  sign_bin "$stage/GegenlesenAPI" "dev.gegenlesen.api"
+  sign_bin "$stage/gegenlesen" "dev.gegenlesen.cli"
+
+  if [[ "$NOTARIZE" -eq 1 ]]; then
+    notarize_stage "$stage" "$name"
+  fi
 
   log "tar ${name}.tar.gz"
   tar -C dist -czf "dist/${name}.tar.gz" "${name}"
@@ -224,8 +303,8 @@ if [[ "$INSTALL" -eq 1 ]]; then
   cp -R "$stage/." "$share/"
   ln -sfn "$share/gegenlesen" "$bindir/gegenlesen"
   ln -sfn "$share/GegenlesenAPI" "$bindir/GegenlesenAPI"
-  sign_bin "$share/gegenlesen"
-  sign_bin "$share/GegenlesenAPI"
+  sign_bin "$share/gegenlesen" "dev.gegenlesen.cli"
+  sign_bin "$share/GegenlesenAPI" "dev.gegenlesen.api"
   log "installed → ~/.local/bin/gegenlesen  (+ GegenlesenAPI)"
   log "layout     → ~/.local/share/gegenlesen"
   log "run: GegenlesenAPI serve --data-dir \"\$HOME/gegenlesen-data\""
@@ -249,9 +328,6 @@ echo ""
 echo "Artifacts:"
 ls -la dist/gegenlesen-"${VERSION}"-darwin-*.tar.gz "$SUMS_FILE" 2>/dev/null || true
 echo ""
-if [[ "$IDENTITY" != "-" ]]; then
-  echo "Optional notarization (for Gatekeeper on other Macs):"
-  echo "  xcrun notarytool submit dist/gegenlesen-${VERSION}-darwin-arm64.tar.gz \\"
-  echo "    --keychain-profile <notary-profile> --wait"
-  echo "  # then unpack, stapler staple GegenlesenAPI + gegenlesen, re-tar if desired"
+if [[ "$NOTARIZE" -eq 1 ]]; then
+  echo "Notarized. First launch of a quarantined download needs network so Gatekeeper can fetch the ticket."
 fi

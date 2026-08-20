@@ -95,3 +95,7 @@ Act on a finding only when:
 Do not push a known `error` keep you have not addressed or explained.
 
 Do not spawn a second review loop (no review-of-review). gegenlesen already runs two reviewers and a judge.
+
+## acpbot
+
+In an acpbot topic this is the house review. Run `gegenlesen review`; do not call `review_run` or `/review` for the same change unless the operator wants the ACP dual-agent panel as well. The `gegenlesen` binary must be on PATH. The API must already be up on `127.0.0.1:8080`.
