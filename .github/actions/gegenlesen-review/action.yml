@@ -8,7 +8,7 @@ inputs:
     required: false
     default: auto
   gegenlesen-url:
-    description: Local API URL. The runner must share loopback with the gegenlesen host.
+    description: API URL the runner can reach (Tailscale MagicDNS, e.g. http://box.tail9f3a.ts.net:8080).
     required: false
     default: http://127.0.0.1:8080
   ledger-url:

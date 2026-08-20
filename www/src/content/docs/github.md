@@ -4,7 +4,7 @@ description: Review a PR from a self-hosted runner, comment, optionally approve.
 order: 8
 ---
 
-gegenlesen stays on `127.0.0.1`. A GitHub Action on a runner that shares that machine packs the PR, waits for the job, then talks to GitHub with `GITHUB_TOKEN`. There is no webhook into the API and no Check Runs API. The workflow job is the pending / pass / fail status.
+A GitHub-hosted runner joins your tailnet with the Tailscale GitHub Action, packs the PR, posts the job to gegenlesen over MagicDNS, then talks to GitHub with `GITHUB_TOKEN`. There is no webhook into the API and no Check Runs API. The workflow job is the pending / pass / fail status.
 
 The CLI still starts reviews. The Action is another CLI caller.
 
@@ -18,11 +18,21 @@ After judge merge the host writes `risk.verdict`. The Action does not re-score.
 
 If the PR head moved between pack and approve, the Action skips the approval and lets the next `synchronize` run handle it.
 
-## Runner
+## Tailscale
 
-The runner has to reach `http://127.0.0.1:8080`. That means it lives on the gegenlesen host (or you name a loopback exception, which this repo does not). Fork PRs are refused. `jq` and `gh` need to be on PATH, and `gegenlesen` too.
+GitHub-hosted runners are not on your tailnet. Add `tailscale/github-action` before gegenlesen so the job gets an ephemeral node and MagicDNS works.
 
-This repository's workflow is off until you set the repo variable `GEGENLESEN_ENABLED=true`. Optional `GEGENLESEN_RUNNER` overrides the runner label (default `self-hosted`).
+1. In the admin console, create an [OAuth client](https://tailscale.com/kb/1215/oauth-clients) with the `auth_keys` scope. Restrict it to a tag such as `tag:ci`.
+2. Store `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` as GitHub Actions secrets.
+3. ACL: `tag:ci` must be allowed to talk to the gegenlesen node on port 8080.
+4. Point `gegenlesen-url` at the node's MagicDNS name. The example uses `http://box.tail9f3a.ts.net:8080`. That is a dummy. Use your own.
+5. Because that is not loopback, start the API with `GEGENLESEN_ALLOW_REMOTE=1` and bind on the Tailscale interface (or `0.0.0.0`).
+
+If the runner is already a Tailscale node, skip the Tailscale step.
+
+Fork PRs are refused. `jq`, `gh`, and `gegenlesen` need to be on PATH.
+
+This repository's workflow is off until you set the repo variable `GEGENLESEN_ENABLED=true`. Set `GEGENLESEN_URL` to your MagicDNS URL. Optional `GEGENLESEN_RUNNER` overrides the runner label.
 
 Org settings that bite:
 
@@ -45,14 +55,21 @@ concurrency:
 jobs:
   review:
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
       - uses: pmdroid/gegenlesen/.github/actions/gegenlesen-review@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: auto
+          gegenlesen-url: http://box.tail9f3a.ts.net:8080
 ```
 
 `mode: auto` follows the job's `risk.mode`. `shadow` and `enforce` override it for the publisher only. The host veto is still the verdict.

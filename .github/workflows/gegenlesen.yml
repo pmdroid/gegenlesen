@@ -21,6 +21,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
       - uses: ./.github/actions/gegenlesen-review
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Set repo variable GEGENLESEN_URL, e.g. http://box.tail9f3a.ts.net:8080
+          gegenlesen-url: ${{ vars.GEGENLESEN_URL }}
