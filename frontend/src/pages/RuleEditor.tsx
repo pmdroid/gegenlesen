@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { RulePayload, RuleUpsert, Severity } from "../api";
 import { createRule, deleteRule, getRule, listRepositories, promoteRule, updateRule } from "../client";
 
@@ -14,8 +14,13 @@ function payloadSummary(payload: RulePayload | undefined): string {
   return JSON.stringify(payload, null, 2);
 }
 
+function isWeightPayload(payload: RulePayload | undefined): payload is Extract<RulePayload, { checker: "risk_weight" }> {
+  return Boolean(payload && "checker" in payload && payload.checker === "risk_weight");
+}
+
 export function RuleEditorPage() {
   const { id } = useParams();
+  const [search] = useSearchParams();
   const isNew = id === undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -34,6 +39,17 @@ export function RuleEditorPage() {
   const [repository, setRepository] = useState("");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [weight, setWeight] = useState(1);
+  const [match, setMatch] = useState<"any" | "all">("any");
+  const [veto, setVeto] = useState(false);
+
+  useEffect(() => {
+    if (isNew && search.get("type") === "weight") {
+      setPathGlobs("docs/**\n**/*.md");
+      setMatch("all");
+      setWeight(-1);
+    }
+  }, [isNew, search]);
 
   useEffect(() => {
     const rule = existing.data;
@@ -45,6 +61,11 @@ export function RuleEditorPage() {
     setLanguages(rule.languages.join(", "));
     setRepository(rule.repository ?? "");
     setBody(rule.body);
+    if (isWeightPayload(rule.payload)) {
+      setWeight(rule.payload.weight);
+      setMatch(rule.payload.match);
+      setVeto(rule.payload.veto);
+    }
   }, [existing.data]);
 
   const save = useMutation({
@@ -58,17 +79,20 @@ export function RuleEditorPage() {
         .map((item) => item.trim())
         .filter(Boolean);
       const existingPayload = existing.data?.payload;
+      const weightMode = isWeightPayload(existingPayload) || (isNew && search.get("type") === "weight");
+      const builtPayload: RulePayload = weightMode
+        ? { checker: "risk_weight", weight, match, veto }
+        : existingPayload && !("instruction" in existingPayload)
+          ? existingPayload
+          : { instruction, few_shots: [] };
       const payload: RuleUpsert = {
         title,
-        severity,
-        kind: existing.data?.kind ?? "semantic",
+        severity: weightMode ? "info" : severity,
+        kind: weightMode ? "deterministic" : existing.data?.kind ?? "semantic",
         languages: langs.length ? langs : ["*"],
         path_globs: globs.length ? globs : ["**/*"],
         repository: repository.trim() || null,
-        payload:
-          existingPayload && !("instruction" in existingPayload)
-            ? existingPayload
-            : { instruction, few_shots: [] },
+        payload: builtPayload,
         body,
       };
       if (isNew) {
@@ -121,7 +145,8 @@ export function RuleEditorPage() {
 
   const rule = existing.data;
   const canPromote = rule && rule.provenance !== "handwritten";
-  const isSemantic = isNew || (rule !== undefined && "instruction" in rule.payload);
+  const isWeight = isWeightPayload(rule?.payload) || (isNew && search.get("type") === "weight");
+  const isSemantic = !isWeight && (isNew || (rule !== undefined && "instruction" in rule.payload));
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -140,7 +165,7 @@ export function RuleEditorPage() {
   return (
     <div className="page">
       <div className="pagehead">
-        <h1>{isNew ? "new semantic rule" : rule?.id}</h1>
+        <h1>{isNew ? (isWeight ? "new auto-approve weight" : "new semantic rule") : rule?.id}</h1>
         <Link to="/rules">back to list</Link>
       </div>
       <form className="form" onSubmit={onSubmit}>
@@ -148,29 +173,70 @@ export function RuleEditorPage() {
           title
           <input value={title} onChange={(event) => setTitle(event.target.value)} required />
         </label>
-        <label>
-          severity
-          <select value={severity} onChange={(event) => setSeverity(event.target.value as Severity)}>
-            <option value="info">info</option>
-            <option value="warning">warning</option>
-            <option value="error">error</option>
-          </select>
-        </label>
-        {isSemantic ? (
-          <label>
-            instruction
-            <textarea
-              rows={6}
-              value={instruction}
-              onChange={(event) => setInstruction(event.target.value)}
-              required
-            />
-          </label>
+        {isWeight ? (
+          <>
+            <p className="neverapply">
+              Fired on this diff only. any = at least one matching file. all = every changed file
+              matches (docs-only). veto never auto-approves, even at appetite 5.
+            </p>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={veto}
+                onChange={(event) => setVeto(event.target.checked)}
+              />
+              veto auto-approve
+            </label>
+            {veto ? null : (
+              <label>
+                weight (−2 cheaper … +3 riskier)
+                <input
+                  type="number"
+                  min={-2}
+                  max={3}
+                  value={weight}
+                  onChange={(event) => setWeight(Number(event.target.value))}
+                />
+              </label>
+            )}
+            <label>
+              match
+              <select
+                value={match}
+                onChange={(event) => setMatch(event.target.value as "any" | "all")}
+              >
+                <option value="any">any file</option>
+                <option value="all">all files</option>
+              </select>
+            </label>
+          </>
         ) : (
-          <label>
-            checker payload
-            <textarea rows={4} value={payloadSummary(rule?.payload)} readOnly />
-          </label>
+          <>
+            <label>
+              severity
+              <select value={severity} onChange={(event) => setSeverity(event.target.value as Severity)}>
+                <option value="info">info</option>
+                <option value="warning">warning</option>
+                <option value="error">error</option>
+              </select>
+            </label>
+            {isSemantic ? (
+              <label>
+                instruction
+                <textarea
+                  rows={6}
+                  value={instruction}
+                  onChange={(event) => setInstruction(event.target.value)}
+                  required
+                />
+              </label>
+            ) : (
+              <label>
+                checker payload
+                <textarea rows={4} value={payloadSummary(rule?.payload)} readOnly />
+              </label>
+            )}
+          </>
         )}
         <label>
           path globs (one per line, default **/*)

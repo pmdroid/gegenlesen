@@ -7,6 +7,9 @@ import { repoLabel, scopeQuery, type ScopeFilter } from "../scope";
 
 function payloadKind(payload: RulePayload): string {
   if ("instruction" in payload) return "semantic guidance";
+  if (payload.checker === "risk_weight") {
+    return payload.veto ? "auto-approve veto" : `auto-approve ${payload.weight > 0 ? "+" : ""}${payload.weight}`;
+  }
   return payload.checker;
 }
 
@@ -63,6 +66,9 @@ export function RulesPage() {
         <h1>rules</h1>
         <Link to="/rules/new" className="btn">
           new semantic rule
+        </Link>
+        <Link to="/rules/new?type=weight" className="btn">
+          new auto-approve weight
         </Link>
       </div>
       <div className="filters">

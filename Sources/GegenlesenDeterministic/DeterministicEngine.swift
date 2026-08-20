@@ -46,7 +46,7 @@ public struct DeterministicEngine: DeterministicRunning {
                 return DeterministicRunResult(drafts: drafts, timedOut: true, warnings: warnings)
             }
             switch item.rule.payload {
-            case .semantic:
+            case .semantic, .riskWeight:
                 continue
             case .command:
                 let remaining = deadline - ContinuousClock.now
@@ -176,7 +176,7 @@ public struct DeterministicEngine: DeterministicRunning {
             return DenyListChecker()
         case .siblingTest:
             return SiblingTestChecker()
-        case .command, .semantic:
+        case .command, .semantic, .riskWeight:
             throw CheckerSkip()
         case .openapiBreak:
             return OpenAPIBreakChecker()

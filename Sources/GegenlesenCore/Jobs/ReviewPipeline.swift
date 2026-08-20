@@ -694,13 +694,16 @@ public struct ReviewPipeline: Sendable {
     ) async throws {
         guard let job = try await store.job(id: jobID) else { return }
         let findings = try await store.findings(jobID: jobID)
+        var filter = RuleListFilter.applicable(to: job.repository)
+        filter.enabled = true
+        let enabled = (try? await store.listRules(filter)) ?? rules
         let assessment = RiskGate.evaluate(
             RiskGate.Input(
                 scope: job.scope,
                 changeSetSource: source,
                 files: files,
                 findings: findings,
-                rules: rules,
+                rules: enabled,
                 changedLines: RiskGate.changedLines(in: patch),
                 reviewersInvoked: reviewersInvoked,
                 validReviewerFiles: validReviewerFiles,

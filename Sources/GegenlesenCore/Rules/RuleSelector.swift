@@ -24,6 +24,7 @@ public struct RuleSelector: Sendable {
         var semantic: [SelectedRule] = []
         for rule in rules {
             guard rule.enabled, rule.deletedAt == nil else { continue }
+            if rule.payload.isRiskWeight { continue }
             let matched = files.filter { matches(rule: rule, file: $0) }
             guard !matched.isEmpty else { continue }
             if rule.payload.isSemantic || rule.kind == .semantic {
