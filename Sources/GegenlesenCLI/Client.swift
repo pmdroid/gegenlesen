@@ -78,7 +78,7 @@ struct GegenlesenClient: Sendable {
         return try JSONDecoder().decode(JobJSON.self, from: data)
     }
 
-    func poll(id: String, timeout: TimeInterval = 120) async throws -> JobJSON {
+    func poll(id: String, timeout: TimeInterval = 1800) async throws -> JobJSON {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let job = try await job(id: id)
