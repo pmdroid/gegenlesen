@@ -8,6 +8,7 @@ import GegenlesenCore
 
 public enum DockerRunnerError: Error, Sendable, Equatable {
     case networkCreateFailed(String)
+    case chownMissing
 }
 
 /// Process wait is not isolated: `run` and `kill` (and two `run`s) may overlap.
@@ -130,9 +131,24 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         throw DockerRunnerError.networkCreateFailed(detail)
     }
 
+    /// macOS ships `chown` at `/usr/sbin/chown`. Debian slim only has `/usr/bin/chown`.
+    public static func chownExecutablePath(
+        fileManager: FileManager = .default,
+        candidates: [String] = ["/usr/sbin/chown", "/usr/bin/chown"]
+    ) -> String? {
+        candidates.first { fileManager.isExecutableFile(atPath: $0) }
+    }
+
     public static func chownWorkspace(_ url: URL) throws {
+        guard let path = chownExecutablePath() else {
+            #if os(Linux)
+            throw DockerRunnerError.chownMissing
+            #else
+            return
+            #endif
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/chown")
+        process.executableURL = URL(fileURLWithPath: path)
         process.arguments = ["-R", "1000:1000", url.path]
         process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin"]
         process.standardOutput = FileHandle.nullDevice
