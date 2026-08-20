@@ -90,7 +90,10 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         )
         let identifyTimeout = Duration.seconds(config.limits.identifyTimeoutSec)
         let handles = QueueHandles()
-        let runnerConfig = URL(fileURLWithPath: workingDirectory, isDirectory: true)
+        let runnerConfig = (try? materializeRunnerConfig(
+            workingDirectory: workingDirectory,
+            dataDir: config.dataDir
+        )) ?? URL(fileURLWithPath: workingDirectory, isDirectory: true)
             .appendingPathComponent("docker/opencode-runner", isDirectory: true)
         let schemasDirectory = URL(fileURLWithPath: workingDirectory, isDirectory: true)
             .appendingPathComponent("schemas", isDirectory: true)
