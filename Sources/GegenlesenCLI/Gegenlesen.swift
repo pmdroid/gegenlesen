@@ -220,15 +220,40 @@ func packCWD(baseRef: String?) throws -> Data {
 }
 
 func findPackScript() -> URL {
-    var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let fm = FileManager.default
+    var candidates: [URL] = []
+    if let root = ProcessInfo.processInfo.environment["GEGENLESEN_ROOT"], !root.isEmpty {
+        candidates.append(URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent("scripts/pack-repo.sh"))
+    }
+    if let exeDir = resolvedCLIDirectory() {
+        candidates.append(exeDir.appendingPathComponent("scripts/pack-repo.sh"))
+    }
+    var dir = URL(fileURLWithPath: fm.currentDirectoryPath)
     for _ in 0..<8 {
-        let candidate = dir.appendingPathComponent("scripts/pack-repo.sh")
-        if FileManager.default.isReadableFile(atPath: candidate.path) {
-            return candidate
-        }
+        candidates.append(dir.appendingPathComponent("scripts/pack-repo.sh"))
         dir.deleteLastPathComponent()
     }
+    for candidate in candidates where fm.isReadableFile(atPath: candidate.path) {
+        return candidate
+    }
     return URL(fileURLWithPath: "scripts/pack-repo.sh")
+}
+
+func resolvedCLIDirectory() -> URL? {
+    var path = CommandLine.arguments[0]
+    let fm = FileManager.default
+    if !path.contains("/") {
+        for dir in (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(dir), isDirectory: true).appendingPathComponent(path)
+            if fm.isExecutableFile(atPath: candidate.path) {
+                path = candidate.path
+                break
+            }
+        }
+    }
+    let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+    guard url.path != "/" else { return nil }
+    return url.deletingLastPathComponent()
 }
 
 struct CLIError: Error, CustomStringConvertible {

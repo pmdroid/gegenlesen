@@ -11,7 +11,7 @@ DATA="$HOME/gegenlesen-data"
 mkdir -p "$DATA" "$HOME/gegenlesen-config"
 
 docker pull ghcr.io/pmdroid/gegenlesen:main
-docker pull ghcr.io/pmdroid/gegenlesen/runner:main
+docker pull ghcr.io/pmdroid/gegenlesen:runner-main
 
 docker run --rm --name gegenlesen \
   --network host \
@@ -19,7 +19,7 @@ docker run --rm --name gegenlesen \
   -v "$DATA:$DATA" \
   -v "$HOME/gegenlesen-config:/app/config" \
   -e GEGENLESEN_DATA_DIR="$DATA" \
-  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen/runner:main \
+  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main \
   ghcr.io/pmdroid/gegenlesen:main
 ```
 

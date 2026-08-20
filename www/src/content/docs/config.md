@@ -20,11 +20,11 @@ Override the path with `GEGENLESEN_CONFIG`. GET `/api/settings` never returns th
 | `GEGENLESEN_MODEL_A` / `GEGENLESEN_MODEL_B` / `GEGENLESEN_JUDGE_MODEL` | Model ids |
 | `GEGENLESEN_LEARN_INTERVAL_MINUTES` | Sweep. `0` disables |
 | `GEGENLESEN_DOCKER` | `docker` binary |
-| `GEGENLESEN_OPENCODE_IMAGE` | Runner image. Default `gegenlesen/opencode-runner:0.1.0` |
+| `GEGENLESEN_OPENCODE_IMAGE` | Runner image. From source: `gegenlesen/opencode-runner:0.1.0`. Docker image default: `ghcr.io/pmdroid/gegenlesen:runner-main` |
 
 ## Docker
 
-The API image is `ghcr.io/pmdroid/gegenlesen` (`:main` on the default branch, semver on tags). The runner is `ghcr.io/pmdroid/gegenlesen/runner`. How to run it: [Docker](/docs/docker).
+The API image is `ghcr.io/pmdroid/gegenlesen` (`:main` on the default branch, semver on tags). The runner is the same package, tag `runner-main` or `runner-0.1.0`. How to run it: [Docker](/docs/docker).
 
 Local runner build:
 

@@ -4,7 +4,7 @@ description: Host network, matching data path, compose, and a local image build.
 order: 2
 ---
 
-The published images are `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner`. CI builds them from `main` (`:main`) and from version tags (`:1.2.3`). The first-run command is on [Start](/docs/start).
+The published images live on one GHCR package: `ghcr.io/pmdroid/gegenlesen:main` (API) and `ghcr.io/pmdroid/gegenlesen:runner-main` (OpenCode). Version tags are `:0.1.0` and `:runner-0.1.0`. The first-run command is on [Start](/docs/start).
 
 ## Why host network and a matching data path
 

@@ -1,10 +1,6 @@
 import Foundation
 import Vapor
 
-enum GegenlesenVersion {
-    static let current = "0.1.0"
-}
-
 struct ModelSlots: Content, Sendable, Equatable {
     var modelA: String
     var modelB: String

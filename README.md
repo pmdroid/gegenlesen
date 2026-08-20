@@ -18,14 +18,14 @@ Linux, host network, Docker socket. Full copy: [Start](https://gegenlesen.dev/do
 DATA="$HOME/gegenlesen-data"
 mkdir -p "$DATA" "$HOME/gegenlesen-config"
 docker pull ghcr.io/pmdroid/gegenlesen:main
-docker pull ghcr.io/pmdroid/gegenlesen/runner:main
+docker pull ghcr.io/pmdroid/gegenlesen:runner-main
 docker run --rm --name gegenlesen \
   --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$DATA:$DATA" \
   -v "$HOME/gegenlesen-config:/app/config" \
   -e GEGENLESEN_DATA_DIR="$DATA" \
-  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen/runner:main \
+  -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main \
   ghcr.io/pmdroid/gegenlesen:main
 ```
 
@@ -33,7 +33,16 @@ Open `http://127.0.0.1:8080`. Ledger **setup** writes the OpenRouter key. From a
 
 On a Mac, Docker Desktop does not share loopback this way. From source: `scripts/build-runner.sh` then `make run` (Xcode’s Swift, not `/usr/bin/swift`).
 
-CI builds `ghcr.io/pmdroid/gegenlesen` and `ghcr.io/pmdroid/gegenlesen/runner` from `main` and from `v*` tags.
+CI builds `ghcr.io/pmdroid/gegenlesen` (`:main`, semver) and the runner as `:runner-main` / `:runner-0.1.0` on the same package.
+
+macOS binaries are not built in CI. On a Mac with a Developer ID:
+
+```bash
+./scripts/release-darwin.sh v0.1.1
+./scripts/release-darwin.sh v0.1.1 --upload    # attach to an existing GitHub release
+```
+
+That writes signed `dist/gegenlesen-v0.1.1-darwin-arm64.tar.gz` (and `darwin-x64`). Unpack and run `GegenlesenAPI serve` from that directory so Ledger, rules, and schemas sit next to the binaries.
 
 ## Pipeline
 

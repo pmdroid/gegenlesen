@@ -1,3 +1,5 @@
+# Linux images only. macOS binaries are built and Developer ID-signed on a Mac:
+#   ./scripts/release-darwin.sh v0.1.0 --upload
 name: docker
 
 on:
@@ -45,6 +47,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Runner image baked into the API
+        id: runner
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "image=${API_IMAGE}:runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${API_IMAGE}:runner-main" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/metadata-action@v5
         id: meta
         with:
@@ -57,6 +68,8 @@ jobs:
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GEGENLESEN_OPENCODE_IMAGE=${{ steps.runner.outputs.image }}
           outputs: type=image,name=${{ env.API_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=api-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=api-${{ env.PLATFORM_PAIR }}
@@ -134,13 +147,29 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # Nested ghcr.io/<owner>/<repo>/runner is a separate package and stays
+      # private until someone flips it in the UI. Alias onto the already-public
+      # API package so anonymous pulls work.
+      - uses: docker/metadata-action@v5
+        id: alias
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=raw,value=runner-main,enable={{is_default_branch}}
+            type=sha,prefix=runner-main-,format=short,enable={{is_default_branch}}
+            type=semver,pattern=runner-{{version}}
+            type=semver,pattern=runner-{{major}}.{{minor}}
+            type=raw,value=runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
       - uses: docker/build-push-action@v6
         with:
           context: docker/opencode-runner
           file: docker/opencode-runner/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.alias.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=runner
           cache-to: type=gha,mode=max,scope=runner

@@ -7,7 +7,7 @@ services:
     network_mode: host
     environment:
       GEGENLESEN_DATA_DIR: ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}
-      GEGENLESEN_OPENCODE_IMAGE: ${GEGENLESEN_OPENCODE_IMAGE:-ghcr.io/pmdroid/gegenlesen/runner:main}
+      GEGENLESEN_OPENCODE_IMAGE: ${GEGENLESEN_OPENCODE_IMAGE:-ghcr.io/pmdroid/gegenlesen:runner-main}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}:${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}

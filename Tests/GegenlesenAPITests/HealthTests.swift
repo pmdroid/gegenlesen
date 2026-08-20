@@ -12,7 +12,7 @@ struct HealthTests {
             try await app.testing().test(.GET, "/api/health") { res async throws in
                 #expect(res.status == .ok)
                 let body = try res.content.decode(HealthDTO.self)
-                #expect(body == HealthDTO(ok: true, version: "0.1.0"))
+                #expect(body == HealthDTO(ok: true, version: GegenlesenVersion.current))
             }
         }
     }

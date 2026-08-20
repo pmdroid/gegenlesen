@@ -46,6 +46,9 @@ struct Serve: AsyncParsableCommand {
 
         let app = try await Application.make(env)
         do {
+            if let root = gegenlesenPackageRoot() {
+                app.directory.workingDirectory = root
+            }
             try await configure(app, config: loaded.config, configFileURL: loaded.fileURL)
             try await app.execute()
         } catch {

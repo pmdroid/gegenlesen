@@ -19,6 +19,9 @@ frontend/dist/
 frontend/.vite/
 frontend/.env
 
+# Darwin release artifacts (scripts/release-darwin.sh)
+/dist/
+
 # Editors
 *.swp
 *~
