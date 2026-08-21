@@ -273,14 +273,14 @@ func findScannerFixture() -> URL {
     let here = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
     let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
     let candidates = [
-        cwd.appendingPathComponent("docker/scanner/fixture"),
-        here.appendingPathComponent("docker/scanner/fixture"),
-        here.deletingLastPathComponent().appendingPathComponent("docker/scanner/fixture"),
+        cwd.appendingPathComponent("docker/scanner/fixtures"),
+        here.appendingPathComponent("docker/scanner/fixtures"),
+        here.deletingLastPathComponent().appendingPathComponent("docker/scanner/fixtures"),
     ]
     for url in candidates where fm.fileExists(atPath: url.path) {
         return url
     }
-    return cwd.appendingPathComponent("docker/scanner/fixture")
+    return cwd.appendingPathComponent("docker/scanner/fixtures")
 }
 
 func packCWD(baseRef: String?) throws -> Data {
