@@ -92,37 +92,15 @@ enum RulesRoute {
         return RuleDTO(rule: deleted)
     }
 
-    static func promote(_ req: Request) async throws -> Response {
+    static func promote(_ req: Request) async throws -> RuleDTO {
         let existing = try await requireRule(req)
         if existing.provenance == .handwritten {
             throw APIError.conflict("rule is already handwritten")
         }
-        if try await req.application.gegenlesenStore.rulePromotedFrom(existing.id) != nil {
-            throw APIError.conflict("rule already promoted")
-        }
-        let now = Date()
-        let newID = try await uniqueID(base: RuleID(existing.id.rawValue + "-handwritten"), store: req.application.gegenlesenStore)
-        let copy = Rule(
-            id: newID,
-            title: existing.title,
-            severity: existing.severity,
-            kind: existing.kind,
-            enabled: true,
-            provenance: .handwritten,
-            languages: existing.languages,
-            pathGlobs: existing.pathGlobs,
-            repository: existing.repository,
-            payload: existing.payload,
-            examples: existing.examples,
-            sourcePRRefs: existing.sourcePRRefs,
-            promotedFromRuleID: existing.id,
-            body: existing.body,
-            createdAt: now,
-            updatedAt: now
-        )
-        try await req.application.gegenlesenStore.insertRule(copy)
-        await embedRule(copy, on: req)
-        return try encoded(RuleDTO(rule: copy), status: .created, on: req)
+        let promoted = RulePromotion.promoteInPlace(existing)
+        try await req.application.gegenlesenStore.updateRule(promoted)
+        await embedRule(promoted, on: req)
+        return RuleDTO(rule: promoted)
     }
 
     static func enable(_ req: Request) async throws -> RuleDTO {

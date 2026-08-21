@@ -99,25 +99,18 @@ struct RulesRouteTests {
                 )
             )
             try await app.testing().test(.POST, "/api/rules/mined-eval/promote") { res async throws in
-                #expect(res.status == .created)
+                #expect(res.status == .ok)
                 let body = try jsonObject(res)
                 #expect(Set(body.keys) == ruleKeys)
+                #expect(body["id"] as? String == "mined-eval")
                 #expect(body["provenance"] as? String == "handwritten")
-                #expect(body["promoted_from_rule_id"] as? String == "mined-eval")
-                #expect(body["id"] as? String != "mined-eval")
+                #expect(body["enabled"] as? Bool == true)
             }
             try await app.testing().test(.POST, "/api/rules/mined-eval/promote") { res async throws in
                 #expect(res.status == .conflict)
                 let body = try jsonObject(res)
                 let error = try #require(body["error"] as? [String: Any])
                 #expect(error["code"] as? String == "conflict")
-            }
-            try await app.testing().test(.POST, "/api/rules/mined-eval-handwritten/promote") { res async throws in
-                #expect(res.status == .conflict)
-                let body = try jsonObject(res)
-                let error = try #require(body["error"] as? [String: Any])
-                #expect(error["code"] as? String == "conflict")
-                #expect(Set(body.keys) == ["error"])
             }
         }
     }

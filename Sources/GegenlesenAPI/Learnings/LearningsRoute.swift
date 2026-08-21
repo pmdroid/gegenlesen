@@ -68,32 +68,13 @@ enum LearningsRoute {
         if let ruleID = payloadString(item.payloadJSON, key: "rule_id") {
             let id = RuleID(ruleID)
             if let existing = try await store.rule(id: id), existing.deletedAt == nil {
-                if existing.provenance != .handwritten, try await store.rulePromotedFrom(existing.id) == nil {
-                    let now = Date()
-                    let copy = Rule(
-                        id: RuleID(existing.id.rawValue + "-handwritten"),
-                        title: existing.title,
-                        severity: existing.severity,
-                        kind: existing.kind,
-                        enabled: true,
-                        provenance: .handwritten,
-                        languages: existing.languages,
-                        pathGlobs: existing.pathGlobs,
-                        repository: existing.repository ?? repository,
-                        payload: existing.payload,
-                        examples: existing.examples,
-                        sourcePRRefs: existing.sourcePRRefs,
-                        promotedFromRuleID: existing.id,
-                        body: existing.body,
-                        createdAt: now,
-                        updatedAt: now
-                    )
-                    var unique = copy
-                    if try await store.rule(id: unique.id) != nil {
-                        unique.id = RuleID(existing.id.rawValue + "-hw")
+                if existing.provenance != .handwritten {
+                    var promoted = RulePromotion.promoteInPlace(existing)
+                    if promoted.repository == nil {
+                        promoted.repository = repository
                     }
-                    try await store.insertRule(unique)
-                    await embedRule(unique, on: req)
+                    try await store.updateRule(promoted)
+                    await embedRule(promoted, on: req)
                 }
                 return
             }

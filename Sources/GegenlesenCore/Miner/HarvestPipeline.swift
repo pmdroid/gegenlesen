@@ -241,6 +241,14 @@ public struct HarvestPipeline: Sendable {
         var ruleCount = 0
         var skipped = 0
         for draft in bundle.rules {
+            if try await LearningDedup.alreadySettled(
+                store: store,
+                kind: .rule,
+                title: draft.title
+            ) {
+                skipped += 1
+                continue
+            }
             let rule = Rule(
                 id: RuleID.slug(from: "harvest-\(draft.title)"),
                 title: draft.title,
@@ -263,15 +271,6 @@ public struct HarvestPipeline: Sendable {
             switch outcome {
             case .inserted(let id): ruleID = id
             case .attached(let id): ruleID = id
-            }
-            if try await LearningDedup.alreadySettled(
-                store: store,
-                kind: .rule,
-                title: draft.title,
-                ruleID: ruleID.rawValue
-            ) {
-                skipped += 1
-                continue
             }
             try await store.insertLearning(
                 Learning(
