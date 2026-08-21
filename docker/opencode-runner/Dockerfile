@@ -6,11 +6,22 @@ ARG OASDIFF_VERSION=1.11.7
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    clangd \
     curl \
     git \
+    nodejs \
+    npm \
     python3 \
+    python3-pip \
     ripgrep \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g --omit=dev \
+    typescript \
+    typescript-language-server \
+    pyright \
+    yaml-language-server \
+    vscode-langservers-extracted
 
 RUN useradd -u 1000 -m gegenlesen
 

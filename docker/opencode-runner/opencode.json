@@ -6,43 +6,44 @@
   "default_agent": "reviewer",
   "mcp": {},
   "plugin": [],
+  "lsp": {
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]
+    },
+    "pyright": {
+      "command": ["pyright-langserver", "--stdio"],
+      "extensions": [".py", ".pyi"]
+    },
+    "yaml": {
+      "command": ["yaml-language-server", "--stdio"],
+      "extensions": [".yaml", ".yml"]
+    },
+    "json": {
+      "command": ["vscode-json-language-server", "--stdio"],
+      "extensions": [".json", ".jsonc"]
+    },
+    "clangd": {
+      "command": ["clangd"],
+      "extensions": [".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"]
+    }
+  },
   "permission": {
     "task": "deny",
-    "webfetch": "deny",
-    "websearch": "deny",
-    "external_directory": "deny",
     "question": "deny",
-    "edit": {
-      "*": "deny",
-      ".gegenlesen/findings.json": "allow",
-      ".gegenlesen/findings-model_a.json": "allow",
-      ".gegenlesen/findings-model_b.json": "allow",
-      ".gegenlesen/judge.json": "allow",
-      ".gegenlesen/suggestion-judge.json": "allow",
-      ".gegenlesen/mined-rules.json": "allow",
-      ".gegenlesen/harvest.json": "allow",
-      ".gegenlesen/architecture-draft.md": "allow",
-      ".gegenlesen/transcript.json": "allow",
-      "*/.gegenlesen/findings.json": "allow",
-      "*/.gegenlesen/findings-model_a.json": "allow",
-      "*/.gegenlesen/findings-model_b.json": "allow",
-      "*/.gegenlesen/judge.json": "allow",
-      "*/.gegenlesen/suggestion-judge.json": "allow",
-      "*/.gegenlesen/mined-rules.json": "allow",
-      "*/.gegenlesen/harvest.json": "allow",
-      "*/.gegenlesen/architecture-draft.md": "allow",
-      "*/.gegenlesen/transcript.json": "allow"
-    },
-    "bash": {
-      "*": "deny",
-      "git diff*": "allow",
-      "git log*": "allow",
-      "git show*": "allow",
-      "git rev-parse*": "allow",
-      "git status*": "allow",
-      "rg *": "allow",
-      "grep *": "allow"
-    },
+    "edit": "allow",
+    "bash": "allow",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "lsp": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "skill": "allow",
+    "todowrite": "allow",
+    "todoread": "allow",
+    "codesearch": "allow",
+    "external_directory": "allow",
     "read": {
       "*": "allow",
       "*.env": "deny",

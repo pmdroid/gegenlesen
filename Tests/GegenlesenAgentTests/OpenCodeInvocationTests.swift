@@ -71,6 +71,7 @@ struct OpenCodeInvocationTests {
         #expect(request.env["OPENCODE_AUTO_SHARE"] == "false")
         #expect(request.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] == "true")
         #expect(request.env["OPENCODE_DISABLE_CLAUDE_CODE"] == "true")
+        #expect(request.env["OPENCODE_EXPERIMENTAL_LSP_TOOL"] == "true")
         #expect(!args.contains("OPENCODE_SERVER_PASSWORD"))
         #expect(args.contains("ANTHROPIC_API_KEY"))
         #expect(!args.contains { $0.hasPrefix("ANTHROPIC_API_KEY=") })

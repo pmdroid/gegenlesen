@@ -408,6 +408,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             "OPENCODE_AUTO_SHARE": "false",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
             "OPENCODE_DISABLE_CLAUDE_CODE": "true",
+            "OPENCODE_EXPERIMENTAL_LSP_TOOL": "true",
             "OPENCODE_CONFIG": "/home/gegenlesen/.config/opencode/opencode.json",
             "OPENCODE_CONFIG_CONTENT": policy,
             "OPENCODE_PERMISSION": permission,

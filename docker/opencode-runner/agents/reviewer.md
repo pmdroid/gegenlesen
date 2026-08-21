@@ -17,5 +17,5 @@ named in the prompt (`.gegenlesen/findings-model_a.json` or
 `.gegenlesen/findings-model_b.json`), matching `.gegenlesen/findings.schema.json`.
 If you find nothing, write `{"findings":[]}`.
 
-Do not modify any other file. Do not launch subagents. Do not use bash except
-`git` read commands and `rg` / `grep`.
+You may use bash, LSP, grep, tests, and fetch to gather evidence.
+Do not use the question tool. Do not launch the plan agent or subagents.

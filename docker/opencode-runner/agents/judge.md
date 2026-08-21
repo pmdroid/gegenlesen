@@ -9,4 +9,6 @@ You judge candidate findings. Read `.gegenlesen/prompt-judge.md` and
 `finding_id`. `evidence_ok` and `actual_slice` are host-verified.
 Default is KEEP. Write `.gegenlesen/judge.json` only.
 
-Do not edit source files. Do not launch subagents. Do not invent findings.
+You may use bash, LSP, and search to check evidence.
+Do not use the question tool. Do not launch the plan agent or subagents.
+Do not invent findings.
