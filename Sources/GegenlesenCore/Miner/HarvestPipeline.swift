@@ -249,6 +249,13 @@ public struct HarvestPipeline: Sendable {
                 skipped += 1
                 continue
             }
+            if let existing = try await store.ftsTop1Rule(matching: draft.title),
+               existing.deletedAt == nil,
+               existing.provenance == .handwritten || existing.enabled
+            {
+                skipped += 1
+                continue
+            }
             let rule = Rule(
                 id: RuleID.slug(from: "harvest-\(draft.title)"),
                 title: draft.title,
