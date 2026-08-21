@@ -48,7 +48,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         process.standardError = stderr
         process.standardInput = FileHandle.nullDevice
 
-        let capture = CaptureBox(limit: Self.maxCaptureBytes)
+        let capture = CaptureBox(limit: Self.maxCaptureBytes, onStdout: request.onStdout)
         let name = request.name
         let dockerPath = self.dockerPath
         stdout.fileHandleForReading.readabilityHandler = { handle in
@@ -88,6 +88,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             _ = try? stdout.fileHandleForReading.readToEnd()
             _ = try? stderr.fileHandleForReading.readToEnd()
         }
+        capture.flushLive(force: true)
 
         let timedOut = ContinuousClock.now >= deadline
         return DockerResult(
@@ -287,12 +288,15 @@ private final class CaptureBox: @unchecked Sendable {
 
     private let lock = NSLock()
     private let limit: Int
+    private let onStdout: (@Sendable (Data) -> Void)?
     private var out = Data()
     private var err = Data()
     private var capped = false
+    private var lastLive: ContinuousClock.Instant?
 
-    init(limit: Int) {
+    init(limit: Int, onStdout: (@Sendable (Data) -> Void)? = nil) {
         self.limit = limit
+        self.onStdout = onStdout
     }
 
     var stdout: Data {
@@ -316,11 +320,14 @@ private final class CaptureBox: @unchecked Sendable {
     func append(_ data: Data, stream: Stream) -> Bool {
         guard !data.isEmpty else { return true }
         lock.lock()
-        defer { lock.unlock() }
-        if capped { return false }
+        if capped {
+            lock.unlock()
+            return false
+        }
         let used = out.count + err.count
         if used >= limit {
             capped = true
+            lock.unlock()
             return false
         }
         let room = limit - used
@@ -329,10 +336,36 @@ private final class CaptureBox: @unchecked Sendable {
         case .stdout: out.append(chunk)
         case .stderr: err.append(chunk)
         }
-        if out.count + err.count >= limit || chunk.count < data.count {
+        let overflow = out.count + err.count >= limit || chunk.count < data.count
+        if overflow {
             capped = true
+        }
+        let snapshot = stream == .stdout ? out : nil
+        let liveNow = stream == .stdout && shouldFlushLocked(force: overflow)
+        lock.unlock()
+        if liveNow, let snapshot {
+            onStdout?(snapshot)
+        }
+        return !overflow
+    }
+
+    func flushLive(force: Bool) {
+        lock.lock()
+        let snapshot = out
+        let liveNow = shouldFlushLocked(force: force) && !snapshot.isEmpty
+        lock.unlock()
+        if liveNow {
+            onStdout?(snapshot)
+        }
+    }
+
+    private func shouldFlushLocked(force: Bool) -> Bool {
+        guard onStdout != nil else { return false }
+        let now = ContinuousClock.now
+        if !force, let lastLive, now - lastLive < Duration.milliseconds(250) {
             return false
         }
+        lastLive = now
         return true
     }
 }

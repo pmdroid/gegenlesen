@@ -25,6 +25,17 @@ struct LearnSweepJobParameters: JobParameters {
     static let jobName = "gegenlesen.learn-sweep"
 }
 
+private func writeJobTranscript(store: Store) -> @Sendable (JobID, String, Data) -> Void {
+    { jobID, phase, data in
+        let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: phase)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 actor QueueHandles {
     private var map: [String: UUID] = [:]
 
@@ -115,14 +126,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                     providerEnv: providerEnv,
                     schemasDirectory: schemasDirectory,
-                    transcriptWriter: { jobID, data in
-                        let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "review")
-                        try? FileManager.default.createDirectory(
-                            at: url.deletingLastPathComponent(),
-                            withIntermediateDirectories: true
-                        )
-                        try? data.write(to: url, options: .atomic)
-                    }
+                    transcriptWriter: writeJobTranscript(store: store)
                 )
                 try await ReviewPipeline(
                     store: store,
@@ -172,14 +176,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
                             providerEnv: providerEnv,
                             schemasDirectory: schemasDirectory,
-                            transcriptWriter: { jobID, data in
-                                let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "mine")
-                                try? FileManager.default.createDirectory(
-                                    at: url.deletingLastPathComponent(),
-                                    withIntermediateDirectories: true
-                                )
-                                try? data.write(to: url, options: .atomic)
-                            }
+                            transcriptWriter: writeJobTranscript(store: store)
                         ),
                         suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
                             docker: docker,
@@ -188,17 +185,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                             providerEnv: providerEnv,
                             schemasDirectory: schemasDirectory,
-                            transcriptWriter: { jobID, data in
-                                let url = store.blobs.transcriptURL(
-                                    jobID: jobID.rawValue,
-                                    phase: "suggestion_judge"
-                                )
-                                try? FileManager.default.createDirectory(
-                                    at: url.deletingLastPathComponent(),
-                                    withIntermediateDirectories: true
-                                )
-                                try? data.write(to: url, options: .atomic)
-                            }
+                            transcriptWriter: writeJobTranscript(store: store)
                         ),
                         model: config.models.modelA,
                         embedder: embedder,
@@ -215,14 +202,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
-                        transcriptWriter: { jobID, data in
-                            let url = store.blobs.transcriptURL(jobID: jobID.rawValue, phase: "mine")
-                            try? FileManager.default.createDirectory(
-                                at: url.deletingLastPathComponent(),
-                                withIntermediateDirectories: true
-                            )
-                            try? data.write(to: url, options: .atomic)
-                        }
+                        transcriptWriter: writeJobTranscript(store: store)
                     ),
                     suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
                         docker: docker,
@@ -231,17 +211,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
-                        transcriptWriter: { jobID, data in
-                            let url = store.blobs.transcriptURL(
-                                jobID: jobID.rawValue,
-                                phase: "suggestion_judge"
-                            )
-                            try? FileManager.default.createDirectory(
-                                at: url.deletingLastPathComponent(),
-                                withIntermediateDirectories: true
-                            )
-                            try? data.write(to: url, options: .atomic)
-                        }
+                        transcriptWriter: writeJobTranscript(store: store)
                     ),
                     model: config.models.modelA,
                     embedder: embedder,

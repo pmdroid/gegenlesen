@@ -145,6 +145,37 @@ pre {
 .rxn button.on { background: #1b3a1e; color: #c8e6c9; border-color: #4caf50; }
 .rxn button:disabled { opacity: 0.5; cursor: default; }
 .transcript { max-height: 280px; white-space: pre-wrap; }
+.txlist {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding: 8px 10px 12px;
+}
+.tx { margin: 6px 0 10px; }
+.txh, .tx summary {
+  color: #7fa882;
+  font-size: 11px;
+  cursor: default;
+}
+.tx summary { cursor: pointer; list-style: none; }
+.tx summary::-webkit-details-marker { display: none; }
+.txk {
+  display: inline-block;
+  min-width: 46px;
+  margin-right: 8px;
+  color: #557a58;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.tx-text pre, .tx-tool pre, .tx-raw pre {
+  max-height: 220px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tx-text .txk { color: #a5d6a7; }
+.tx-tool .txk { color: #5ab8d4; }
+.tx-meta { color: #557a58; font-size: 11px; }
+.txempty { color: #557a58; font-size: 11px; padding: 4px 10px; }
 
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }

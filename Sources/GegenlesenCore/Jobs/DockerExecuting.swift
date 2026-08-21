@@ -24,6 +24,8 @@ public struct DockerRequest: Sendable {
     public var remove: Bool
     /// Names passed as `-e NAME` only; values stay in the docker CLI process environment.
     public var passThroughEnv: [String]
+    /// Full stdout snapshot so far. Called from the docker pipe thread; keep it cheap.
+    public var onStdout: (@Sendable (Data) -> Void)?
 
     public struct Bind: Sendable, Equatable {
         public var source: String
@@ -59,7 +61,8 @@ public struct DockerRequest: Sendable {
         timeout: Duration = .seconds(60),
         injectProviderKeys: Bool = false,
         remove: Bool = true,
-        passThroughEnv: [String] = []
+        passThroughEnv: [String] = [],
+        onStdout: (@Sendable (Data) -> Void)? = nil
     ) {
         self.name = name
         self.image = image
@@ -83,6 +86,7 @@ public struct DockerRequest: Sendable {
         self.injectProviderKeys = injectProviderKeys
         self.remove = remove
         self.passThroughEnv = passThroughEnv
+        self.onStdout = onStdout
     }
 
     public func dockerCLIArguments() -> [String] {

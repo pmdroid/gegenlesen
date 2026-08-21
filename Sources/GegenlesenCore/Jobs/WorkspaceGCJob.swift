@@ -37,8 +37,9 @@ public struct WorkspaceGCJob: Sendable {
                 try? fm.removeItem(at: store.blobs.patchURL(jobID: id))
             }
             if age >= transcriptAge {
-                try? fm.removeItem(at: store.blobs.transcriptURL(jobID: id, phase: "review"))
-                try? fm.removeItem(at: store.blobs.transcriptURL(jobID: id, phase: "judge"))
+                for phase in ["review", "review_a", "review_b", "judge", "mine", "suggestion_judge"] {
+                    try? fm.removeItem(at: store.blobs.transcriptURL(jobID: id, phase: phase))
+                }
                 try? fm.removeItem(at: store.blobs.findingsURL(jobID: id, stage: "agent"))
                 try? fm.removeItem(at: store.blobs.findingsURL(jobID: id, stage: "pre-judge"))
                 try? fm.removeItem(at: store.blobs.findingsURL(jobID: id, stage: "post-judge"))

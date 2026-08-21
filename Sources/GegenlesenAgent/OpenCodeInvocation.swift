@@ -11,7 +11,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public var judgeTimeout: Duration
     public var providerEnv: [String: String]
     public var schemasDirectory: URL?
-    public var transcriptWriter: (@Sendable (JobID, Data) -> Void)?
+    public var transcriptWriter: (@Sendable (JobID, String, Data) -> Void)?
 
     public init(
         docker: any DockerExecuting,
@@ -23,7 +23,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         judgeTimeout: Duration = .seconds(300),
         providerEnv: [String: String] = [:],
         schemasDirectory: URL? = nil,
-        transcriptWriter: (@Sendable (JobID, Data) -> Void)? = nil
+        transcriptWriter: (@Sendable (JobID, String, Data) -> Void)? = nil
     ) {
         self.docker = docker
         self.image = image
@@ -99,7 +99,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let findings = resultA.findings + resultB.findings
         let valid = (resultA.valid ? 1 : 0) + (resultB.valid ? 1 : 0)
         let failed = request.newWork && valid == 0
-        persistTranscripts(jobID: jobID, chunks: [resultA.transcript, resultB.transcript])
+        persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
         persistAgentCopies(workspace: request.workspace, jobID: jobID)
         return AgentReviewResult(
             findings: findings,
@@ -160,7 +160,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: agentTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
             extraFiles: Self.reviewFilePaths(incremental: incremental),
-            message: "Review the change and write findings as instructed."
+            message: "Review the change and write findings as instructed.",
+            jobID: jobID,
+            livePhase: slot == .modelA ? "review_a" : "review_b"
         )
     }
 
@@ -177,7 +179,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
             extraFiles: ["/workspace/.gegenlesen/judge-input.json"],
-            message: "Judge the candidates as instructed."
+            message: "Judge the candidates as instructed.",
+            jobID: jobID,
+            livePhase: "judge"
         )
     }
 
@@ -194,7 +198,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-suggestion-judge.md",
             extraFiles: ["/workspace/.gegenlesen/suggestion-judge-input.json"],
-            message: "Judge the suggestions as instructed."
+            message: "Judge the suggestions as instructed.",
+            jobID: jobID,
+            livePhase: "suggestion_judge"
         )
     }
 
@@ -213,7 +219,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: agentTimeout,
             promptFile: "/workspace/.gegenlesen/prompt.md",
             extraFiles: extraFiles,
-            message: "Mine candidate rules as instructed."
+            message: "Mine candidate rules as instructed.",
+            jobID: jobID,
+            livePhase: "mine"
         )
     }
 
@@ -282,7 +290,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             transcript.append(SecretRedactor().redact(result.stdout))
             transcript.append(SecretRedactor().redact(result.stderr))
         } catch {
-            persistTranscripts(jobID: job.id, chunks: [transcript])
+            persistTranscripts(jobID: job.id, phase: "suggestion_judge", chunks: [transcript])
             return SuggestionJudgeRunResult(
                 outcome: .failed,
                 transcript: transcript,
@@ -290,7 +298,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 errorMessage: String(describing: error)
             )
         }
-        persistTranscripts(jobID: job.id, chunks: [transcript])
+        persistTranscripts(jobID: job.id, phase: "suggestion_judge", chunks: [transcript])
         let url = workspace.root.appendingPathComponent(".gegenlesen/suggestion-judge.json")
         guard let data = try? Data(contentsOf: url) else {
             return SuggestionJudgeRunResult(
@@ -367,12 +375,12 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
         var transcript = Data()
         guard let result = try? await docker.run(dockerRequest) else {
-            persistTranscripts(jobID: jobID, chunks: [transcript])
+            persistTranscripts(jobID: jobID, phase: "mine", chunks: [transcript])
             return MinerRunResult(containerName: name, failed: true, errorMessage: "miner_failed")
         }
         transcript.append(SecretRedactor().redact(result.stdout))
         transcript.append(SecretRedactor().redact(result.stderr))
-        persistTranscripts(jobID: jobID, chunks: [transcript])
+        persistTranscripts(jobID: jobID, phase: "mine", chunks: [transcript])
         if result.timedOut || result.exitCode != 0 {
             return MinerRunResult(containerName: name, failed: true, errorMessage: "miner_failed")
         }
@@ -387,7 +395,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         timeout: Duration,
         promptFile: String,
         extraFiles: [String],
-        message: String
+        message: String,
+        jobID: JobID? = nil,
+        livePhase: String? = nil
     ) throws -> DockerRequest {
         let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: defaultAgent)
         let permission = try OpenCodeConfig.permissionJSON()
@@ -425,7 +435,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         for path in extraFiles where seen.insert(path).inserted {
             argv.append(contentsOf: ["-f", path])
         }
-        return DockerRequest(
+        var request = DockerRequest(
             name: name,
             image: image,
             argv: argv,
@@ -456,6 +466,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 "OPENROUTER_API_KEY",
             ]
         )
+        if let jobID, let livePhase, let writer = transcriptWriter {
+            let redactor = SecretRedactor()
+            request.onStdout = { data in
+                writer(jobID, livePhase, redactor.redact(data))
+            }
+        }
+        return request
     }
 
     private struct SlotOutcome: Sendable {
@@ -511,12 +528,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
     }
 
-    private func persistTranscripts(jobID: JobID, chunks: [Data]) {
+    private func persistTranscripts(jobID: JobID, phase: String, chunks: [Data]) {
         var combined = Data()
         for chunk in chunks {
             combined.append(SecretRedactor().redact(chunk))
         }
-        transcriptWriter?(jobID, combined)
+        guard !combined.isEmpty else { return }
+        transcriptWriter?(jobID, phase, combined)
     }
 
     private func persistAgentCopies(workspace: Workspace, jobID: JobID) {
