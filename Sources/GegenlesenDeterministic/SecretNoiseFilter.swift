@@ -59,6 +59,9 @@ enum SecretNoiseFilter: Sendable {
         let unique = Set(lower)
         if unique.count <= 4 { return true }
         if Double(unique.count) / Double(lower.count) < 0.25 { return true }
+        if value.allSatisfy({ $0.isLowercase || $0 == "_" || $0 == "-" }), value.contains("_") {
+            return true
+        }
         if hasLongSequentialRun(lower) { return true }
         if isKeyboardWalk(lower) { return true }
         if placeholderNeedles.contains(where: { lower.contains($0) }) { return true }

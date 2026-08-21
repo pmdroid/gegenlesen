@@ -11,6 +11,7 @@ struct SecretNoiseFilterTests {
         #expect(SecretNoiseFilter.isPlaceholder("xxxxxxxxxxxxxxxx"))
         #expect(SecretNoiseFilter.isPlaceholder("changemechangeme"))
         #expect(SecretNoiseFilter.isPlaceholder("your-api-key-here-ok"))
+        #expect(SecretNoiseFilter.isPlaceholder("openrouter_api_key"))
         #expect(SecretNoiseFilter.isPlaceholder("qwertyuiopasdfgh"))
         #expect(!SecretNoiseFilter.isPlaceholder("Kj8dN2pQw9LmX4vB7cR1tY"))
         #expect(!SecretNoiseFilter.isPlaceholder("sk-live-9f3a1c82b4d7e6"))

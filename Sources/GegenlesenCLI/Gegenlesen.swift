@@ -155,9 +155,9 @@ struct ScannerTest: AsyncParsableCommand {
         process.standardOutput = stdout
         process.standardError = stderr
         try process.run()
-        process.waitUntilExit()
         let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        process.waitUntilExit()
         if process.terminationStatus != 0 {
             FileHandle.standardError.write(Data("scanner-test: docker exit \(process.terminationStatus)\n\(err)".utf8))
             throw ExitCode(1)

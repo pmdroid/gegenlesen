@@ -150,13 +150,16 @@ public struct ScannerEngine: ScannerRunning {
                 invalid += 1
                 continue
             }
-            guard let object = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any],
-                  let draft = draft(from: object, workspace: workspace, allowedPaths: allowedPaths)
-            else {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any] else {
                 invalid += 1
                 continue
             }
-            drafts.append(draft)
+            switch draft(from: object, workspace: workspace, allowedPaths: allowedPaths) {
+            case .some(let draft):
+                drafts.append(draft)
+            case .none:
+                continue
+            }
         }
         return (drafts, invalid)
     }
