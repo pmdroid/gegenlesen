@@ -135,7 +135,7 @@ struct ScannerTest: AsyncParsableCommand {
     func run() async throws {
         let fixture = findScannerFixture()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/docker")
+        process.executableURL = URL(fileURLWithPath: resolveDocker())
         process.arguments = [
             "run", "--rm",
             "--network", "bridge",
@@ -255,6 +255,17 @@ func normalizeRepository(_ raw: String?) -> String? {
         value.removeLast()
     }
     return value.isEmpty ? nil : value
+}
+
+func resolveDocker() -> String {
+    let fm = FileManager.default
+    if let override = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER"], !override.isEmpty {
+        return override
+    }
+    for path in ["/usr/local/bin/docker", "/opt/homebrew/bin/docker", "/usr/bin/docker"] {
+        if fm.isExecutableFile(atPath: path) { return path }
+    }
+    return "/usr/bin/docker"
 }
 
 func findScannerFixture() -> URL {
