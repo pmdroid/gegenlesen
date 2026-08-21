@@ -170,6 +170,16 @@ struct JudgeMergeTests {
     }
 
     @Test
+    func parseAcceptsUppercaseVerdict() {
+        let data = Data(#"{"verdicts":[{"finding_id":"fnd_1","verdict":"KEEP","rationale":"saw it in source"}]}"#.utf8)
+        guard case .verdicts(let file) = JudgeMerge.parse(data) else {
+            Issue.record("expected verdicts")
+            return
+        }
+        #expect(file.verdicts[0].verdict == .keep)
+    }
+
+    @Test
     func handoffWritesJudgeInputAndBlobs() throws {
         try withTempDir("handoff") { root in
             try writeFile("Sources/A.swift", "print(2)\n", in: root)

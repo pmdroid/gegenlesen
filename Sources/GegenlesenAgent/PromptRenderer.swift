@@ -213,7 +213,8 @@ public struct PromptRenderer: Sendable {
     4. If evidence_ok is false, say so; the host will drop it anyway.
     5. Rationale must say what you saw in the file.
 
-    You MUST Write .gegenlesen/judge.json with one verdict per candidate:
+    You MUST Write .gegenlesen/judge.json with one verdict per candidate.
+    verdict is exactly keep, drop, or downgrade (lowercase):
       { "verdicts": [ { "finding_id", "verdict", "rationale", "severity"? } ] }
 
     Never write "Called the Read tool" as text — invoke Read/Grep.
