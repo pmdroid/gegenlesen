@@ -25,7 +25,10 @@ the tool. A turn that only talks about tools will abort some providers
    for callers and tests. Read those hits when they exist.
 4. Apply every rule in `.gegenlesen/rules.json` against the files you
    opened. Also report defects the rules miss: bugs, swallowed errors,
-   missing tests, security, regressions, API/contract breaks.
+   missing tests, security, regressions, API/contract breaks. Do not
+   report placeholder credentials (alphabet strings, changeme, xxx,
+   your-api-key-here) or secrets that only exist under evals/cases,
+   testdata, fixtures, mocks, or examples.
 5. You MUST end with exactly one Write to the slot path in the prompt
    (`.gegenlesen/findings-model_a.json` or
    `.gegenlesen/findings-model_b.json`). Match

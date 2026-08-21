@@ -573,6 +573,7 @@ components:
         identify_timeout_sec: { type: integer }
         rule_token_budget: { type: integer }
         learn_interval_minutes: { type: integer, minimum: 0, description: "0 disables. Else learn jobs with new feedback at most this often." }
+        scanner_timeout_sec: { type: integer, minimum: 1, description: "Wall clock for the scanner container. Default 120." }
     ModelSlots:
       type: object
       additionalProperties: false
@@ -590,6 +591,7 @@ components:
         models: { $ref: "#/components/schemas/ModelSlots" }
         judge_model: { type: string }
         opencode_image: { type: string }
+        scanner_image: { type: string }
         limits: { $ref: "#/components/schemas/Limits" }
         openrouter_configured: { type: boolean }
     SettingsUpdate:

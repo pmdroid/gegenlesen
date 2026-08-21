@@ -96,7 +96,10 @@ public struct PromptRenderer: Sendable {
         4. Walk .gegenlesen/rules.json against those files. Also look for
            bugs, swallowed errors, missing tests, security, regressions, and
            contract breaks the rules do not name. rule_id is optional for
-           unruled findings.
+           unruled findings. Do not report placeholder credentials
+           (alphabet strings, changeme, xxx, your-api-key-here) or secrets
+           that only exist under evals/cases, testdata, fixtures, mocks,
+           or examples.
 
         You may use bash, LSP, grep, tests, and fetch. Do not use question.
         Do not launch plan or subagents.

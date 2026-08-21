@@ -12,6 +12,10 @@ public enum ReviewContainers: Sendable {
         "gegenlesen-cmd-\(jobID.rawValue)-\(ruleID.rawValue)"
     }
 
+    public static func scanner(_ jobID: JobID) -> String {
+        "gegenlesen-scan-\(jobID.rawValue)"
+    }
+
     public static func commandPrefix(_ jobID: JobID) -> String {
         "gegenlesen-cmd-\(jobID.rawValue)-"
     }
@@ -31,6 +35,7 @@ public enum ReviewContainers: Sendable {
             judge(jobID),
             miner(jobID),
             suggestionJudge(jobID),
+            scanner(jobID),
         ]
     }
 }

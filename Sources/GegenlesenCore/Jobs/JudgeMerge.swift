@@ -120,7 +120,12 @@ public enum JudgeMerge: Sendable {
             return true
         case .deterministic:
             guard let ruleID = finding.ruleID else { return false }
-            return commandRuleIDs.contains(ruleID)
+            if commandRuleIDs.contains(ruleID) { return true }
+            let raw = ruleID.rawValue
+            if raw == "scanner-gitleaks" || raw == "scanner-osv-scanner" {
+                return false
+            }
+            return raw.hasPrefix("scanner-")
         }
     }
 

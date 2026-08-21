@@ -14,6 +14,7 @@
     "retrieve_k": 12
   },
   "opencode_image": "gegenlesen/opencode-runner:0.1.0",
+  "scanner_image": "gegenlesen/scanner:0.1.0",
   "limits": {
     "archive_bytes": 104857600,
     "queued_archive_bytes": 2147483648,
@@ -22,6 +23,7 @@
     "deterministic_timeout_sec": 30,
     "identify_timeout_sec": 60,
     "rule_token_budget": 6000,
+    "scanner_timeout_sec": 120,
     "learn_interval_minutes": 15
   }
 }

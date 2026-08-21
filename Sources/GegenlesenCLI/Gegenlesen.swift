@@ -6,7 +6,7 @@ struct Gegenlesen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gegenlesen",
         abstract: "Pack a repo and start a gegenlesen review",
-        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self]
+        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self, ScannerTest.self]
     )
 }
 
@@ -123,6 +123,69 @@ struct Cancel: AsyncParsableCommand {
     }
 }
 
+struct ScannerTest: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "scanner-test",
+        abstract: "Run a scanner image against the bundled fixture and check JSONL"
+    )
+
+    @Option(name: .long, help: "Scanner image (default gegenlesen/scanner:0.1.0).")
+    var image: String = "gegenlesen/scanner:0.1.0"
+
+    func run() async throws {
+        let fixture = findScannerFixture()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/docker")
+        process.arguments = [
+            "run", "--rm",
+            "--network", "bridge",
+            "--read-only",
+            "--user", "1000:1000",
+            "--workdir", "/workspace",
+            "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,size=256m",
+            "--mount", "type=bind,src=\(fixture.path),dst=/workspace,readonly",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "-e", "HOME=/tmp",
+            "-e", "PATH=/usr/local/bin:/usr/bin:/bin",
+            image,
+        ]
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        try process.run()
+        process.waitUntilExit()
+        let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        if process.terminationStatus != 0 {
+            FileHandle.standardError.write(Data("scanner-test: docker exit \(process.terminationStatus)\n\(err)".utf8))
+            throw ExitCode(1)
+        }
+        var count = 0
+        for line in out.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            guard let object = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any] else {
+                FileHandle.standardError.write(Data("scanner-test: invalid JSONL: \(trimmed)\n".utf8))
+                throw ExitCode(1)
+            }
+            for key in ["title", "message", "severity", "file_path", "snippet"] {
+                guard let value = object[key] as? String, !value.isEmpty else {
+                    FileHandle.standardError.write(Data("scanner-test: missing \(key)\n".utf8))
+                    throw ExitCode(1)
+                }
+            }
+            if object["file_path"] as? String == "evals/cases/no-hardcoded-secrets/head/Sources/Config.swift" {
+                FileHandle.standardError.write(Data("scanner-test: planted eval secret leaked\n".utf8))
+                throw ExitCode(1)
+            }
+            count += 1
+        }
+        print("ok \(count) findings from \(image)")
+    }
+}
+
 struct Serve: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
@@ -192,6 +255,21 @@ func normalizeRepository(_ raw: String?) -> String? {
         value.removeLast()
     }
     return value.isEmpty ? nil : value
+}
+
+func findScannerFixture() -> URL {
+    let fm = FileManager.default
+    let here = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+    let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
+    let candidates = [
+        cwd.appendingPathComponent("docker/scanner/fixture"),
+        here.appendingPathComponent("docker/scanner/fixture"),
+        here.deletingLastPathComponent().appendingPathComponent("docker/scanner/fixture"),
+    ]
+    for url in candidates where fm.fileExists(atPath: url.path) {
+        return url
+    }
+    return cwd.appendingPathComponent("docker/scanner/fixture")
 }
 
 func packCWD(baseRef: String?) throws -> Data {

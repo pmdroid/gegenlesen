@@ -133,10 +133,14 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     skipAgent: skipAgent,
                     identifyTimeout: identifyTimeout,
                     deterministicTimeout: Duration.seconds(config.limits.deterministicTimeoutSec),
+                    scannerTimeout: Duration.seconds(config.limits.scannerTimeoutSec),
                     deterministic: DeterministicEngine(
                         docker: docker,
                         image: config.opencodeImage
                     ),
+                    scanner: config.scannerImage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? nil
+                        : ScannerEngine(docker: docker, image: config.scannerImage),
                     reviewer: invocation,
                     judge: invocation,
                     ruleTokenBudget: config.limits.ruleTokenBudget,

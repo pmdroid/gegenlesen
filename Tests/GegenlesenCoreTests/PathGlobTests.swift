@@ -46,6 +46,29 @@ struct PathGlobTests {
     }
 
     @Test
+    func secretRuleGlobsSkipPlantedTrees() {
+        let globs = PathGlob([
+            "**/*",
+            "!**/*.md",
+            "!**/testdata/**",
+            "!evals/cases/**",
+            "!**/fixtures/**",
+            "!**/mocks/**",
+            "!**/__mocks__/**",
+            "!**/snapshots/**",
+            "!examples/**",
+            "!**/examples/**",
+            "!**/example/**",
+            "!**/*.snap",
+        ])
+        #expect(globs.matches("Sources/Config.swift"))
+        #expect(!globs.matches("evals/cases/no-hardcoded-secrets/head/Sources/Config.swift"))
+        #expect(!globs.matches("Sources/testdata/secret.txt"))
+        #expect(!globs.matches("App/fixtures/keys.swift"))
+        #expect(globs.matches("Sources/GegenlesenCore/Evals/EvalPacker.swift"))
+    }
+
+    @Test
     func defaultIgnoresVendorAndBinaries() {
         #expect(PathGlob.defaultIgnores.matches("node_modules/pkg/index.js"))
         #expect(PathGlob.defaultIgnores.matches(".git/HEAD"))

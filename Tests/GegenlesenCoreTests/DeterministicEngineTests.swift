@@ -8,7 +8,7 @@ struct DeterministicEngineTests {
     @Test
     func regexDenyAndSiblingProduceFindings() async throws {
         try await withTempDir("det-engine") { root in
-            try writeFile("Sources/App.swift", "let api_key = \"abcdefghijklmnopqrstuvwxyz\"\n", in: root)
+            try writeFile("Sources/App.swift", "let api_key = \"Kj8dN2pQw9LmX4vB7cR1tY\"\n", in: root)
             try writeFile("Sources/Eval.js", "eval(userInput)\n", in: root)
             try writeFile("Sources/Widget.swift", "struct Widget {}\n", in: root)
             let workspace = Workspace(root: root)

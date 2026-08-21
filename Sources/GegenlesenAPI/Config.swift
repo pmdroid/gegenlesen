@@ -69,6 +69,7 @@ struct Limits: Content, Sendable, Equatable {
     var ruleTokenBudget: Int
     /// 0 disables the sweeper. Otherwise learn jobs with new feedback at most this often.
     var learnIntervalMinutes: Int
+    var scannerTimeoutSec: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -79,6 +80,7 @@ struct Limits: Content, Sendable, Equatable {
         case identifyTimeoutSec = "identify_timeout_sec"
         case ruleTokenBudget = "rule_token_budget"
         case learnIntervalMinutes = "learn_interval_minutes"
+        case scannerTimeoutSec = "scanner_timeout_sec"
     }
 
     static let v1 = Limits(
@@ -89,7 +91,8 @@ struct Limits: Content, Sendable, Equatable {
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
         ruleTokenBudget: 6000,
-        learnIntervalMinutes: 15
+        learnIntervalMinutes: 15,
+        scannerTimeoutSec: 120
     )
 
     init(
@@ -100,7 +103,8 @@ struct Limits: Content, Sendable, Equatable {
         deterministicTimeoutSec: Int,
         identifyTimeoutSec: Int,
         ruleTokenBudget: Int,
-        learnIntervalMinutes: Int = 15
+        learnIntervalMinutes: Int = 15,
+        scannerTimeoutSec: Int = 120
     ) {
         self.archiveBytes = archiveBytes
         self.queuedArchiveBytes = queuedArchiveBytes
@@ -110,6 +114,7 @@ struct Limits: Content, Sendable, Equatable {
         self.identifyTimeoutSec = identifyTimeoutSec
         self.ruleTokenBudget = ruleTokenBudget
         self.learnIntervalMinutes = max(0, learnIntervalMinutes)
+        self.scannerTimeoutSec = max(1, min(scannerTimeoutSec, 600))
     }
 
     init(from decoder: Decoder) throws {
@@ -122,7 +127,8 @@ struct Limits: Content, Sendable, Equatable {
             deterministicTimeoutSec: try container.decode(Int.self, forKey: .deterministicTimeoutSec),
             identifyTimeoutSec: try container.decode(Int.self, forKey: .identifyTimeoutSec),
             ruleTokenBudget: try container.decode(Int.self, forKey: .ruleTokenBudget),
-            learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 15
+            learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 15,
+            scannerTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .scannerTimeoutSec) ?? 120
         )
     }
 }
@@ -134,6 +140,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var models: ModelSlots
     var judgeModel: String
     var opencodeImage: String
+    var scannerImage: String
     var embeddings: EmbeddingsConfig
     var limits: Limits
     /// Persisted in config/gegenlesen.json. Never returned by GET /api/settings.
@@ -145,6 +152,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
+        case scannerImage = "scanner_image"
         case embeddings
         case limits
         case openrouterApiKey = "openrouter_api_key"
@@ -157,6 +165,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         models: ModelSlots,
         judgeModel: String,
         opencodeImage: String,
+        scannerImage: String = "gegenlesen/scanner:0.1.0",
         embeddings: EmbeddingsConfig = .v1,
         limits: Limits,
         openrouterApiKey: String? = nil
@@ -167,6 +176,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.models = models
         self.judgeModel = judgeModel
         self.opencodeImage = opencodeImage
+        self.scannerImage = scannerImage
         self.embeddings = embeddings
         self.limits = limits
         self.openrouterApiKey = openrouterApiKey
@@ -180,6 +190,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         models = try container.decode(ModelSlots.self, forKey: .models)
         judgeModel = try container.decode(String.self, forKey: .judgeModel)
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
+        scannerImage = try container.decodeIfPresent(String.self, forKey: .scannerImage) ?? "gegenlesen/scanner:0.1.0"
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
         openrouterApiKey = try container.decodeIfPresent(String.self, forKey: .openrouterApiKey)
@@ -193,6 +204,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(models, forKey: .models)
         try container.encode(judgeModel, forKey: .judgeModel)
         try container.encode(opencodeImage, forKey: .opencodeImage)
+        try container.encode(scannerImage, forKey: .scannerImage)
         try container.encode(embeddings, forKey: .embeddings)
         try container.encode(limits, forKey: .limits)
         if let openrouterApiKey, !openrouterApiKey.isEmpty {
@@ -210,6 +222,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         ),
         judgeModel: "openrouter/openai/gpt-5.6-terra",
         opencodeImage: "gegenlesen/opencode-runner:0.1.0",
+        scannerImage: "gegenlesen/scanner:0.1.0",
         limits: .v1
     )
 
@@ -323,6 +336,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_OPENCODE_IMAGE"], !value.isEmpty {
             next.opencodeImage = value
         }
+        if let value = environment["GEGENLESEN_SCANNER_IMAGE"] {
+            next.scannerImage = value
+        }
         if let value = environment["GEGENLESEN_EMBEDDING_MODEL"], !value.isEmpty {
             next.embeddings.model = value
         }
@@ -348,6 +364,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             models: models,
             judgeModel: judgeModel,
             opencodeImage: opencodeImage,
+            scannerImage: scannerImage,
             limits: limits,
             openrouterConfigured: isOpenRouterConfigured(environment: environment)
         )
@@ -365,6 +382,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var models: ModelSlots
     var judgeModel: String
     var opencodeImage: String
+    var scannerImage: String
     var limits: Limits
     var openrouterConfigured: Bool
 
@@ -372,6 +390,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
         case bind, port, models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
+        case scannerImage = "scanner_image"
         case limits
         case openrouterConfigured = "openrouter_configured"
     }

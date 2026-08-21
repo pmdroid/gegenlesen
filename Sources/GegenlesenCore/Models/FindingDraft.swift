@@ -96,3 +96,24 @@ extension DeterministicRunning {
         await run(files: files, workspace: workspace, rules: rules, timeout: timeout, isCancelled: nil)
     }
 }
+
+public protocol ScannerRunning: Sendable {
+    func run(
+        jobID: JobID,
+        files: [JobFile],
+        workspace: Workspace,
+        timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)?
+    ) async -> DeterministicRunResult
+}
+
+extension ScannerRunning {
+    public func run(
+        jobID: JobID,
+        files: [JobFile],
+        workspace: Workspace,
+        timeout: Duration
+    ) async -> DeterministicRunResult {
+        await run(jobID: jobID, files: files, workspace: workspace, timeout: timeout, isCancelled: nil)
+    }
+}
