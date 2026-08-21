@@ -31,15 +31,19 @@ enum SecretNoiseFilter: Sendable {
     }
 
     static func credentialLiteral(in match: String) -> String? {
-        if let quote = match.lastIndex(where: { $0 == "\"" || $0 == "'" }) {
-            let after = match.index(after: quote)
-            if after < match.endIndex {
-                let raw = match[after...]
-                    .prefix { ch in
-                        ch.isLetter || ch.isNumber || ch == "_" || ch == "-"
-                    }
-                if raw.count >= 16 { return String(raw) }
+        if let open = match.firstIndex(where: { $0 == "\"" || $0 == "'" }) {
+            let mark = match[open]
+            let after = match.index(after: open)
+            let raw: Substring
+            if let close = match[after...].firstIndex(of: mark) {
+                raw = match[after..<close]
+            } else {
+                raw = match[after...].prefix { ch in
+                    ch.isLetter || ch.isNumber || ch == "_" || ch == "-"
+                }
             }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count >= 16 { return trimmed }
         }
         if let sep = match.lastIndex(where: { $0 == "=" || $0 == ":" }) {
             let after = match.index(after: sep)
@@ -49,6 +53,12 @@ enum SecretNoiseFilter: Sendable {
                     ch.isLetter || ch.isNumber || ch == "_" || ch == "-"
                 }
             if raw.count >= 16 { return String(raw) }
+        }
+        let bare = match.trimmingCharacters(in: .whitespacesAndNewlines)
+        if bare.count >= 16,
+           bare.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" })
+        {
+            return bare
         }
         return nil
     }

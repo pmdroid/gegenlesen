@@ -6,6 +6,29 @@ import Testing
 @Suite
 struct SecretNoiseFilterTests {
     @Test
+    func credentialLiteralUsesOpeningQuote() {
+        #expect(
+            SecretNoiseFilter.credentialLiteral(in: #"token = "abcdefghijklmnopqrstuvwxyz""#)
+                == "abcdefghijklmnopqrstuvwxyz"
+        )
+        #expect(
+            SecretNoiseFilter.credentialLiteral(in: #""abcdefghijklmnopqrstuvwxyz""#)
+                == "abcdefghijklmnopqrstuvwxyz"
+        )
+        #expect(
+            SecretNoiseFilter.credentialLiteral(in: "ghp_Kj8dN2pQw9LmX4vB7cR1tYhG3sU6wA0zP4")
+                == "ghp_Kj8dN2pQw9LmX4vB7cR1tYhG3sU6wA0zP4"
+        )
+        #expect(
+            SecretNoiseFilter.shouldDrop(
+                ruleID: RuleID("scanner-gitleaks"),
+                filePath: "Sources/App.swift",
+                match: #""abcdefghijklmnopqrstuvwxyz""#
+            )
+        )
+    }
+
+    @Test
     func dropsAlphabetAndPlaceholderLiterals() {
         #expect(SecretNoiseFilter.isPlaceholder("abcdefghijklmnopqrstuvwxyz"))
         #expect(SecretNoiseFilter.isPlaceholder("xxxxxxxxxxxxxxxx"))
