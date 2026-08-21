@@ -56,7 +56,7 @@ struct OpenCodeInvocationTests {
         #expect(args.contains("reviewer"))
         #expect(args.contains("/workspace/.gegenlesen/prompt-model_a.md"))
         #expect(!args.contains("serve"))
-        let messageIndex = try #require(args.firstIndex(of: "Review the change and write findings as instructed."))
+        let messageIndex = try #require(args.firstIndex(of: "Investigate the change thoroughly, then write findings as instructed."))
         let fileFlagIndex = try #require(args.firstIndex(of: "-f"))
         #expect(messageIndex < fileFlagIndex)
 

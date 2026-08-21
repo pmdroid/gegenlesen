@@ -95,9 +95,9 @@ public enum OpenCodeConfig: Sendable {
                 "explore": ["disable": true],
                 "scout": ["disable": true],
                 "reviewer": [
-                    "description": "Read-only PR reviewer that writes .gegenlesen/findings.json",
+                    "description": "Thorough PR reviewer that writes .gegenlesen/findings.json",
                     "mode": "primary",
-                    "temperature": 0.1,
+                    "temperature": 0.2,
                 ],
                 "judge": [
                     "description": "Conservative findings judge that writes .gegenlesen/judge.json",

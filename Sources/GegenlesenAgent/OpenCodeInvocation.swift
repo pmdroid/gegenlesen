@@ -160,7 +160,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: agentTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
             extraFiles: Self.reviewFilePaths(incremental: incremental),
-            message: "Review the change and write findings as instructed.",
+            message: "Investigate the change thoroughly, then write findings as instructed.",
             jobID: jobID,
             livePhase: slot == .modelA ? "review_a" : "review_b"
         )
@@ -179,7 +179,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
             extraFiles: ["/workspace/.gegenlesen/judge-input.json"],
-            message: "Judge the candidates as instructed.",
+            message: "Check each candidate against the cited file, then write verdicts.",
             jobID: jobID,
             livePhase: "judge"
         )
