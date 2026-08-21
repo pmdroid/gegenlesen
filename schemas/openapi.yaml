@@ -601,6 +601,7 @@ components:
         models: { $ref: "#/components/schemas/ModelSlots" }
         judge_model: { type: string }
         openrouter_api_key: { type: string }
+        scanner_image: { type: string, description: "Empty string skips the scanner container." }
     OpenRouterModel:
       type: object
       additionalProperties: false

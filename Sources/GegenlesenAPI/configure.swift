@@ -93,6 +93,7 @@ func configure(
     let rulesDir = URL(fileURLWithPath: app.directory.workingDirectory, isDirectory: true)
         .appendingPathComponent("rules", isDirectory: true)
     _ = try await RuleSeeder.upsertAbsent(from: rulesDir, into: app.gegenlesenStore)
+    try await RuleSeeder.retire(into: app.gegenlesenStore)
 
     JobsRoute.register(app)
     FindingsRoute.register(app)

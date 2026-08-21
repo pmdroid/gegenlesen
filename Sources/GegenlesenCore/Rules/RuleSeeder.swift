@@ -2,6 +2,8 @@ import Foundation
 import Yams
 
 public enum RuleSeeder: Sendable {
+    public static let retiredIDs: [RuleID] = [RuleID("no-hardcoded-secrets")]
+
     public static func upsertAbsent(from directory: URL, into store: Store) async throws -> Int {
         let fm = FileManager.default
         var isDir: ObjCBool = false
@@ -19,6 +21,12 @@ public enum RuleSeeder: Sendable {
             }
         }
         return inserted
+    }
+
+    public static func retire(into store: Store) async throws {
+        for id in retiredIDs {
+            _ = try await store.softDeleteRule(id: id)
+        }
     }
 
     public static func decodeSeed(at url: URL) throws -> Rule {

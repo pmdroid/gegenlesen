@@ -29,6 +29,7 @@ export function SetupPage() {
   const [modelA, setModelA] = useState("openrouter/deepseek/deepseek-v4-flash");
   const [modelB, setModelB] = useState("openrouter/google/gemini-3.7-flash");
   const [judge, setJudge] = useState("openrouter/openai/gpt-5.6-terra");
+  const [scannerImage, setScannerImage] = useState("gegenlesen/scanner:0.1.0");
   const [apiKey, setApiKey] = useState("");
   const [debouncedKey, setDebouncedKey] = useState("");
   const [sort, setSort] = useState("coding-high-to-low");
@@ -42,6 +43,7 @@ export function SetupPage() {
     setModelA(data.models.model_a);
     setModelB(data.models.model_b);
     setJudge(data.judge_model);
+    setScannerImage(data.scanner_image ?? "");
   }, [settings.data]);
 
   useEffect(() => {
@@ -97,6 +99,7 @@ export function SetupPage() {
         models: { model_a: modelA.trim(), model_b: modelB.trim() },
         judge_model: judge.trim(),
         openrouter_api_key: apiKey.trim() || undefined,
+        scanner_image: scannerImage.trim(),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -211,6 +214,20 @@ export function SetupPage() {
           disabled={!canFetch}
           placeholder={canFetch ? "type to filter" : "add a key first"}
         />
+        <label>
+          Scanner image
+          <input
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            value={scannerImage}
+            onChange={(event) => setScannerImage(event.target.value)}
+            placeholder="gegenlesen/scanner:0.1.0"
+          />
+          <span className="formhint">
+            Docker image for Gitleaks and OSV. Leave blank to skip scanners.
+          </span>
+        </label>
         {error ? <div className="formerr">{error}</div> : null}
         <div className="formrow">
           <button type="submit" className="btn" disabled={save.isPending || settings.isLoading}>

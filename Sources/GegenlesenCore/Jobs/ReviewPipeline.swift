@@ -266,11 +266,6 @@ public struct ReviewPipeline: Sendable {
             )
         }
         if try await stopped(jobID) { return }
-        if result.timedOut {
-            _ = try await store.apply(jobID: jobID, event: .deterministicTimeout)
-            try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")
-            return
-        }
         for warning in result.warnings {
             try await store.appendEvent(
                 jobID: jobID,

@@ -147,7 +147,7 @@ struct RulesRouteTests {
                 let ids = Set(rules.compactMap { $0["id"] as? String })
                 #expect(ids.contains("use-project-logger"))
                 #expect(ids.contains("openapi-breaking-changes"))
-                #expect(ids.contains("no-hardcoded-secrets"))
+                #expect(!ids.contains("no-hardcoded-secrets"))
             }
         }
     }

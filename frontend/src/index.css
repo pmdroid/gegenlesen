@@ -84,6 +84,7 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 }
 .formrow { display: flex; gap: 8px; margin-top: 14px; }
 .formerr { color: #e57373; margin-top: 8px; }
+.formhint { display: block; color: #557a58; font-size: 11px; margin-top: 4px; }
 .setup { max-width: 640px; }
 .setup p { color: #7fa882; max-width: 40rem; }
 .picker { position: relative; }

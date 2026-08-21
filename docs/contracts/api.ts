@@ -109,6 +109,7 @@ export interface SettingsUpdate {
   models?: ModelSlots;
   judge_model?: string;
   openrouter_api_key?: string;
+  scanner_image?: string;
 }
 
 export interface OpenRouterModel {

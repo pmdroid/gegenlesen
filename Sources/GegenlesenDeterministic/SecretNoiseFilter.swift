@@ -2,11 +2,9 @@ import Foundation
 import GegenlesenCore
 
 /// Drops planted eval/fixture paths and obvious fake credential literals
-/// for `no-hardcoded-secrets`. Regex findings skip the judge, so noise
-/// has to die here — not in an LLM pass.
+/// from scanner secret hits. Gitleaks findings skip the judge, so noise
+/// has to die here.
 enum SecretNoiseFilter: Sendable {
-    static let secretRuleID = "no-hardcoded-secrets"
-
     static let plantedGlobs = PathGlob([
         "evals/cases/**",
         "**/testdata/**",
@@ -21,11 +19,14 @@ enum SecretNoiseFilter: Sendable {
     ])
 
     static func shouldDrop(ruleID: RuleID, filePath: String, match: String) -> Bool {
-        let scanner = ruleID.rawValue.hasPrefix("scanner-")
-        let secrets = ruleID.rawValue == secretRuleID || ruleID.rawValue == "scanner-gitleaks"
-        guard secrets || scanner else { return false }
+        guard ruleID.rawValue.hasPrefix("scanner-") else { return false }
         if plantedGlobs.matches(filePath) { return true }
-        if secrets, let value = credentialLiteral(in: match), isPlaceholder(value) { return true }
+        if ruleID.rawValue == "scanner-gitleaks",
+           let value = credentialLiteral(in: match),
+           isPlaceholder(value)
+        {
+            return true
+        }
         return false
     }
 

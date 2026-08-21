@@ -15,10 +15,6 @@ public struct RegexChecker: DeterministicChecker {
         let text = String(decoding: bytes, as: UTF8.self)
         var drafts: [FindingDraft] = []
         for match in text.matches(of: regex) {
-            let matched = String(text[match.range])
-            if SecretNoiseFilter.shouldDrop(ruleID: rule.id, filePath: file.path, match: matched) {
-                continue
-            }
             let start = lineNumber(of: match.range.lowerBound, in: text)
             let end = lineNumber(of: match.range.upperBound, in: text)
             let snippet = lineSlice(in: text, start: start, end: end)

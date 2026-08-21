@@ -400,11 +400,13 @@ struct SettingsUpdate: Content, Sendable, Equatable {
     var models: ModelSlots?
     var judgeModel: String?
     var openrouterApiKey: String?
+    var scannerImage: String?
 
     enum CodingKeys: String, CodingKey {
         case models
         case judgeModel = "judge_model"
         case openrouterApiKey = "openrouter_api_key"
+        case scannerImage = "scanner_image"
     }
 }
 
