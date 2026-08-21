@@ -168,7 +168,7 @@ public enum SuggestionJudge: Sendable {
             guard let object = item as? [String: Any],
                   let id = object["finding_id"] as? String, !id.isEmpty,
                   let verdictRaw = object["verdict"] as? String,
-                  let verdict = JudgeDecision(rawValue: verdictRaw),
+                  let verdict = JudgeDecision.parse(verdictRaw),
                   let rationale = object["rationale"] as? String
             else {
                 return .failed

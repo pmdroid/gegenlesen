@@ -40,6 +40,13 @@ enum SettingsRoute {
             next.openrouterApiKey = key
             setenv("OPENROUTER_API_KEY", key, 1)
         }
+        if let rawImage = body.scannerImage {
+            let image = rawImage.trimmingCharacters(in: .whitespacesAndNewlines)
+            if image.contains(where: \.isNewline) {
+                throw APIError.unprocessable("scanner image must be a single line")
+            }
+            next.scannerImage = image
+        }
         if !next.isOpenRouterConfigured() {
             throw APIError.unprocessable("OpenRouter API key is required")
         }

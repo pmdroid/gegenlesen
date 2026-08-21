@@ -160,7 +160,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             timeout: agentTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
             extraFiles: Self.reviewFilePaths(incremental: incremental),
-            message: "Review the change and write findings as instructed.",
+            message: "Investigate the change thoroughly, then write findings as instructed.",
             jobID: jobID,
             livePhase: slot == .modelA ? "review_a" : "review_b"
         )
@@ -178,8 +178,12 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             defaultAgent: "judge",
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
-            extraFiles: ["/workspace/.gegenlesen/judge-input.json"],
-            message: "Judge the candidates as instructed.",
+            extraFiles: [
+                "/workspace/.gegenlesen/judge-input.json",
+                "/workspace/.gegenlesen/diff.patch",
+                "/workspace/.gegenlesen/files.json",
+            ],
+            message: "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
             jobID: jobID,
             livePhase: "judge"
         )
@@ -408,6 +412,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             "OPENCODE_AUTO_SHARE": "false",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
             "OPENCODE_DISABLE_CLAUDE_CODE": "true",
+            "OPENCODE_EXPERIMENTAL_LSP_TOOL": "true",
             "OPENCODE_CONFIG": "/home/gegenlesen/.config/opencode/opencode.json",
             "OPENCODE_CONFIG_CONTENT": policy,
             "OPENCODE_PERMISSION": permission,

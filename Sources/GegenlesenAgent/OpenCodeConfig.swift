@@ -5,22 +5,6 @@ public enum OpenCodeConfigError: Error, Sendable, Equatable {
 }
 
 public enum OpenCodeConfig: Sendable {
-    public static let findingsAllowlist = [
-        ".gegenlesen/findings.json",
-        ".gegenlesen/findings-model_a.json",
-        ".gegenlesen/findings-model_b.json",
-        ".gegenlesen/judge.json",
-        ".gegenlesen/suggestion-judge.json",
-        ".gegenlesen/mined-rules.json",
-        ".gegenlesen/harvest.json",
-        ".gegenlesen/architecture-draft.md",
-        ".gegenlesen/transcript.json",
-    ]
-
-    /// OpenCode matches the tool path as a raw string (`*` = any chars). Agents
-    /// pass `/workspace/.gegenlesen/…`, which does not match a relative allow rule.
-    public static let editAllowPatterns = findingsAllowlist + findingsAllowlist.map { "*/\($0)" }
-
     public static func policyObject(model: String, defaultAgent: String = "reviewer") -> [String: Any] {
         var object = basePolicyObject(defaultAgent: defaultAgent)
         object["model"] = model
@@ -34,21 +18,20 @@ public enum OpenCodeConfig: Sendable {
     public static func permissionObject() -> [String: Any] {
         [
             "task": "deny",
-            "webfetch": "deny",
-            "websearch": "deny",
-            "external_directory": "deny",
             "question": "deny",
-            "edit": editAllowObject(),
-            "bash": [
-                "*": "deny",
-                "git diff*": "allow",
-                "git log*": "allow",
-                "git show*": "allow",
-                "git rev-parse*": "allow",
-                "git status*": "allow",
-                "rg *": "allow",
-                "grep *": "allow",
-            ],
+            "edit": "allow",
+            "bash": "allow",
+            "webfetch": "allow",
+            "websearch": "allow",
+            "lsp": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "list": "allow",
+            "skill": "allow",
+            "todowrite": "allow",
+            "todoread": "allow",
+            "codesearch": "allow",
+            "external_directory": "allow",
             "read": [
                 "*": "allow",
                 "*.env": "deny",
@@ -58,16 +41,33 @@ public enum OpenCodeConfig: Sendable {
         ]
     }
 
-    public static func permissionJSON() throws -> String {
-        try jsonString(permissionObject())
+    public static func lspObject() -> [String: Any] {
+        [
+            "typescript": [
+                "command": ["typescript-language-server", "--stdio"],
+                "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
+            ],
+            "pyright": [
+                "command": ["pyright-langserver", "--stdio"],
+                "extensions": [".py", ".pyi"],
+            ],
+            "yaml": [
+                "command": ["yaml-language-server", "--stdio"],
+                "extensions": [".yaml", ".yml"],
+            ],
+            "json": [
+                "command": ["vscode-json-language-server", "--stdio"],
+                "extensions": [".json", ".jsonc"],
+            ],
+            "clangd": [
+                "command": ["clangd"],
+                "extensions": [".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"],
+            ],
+        ]
     }
 
-    public static func editAllowObject() -> [String: String] {
-        var edit = ["*": "deny"]
-        for pattern in editAllowPatterns {
-            edit[pattern] = "allow"
-        }
-        return edit
+    public static func permissionJSON() throws -> String {
+        try jsonString(permissionObject())
     }
 
     public static func splitModel(_ model: String) -> (providerID: String, modelID: String) {
@@ -87,6 +87,7 @@ public enum OpenCodeConfig: Sendable {
             "mcp": [String: Any](),
             "plugin": [Any](),
             "permission": permissionObject(),
+            "lsp": lspObject(),
             "agent": [
                 "build": ["disable": true],
                 "plan": ["disable": true],
@@ -94,12 +95,12 @@ public enum OpenCodeConfig: Sendable {
                 "explore": ["disable": true],
                 "scout": ["disable": true],
                 "reviewer": [
-                    "description": "Read-only PR reviewer that writes .gegenlesen/findings.json",
+                    "description": "Thorough PR reviewer that writes .gegenlesen/findings.json",
                     "mode": "primary",
-                    "temperature": 0.1,
+                    "temperature": 0.2,
                 ],
                 "judge": [
-                    "description": "Conservative findings judge that writes .gegenlesen/judge.json",
+                    "description": "Source-checking findings judge that writes .gegenlesen/judge.json",
                     "mode": "primary",
                     "temperature": 0.0,
                 ],

@@ -5,7 +5,9 @@ temperature: 0.2
 ---
 
 Extract a small set of reusable house rules for FUTURE changes.
-Write `.gegenlesen/mined-rules.json` only. Do not edit source files.
+Write `.gegenlesen/mined-rules.json` only.
+You may use bash, LSP, and search. Do not use the question tool.
+Do not launch the plan agent or subagents.
 Prefer operator thumbs-up / should_be_rule. Do not restate every finding.
 Keep titles and instructions generic (no one-PR file names or tickets).
 

@@ -123,6 +123,12 @@ struct JudgeMergeTests {
         #expect(JudgeMerge.shouldJudge(regex, commandRuleIDs: commandIDs) == false)
         #expect(JudgeMerge.shouldJudge(command, commandRuleIDs: commandIDs) == true)
         #expect(JudgeMerge.shouldJudge(agent, commandRuleIDs: commandIDs) == true)
+        let gitleaks = sampleFinding(phase: .deterministic, ruleID: RuleID("scanner-gitleaks"), evidenceOK: nil)
+        let osv = sampleFinding(phase: .deterministic, ruleID: RuleID("scanner-osv-scanner"), evidenceOK: nil)
+        let custom = sampleFinding(phase: .deterministic, ruleID: RuleID("scanner-check-shell"), evidenceOK: nil)
+        #expect(JudgeMerge.shouldJudge(gitleaks, commandRuleIDs: commandIDs) == false)
+        #expect(JudgeMerge.shouldJudge(osv, commandRuleIDs: commandIDs) == false)
+        #expect(JudgeMerge.shouldJudge(custom, commandRuleIDs: commandIDs) == true)
     }
 
     @Test
@@ -167,6 +173,16 @@ struct JudgeMergeTests {
         }
         #expect(file.verdicts.count == 1)
         #expect(file.verdicts[0].rationale.isEmpty)
+    }
+
+    @Test
+    func parseAcceptsUppercaseVerdict() {
+        let data = Data(#"{"verdicts":[{"finding_id":"fnd_1","verdict":"KEEP","rationale":"saw it in source"}]}"#.utf8)
+        guard case .verdicts(let file) = JudgeMerge.parse(data) else {
+            Issue.record("expected verdicts")
+            return
+        }
+        #expect(file.verdicts[0].verdict == .keep)
     }
 
     @Test

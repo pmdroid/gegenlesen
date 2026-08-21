@@ -43,8 +43,8 @@ struct OpenCodeCLIProbeTests {
             let baked = repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner/opencode.json")
             let bakedJSON = try String(contentsOf: baked, encoding: .utf8)
             #expect(bakedJSON.contains(#""mcp": {}"#) || bakedJSON.contains(#""mcp":{}"#))
-            #expect(policy.contains("findings.json"))
-            #expect(!policy.contains("Sources/"))
+            #expect(policy.contains("\"lsp\":\"allow\"") || policy.contains(#""lsp":"allow""#))
+            #expect(policy.contains("typescript-language-server"))
 
             _ = docker
             _ = root

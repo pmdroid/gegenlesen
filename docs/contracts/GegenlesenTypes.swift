@@ -444,6 +444,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
     var models: ModelSlots
     var judgeModel: String
     var opencodeImage: String
+    var scannerImage: String
     var limits: Limits
 
     enum CodingKeys: String, CodingKey {
@@ -452,6 +453,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
         case models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
+        case scannerImage = "scanner_image"
         case limits
     }
 }
@@ -475,6 +477,7 @@ struct Limits: Codable, Sendable, Equatable {
     var identifyTimeoutSec: Int
     var ruleTokenBudget: Int
     var learnIntervalMinutes: Int
+    var scannerTimeoutSec: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -485,6 +488,7 @@ struct Limits: Codable, Sendable, Equatable {
         case identifyTimeoutSec = "identify_timeout_sec"
         case ruleTokenBudget = "rule_token_budget"
         case learnIntervalMinutes = "learn_interval_minutes"
+        case scannerTimeoutSec = "scanner_timeout_sec"
     }
 
     static let v1 = Limits(
@@ -495,7 +499,8 @@ struct Limits: Codable, Sendable, Equatable {
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
         ruleTokenBudget: 6000,
-        learnIntervalMinutes: 15
+        learnIntervalMinutes: 15,
+        scannerTimeoutSec: 120
     )
 }
 
@@ -522,6 +527,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     var models: ModelSlots
     var judgeModel: String
     var opencodeImage: String
+    var scannerImage: String
     var limits: Limits
     var openrouterConfigured: Bool
 
@@ -529,6 +535,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
         case bind, port, models
         case judgeModel = "judge_model"
         case opencodeImage = "opencode_image"
+        case scannerImage = "scanner_image"
         case limits
         case openrouterConfigured = "openrouter_configured"
     }

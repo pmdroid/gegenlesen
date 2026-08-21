@@ -17,6 +17,9 @@ docs:
 image:
 	./scripts/build-image.sh
 
+scanner-image:
+	./scripts/build-scanner.sh
+
 # Mac GitHub artifacts. Example: make release-darwin VERSION=v0.1.0 ARGS='--upload'
 release-darwin:
 	@test -n "$(VERSION)" || (echo "usage: make release-darwin VERSION=v0.1.0 [ARGS='--upload']" >&2; exit 1)

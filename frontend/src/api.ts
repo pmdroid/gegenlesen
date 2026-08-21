@@ -86,6 +86,7 @@ export interface Limits {
   identify_timeout_sec: number;
   rule_token_budget: number;
   learn_interval_minutes: number;
+  scanner_timeout_sec?: number;
 }
 
 export interface ModelSlots {
@@ -99,6 +100,7 @@ export interface SettingsDTO {
   models: ModelSlots;
   judge_model: string;
   opencode_image: string;
+  scanner_image?: string;
   limits: Limits;
   openrouter_configured: boolean;
 }
@@ -107,6 +109,7 @@ export interface SettingsUpdate {
   models?: ModelSlots;
   judge_model?: string;
   openrouter_api_key?: string;
+  scanner_image?: string;
 }
 
 export interface OpenRouterModel {

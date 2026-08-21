@@ -8,7 +8,7 @@ struct DeterministicEngineTests {
     @Test
     func regexDenyAndSiblingProduceFindings() async throws {
         try await withTempDir("det-engine") { root in
-            try writeFile("Sources/App.swift", "let api_key = \"abcdefghijklmnopqrstuvwxyz\"\n", in: root)
+            try writeFile("Sources/App.swift", "FIXME: wire this up\n", in: root)
             try writeFile("Sources/Eval.js", "eval(userInput)\n", in: root)
             try writeFile("Sources/Widget.swift", "struct Widget {}\n", in: root)
             let workspace = Workspace(root: root)
@@ -20,12 +20,12 @@ struct DeterministicEngineTests {
             ]
             let rules = [
                 sampleRule(
-                    id: "no-hardcoded-secrets",
+                    id: "no-fixme",
                     globs: ["**/*", "!**/*.md"],
                     payload: .regex(
-                        pattern: #"(?i)(api[_-]?key|secret|token)\s*[:=]\s*['"][A-Za-z0-9_\-]{16,}"#,
+                        pattern: "FIXME",
                         flags: nil,
-                        message: "Possible hardcoded secret."
+                        message: "Unresolved FIXME."
                     )
                 ),
                 sampleRule(
@@ -49,7 +49,7 @@ struct DeterministicEngineTests {
             )
             #expect(!result.timedOut)
             let ids = Set(result.drafts.compactMap { $0.ruleID?.rawValue })
-            #expect(ids.contains("no-hardcoded-secrets"))
+            #expect(ids.contains("no-fixme"))
             #expect(ids.contains("no-eval"))
             #expect(ids.contains("sibling-test-required"))
             #expect(result.drafts.allSatisfy { $0.phase == .deterministic })

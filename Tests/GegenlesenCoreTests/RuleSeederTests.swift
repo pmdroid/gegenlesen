@@ -10,7 +10,7 @@ struct RuleSeederTests {
             let seeds = dir.appendingPathComponent("seeds", isDirectory: true)
             try FileManager.default.createDirectory(at: seeds, withIntermediateDirectories: true)
             let yaml = """
-            id: no-hardcoded-secrets
+            id: sample-seed
             title: Seed title
             severity: error
             enabled: true
@@ -26,14 +26,14 @@ struct RuleSeederTests {
             body: seed-body
             """
             try yaml.write(
-                to: seeds.appendingPathComponent("no-hardcoded-secrets.yaml"),
+                to: seeds.appendingPathComponent("sample-seed.yaml"),
                 atomically: true,
                 encoding: .utf8
             )
             let store = try Store.open(dataDir: dir)
             let now = Date()
             let existing = Rule(
-                id: RuleID("no-hardcoded-secrets"),
+                id: RuleID("sample-seed"),
                 title: "Operator title",
                 severity: .warning,
                 kind: .deterministic,
@@ -47,7 +47,7 @@ struct RuleSeederTests {
             try await store.insertRule(existing)
             let inserted = try await RuleSeeder.upsertAbsent(from: seeds, into: store)
             #expect(inserted == 0)
-            let loaded = try await store.rule(id: RuleID("no-hardcoded-secrets"))
+            let loaded = try await store.rule(id: RuleID("sample-seed"))
             #expect(loaded?.title == "Operator title")
             #expect(loaded?.body == "operator-body")
         }
@@ -84,6 +84,30 @@ struct RuleSeederTests {
             } else {
                 Issue.record("expected semantic payload")
             }
+        }
+    }
+
+    @Test
+    func retireSoftDeletesRemovedSeeds() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            try await store.insertRule(
+                Rule(
+                    id: RuleID("no-hardcoded-secrets"),
+                    title: "old regex secrets",
+                    severity: .error,
+                    kind: .deterministic,
+                    languages: ["*"],
+                    pathGlobs: ["**/*"],
+                    payload: .regex(pattern: "secret", flags: nil, message: "hit"),
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+            try await RuleSeeder.retire(into: store)
+            let loaded = try await store.rule(id: RuleID("no-hardcoded-secrets"))
+            #expect(loaded?.deletedAt != nil)
         }
     }
 }

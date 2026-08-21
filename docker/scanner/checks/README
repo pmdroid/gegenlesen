@@ -1,0 +1,4 @@
+Drop executable checks here in a custom scanner image.
+Each program prints gegenlesen JSONL on stdout (title, message,
+severity, file_path, start_line, end_line, snippet) and exits 0.
+Custom checks go to the judge. gitleaks and osv-scanner do not.

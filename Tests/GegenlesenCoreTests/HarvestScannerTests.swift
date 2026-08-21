@@ -171,6 +171,43 @@ struct HarvestPipelineTests {
             try await pipeline.run(jobID: secondID)
             let again = try await store.listLearnings(status: .pending)
             #expect(!again.contains { $0.payloadJSON?.contains("harvest") == true })
+            let loggerRules = try await store.listRules(RuleListFilter(includeDeleted: false))
+                .filter { Normalize.titleKey($0.title) == "use the project logger" }
+            #expect(loggerRules.count == 1)
+        }
+    }
+
+    @Test
+    func harvestDoesNotInsertTwinOfHandwrittenRule() async throws {
+        try await withPackedHarvest { store, jobID in
+            let now = Date()
+            try await store.insertRule(
+                Rule(
+                    id: RuleID("use-the-project-logger"),
+                    title: "Use the project logger",
+                    severity: .warning,
+                    kind: .semantic,
+                    enabled: true,
+                    provenance: .handwritten,
+                    languages: ["*"],
+                    pathGlobs: ["**/*"],
+                    payload: .semantic(instruction: "Use the project logger.", fewShots: []),
+                    createdAt: now,
+                    updatedAt: now
+                )
+            )
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: citedHarvestJSON),
+                suggestionJudge: FailedSuggestionJudge(),
+                model: "none"
+            ).run(jobID: jobID)
+            let loggerRules = try await store.listRules(RuleListFilter(includeDeleted: false))
+                .filter { Normalize.titleKey($0.title) == "use the project logger" }
+            #expect(loggerRules.count == 1)
+            #expect(loggerRules[0].id.rawValue == "use-the-project-logger")
+            #expect(loggerRules[0].provenance == .handwritten)
         }
     }
 }

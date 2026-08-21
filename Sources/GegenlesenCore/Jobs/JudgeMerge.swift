@@ -2,6 +2,10 @@ import Foundation
 
 public enum JudgeDecision: String, Codable, Sendable, Equatable {
     case keep, drop, downgrade
+
+    public static func parse(_ raw: String) -> JudgeDecision? {
+        JudgeDecision(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
 }
 
 public struct JudgeFile: Sendable, Equatable {
@@ -116,7 +120,12 @@ public enum JudgeMerge: Sendable {
             return true
         case .deterministic:
             guard let ruleID = finding.ruleID else { return false }
-            return commandRuleIDs.contains(ruleID)
+            if commandRuleIDs.contains(ruleID) { return true }
+            let raw = ruleID.rawValue
+            if raw == "scanner-gitleaks" || raw == "scanner-osv-scanner" {
+                return false
+            }
+            return raw.hasPrefix("scanner-")
         }
     }
 
@@ -173,7 +182,7 @@ public enum JudgeMerge: Sendable {
             }
             guard let id = object["finding_id"] as? String, !id.isEmpty,
                   let verdictRaw = object["verdict"] as? String,
-                  let verdict = JudgeDecision(rawValue: verdictRaw),
+                  let verdict = JudgeDecision.parse(verdictRaw),
                   let rationale = object["rationale"] as? String
             else {
                 return .invalidFile

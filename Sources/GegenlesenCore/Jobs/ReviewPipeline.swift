@@ -5,7 +5,9 @@ public struct ReviewPipeline: Sendable {
     public var skipAgent: Bool
     public var identifyTimeout: Duration
     public var deterministicTimeout: Duration
+    public var scannerTimeout: Duration
     public var deterministic: (any DeterministicRunning)?
+    public var scanner: (any ScannerRunning)?
     public var reviewer: (any ReviewerRunning)?
     public var judge: (any JudgeRunning)?
     public var ruleTokenBudget: Int
@@ -20,7 +22,9 @@ public struct ReviewPipeline: Sendable {
         skipAgent: Bool = true,
         identifyTimeout: Duration = .seconds(60),
         deterministicTimeout: Duration = .seconds(30),
+        scannerTimeout: Duration = .seconds(120),
         deterministic: (any DeterministicRunning)? = nil,
+        scanner: (any ScannerRunning)? = nil,
         reviewer: (any ReviewerRunning)? = nil,
         judge: (any JudgeRunning)? = nil,
         ruleTokenBudget: Int = 6000,
@@ -34,7 +38,9 @@ public struct ReviewPipeline: Sendable {
         self.skipAgent = skipAgent
         self.identifyTimeout = identifyTimeout
         self.deterministicTimeout = deterministicTimeout
+        self.scannerTimeout = scannerTimeout
         self.deterministic = deterministic
+        self.scanner = scanner
         self.reviewer = reviewer
         self.judge = judge
         self.ruleTokenBudget = ruleTokenBudget
@@ -221,7 +227,7 @@ public struct ReviewPipeline: Sendable {
             workspace: workspace
         )
         try await store.appendEvent(jobID: jobID, level: .info, message: "deterministic")
-        let result: DeterministicRunResult
+        var result: DeterministicRunResult
         if let deterministic {
             result = await deterministic.run(
                 files: remaining,
@@ -241,6 +247,25 @@ public struct ReviewPipeline: Sendable {
             try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")
             return
         }
+        if let scanner {
+            try await store.appendEvent(jobID: jobID, level: .info, message: "scanning")
+            let scan = await scanner.run(
+                jobID: jobID,
+                files: remaining,
+                workspace: workspace,
+                timeout: scannerTimeout,
+                isCancelled: { [store, jobID] in
+                    (try? await store.job(id: jobID))?.status.isTerminal ?? true
+                }
+            )
+            if try await stopped(jobID) { return }
+            result = DeterministicRunResult(
+                drafts: result.drafts + scan.drafts,
+                timedOut: false,
+                warnings: result.warnings + scan.warnings
+            )
+        }
+        if try await stopped(jobID) { return }
         for warning in result.warnings {
             try await store.appendEvent(
                 jobID: jobID,
