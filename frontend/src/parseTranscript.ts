@@ -72,6 +72,17 @@ function formatEvent(object: Record<string, unknown>, index: number): Transcript
       body: asString(part.text) ?? asString(object.text),
     };
   }
+  if (type === "error") {
+    const err = asRecord(object.error);
+    const data = asRecord(err?.data) ?? err ?? object;
+    const message =
+      asString(data?.message) ??
+      asString(err?.message) ??
+      asString(object.message) ??
+      "provider error";
+    const body = asString(data?.responseBody) ?? JSON.stringify(data).slice(0, 800);
+    return { id: `e${index}`, kind: "raw", title: `error · ${message}`, body };
+  }
   if (partType === "tool" || type === "tool_use" || type === "tool") {
     const state = asRecord(part.state);
     return {

@@ -17,5 +17,7 @@ struct PromptRendererTests {
         #expect(prompt.contains("You may use bash, LSP, grep, tests, and fetch"))
         #expect(!prompt.contains("Do not use bash except"))
         #expect(prompt.contains("Open every source/config/test path in files.json"))
+        #expect(prompt.contains("You MUST Write that file before you stop"))
+        #expect(prompt.contains("Never write \"Called the Read tool\""))
     }
 }

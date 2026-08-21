@@ -85,6 +85,8 @@ public struct PromptRenderer: Sendable {
         ## How to review (do this before Write)
         Fast models still follow this. Do not Write findings until steps 1–4
         are done. An empty findings file after only reading the diff is a miss.
+        Never write "Called the Read tool" as text — invoke Read/Grep/Write.
+        A prose-only model turn aborts Gemini. Step 5 is required: always Write.
 
         1. Read .gegenlesen/files.json and .gegenlesen/diff.patch.
         2. Open every source/config/test path in files.json. For a large file,
@@ -110,7 +112,7 @@ public struct PromptRenderer: Sendable {
         - Every finding MUST include a snippet that appears VERBATIM in
           file_path at [start_line, end_line].
         - Do not modify any file except .gegenlesen/findings-\(slotName).json.
-        - If you find nothing after the procedure, write {"findings":[]}.
+        - You MUST Write that file before you stop, even if findings is [].
         """
         return text
     }
