@@ -105,6 +105,7 @@ public struct HarvestPipeline: Sendable {
                 payloadJSON: Self.jsonObject([
                     "rules": counts.rules,
                     "notes": counts.notes,
+                    "skipped": counts.skipped,
                     "judged": judged.judged,
                 ])
             )
@@ -135,9 +136,13 @@ public struct HarvestPipeline: Sendable {
             jobID: jobID,
             level: .info,
             message: "harvest_ingested",
-            payloadJSON: #"{"rules":\#(counts.rules),"notes":\#(counts.notes)}"#
+            payloadJSON: Self.jsonObject([
+                "rules": counts.rules,
+                "notes": counts.notes,
+                "skipped": counts.skipped,
+            ])
         )
-        return counts
+        return (counts.rules, counts.notes)
     }
 
     private func hostOnly(scan: HarvestScan) -> HarvestBundle {
@@ -231,9 +236,10 @@ public struct HarvestPipeline: Sendable {
         jobID: JobID,
         now: Date,
         judged: Bool
-    ) async throws -> (rules: Int, notes: Int) {
+    ) async throws -> (rules: Int, notes: Int, skipped: Int) {
         let repository = try await store.job(id: jobID)?.repository
         var ruleCount = 0
+        var skipped = 0
         for draft in bundle.rules {
             let rule = Rule(
                 id: RuleID.slug(from: "harvest-\(draft.title)"),
@@ -258,6 +264,15 @@ public struct HarvestPipeline: Sendable {
             case .inserted(let id): ruleID = id
             case .attached(let id): ruleID = id
             }
+            if try await LearningDedup.alreadySettled(
+                store: store,
+                kind: .rule,
+                title: draft.title,
+                ruleID: ruleID.rawValue
+            ) {
+                skipped += 1
+                continue
+            }
             try await store.insertLearning(
                 Learning(
                     jobID: jobID,
@@ -276,6 +291,14 @@ public struct HarvestPipeline: Sendable {
         }
         var noteCount = 0
         for note in bundle.notes {
+            if try await LearningDedup.alreadySettled(
+                store: store,
+                kind: .context,
+                title: note.title
+            ) {
+                skipped += 1
+                continue
+            }
             try await store.insertLearning(
                 Learning(
                     jobID: jobID,
@@ -291,7 +314,7 @@ public struct HarvestPipeline: Sendable {
             )
             noteCount += 1
         }
-        return (ruleCount, noteCount)
+        return (ruleCount, noteCount, skipped)
     }
 
     private func dismissUnvettedHarvest(now: Date) async throws {

@@ -351,21 +351,26 @@ public struct MineCorpusPipeline: Sendable {
                     kept: kept,
                     now: now
                 )
-            case .attached:
+            case .attached(let id):
                 attached += 1
-                if let existing = try await store.rule(id: rule.id) {
-                    try await insertRuleLearning(
-                        ruleID: existing.id,
-                        sourceID: sourceID,
-                        original: candidates[index],
-                        kept: kept,
-                        now: now
-                    )
-                }
+                try await insertRuleLearning(
+                    ruleID: id,
+                    sourceID: sourceID,
+                    original: candidates[index],
+                    kept: kept,
+                    now: now
+                )
             }
         }
 
         if let kept = keptByID["sug_context"], let contextTitle, let contextBody {
+            if try await LearningDedup.alreadySettled(
+                store: store,
+                kind: .context,
+                title: kept.title
+            ) {
+                return (inserted, attached)
+            }
             try await store.insertLearning(
                 Learning(
                     jobID: sourceID,
@@ -391,6 +396,14 @@ public struct MineCorpusPipeline: Sendable {
         kept: SuggestionCandidate,
         now: Date
     ) async throws {
+        if try await LearningDedup.alreadySettled(
+            store: store,
+            kind: .rule,
+            title: kept.title,
+            ruleID: ruleID.rawValue
+        ) {
+            return
+        }
         try await store.insertLearning(
             Learning(
                 jobID: sourceID,

@@ -264,6 +264,9 @@ public struct ArchitectureIndexJob: Sendable {
         } else {
             repository = nil
         }
+        if try await LearningDedup.dismissedArchitecture(store: store, bodyHash: hash) {
+            return
+        }
         if let accepted = try await store.acceptedArchitectureNote(repository: repository) {
             let acceptedHash = ContentHash.sha256(Data(accepted.body.utf8))
             if acceptedHash == hash { return }

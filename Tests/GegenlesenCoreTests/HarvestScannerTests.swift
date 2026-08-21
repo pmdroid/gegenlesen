@@ -119,6 +119,60 @@ struct HarvestPipelineTests {
             #expect(learnings.count == 2)
         }
     }
+
+    @Test
+    func dismissedHarvestDoesNotReappear() async throws {
+        try await withPackedHarvest { store, firstID in
+            let pipeline = HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: citedHarvestJSON),
+                suggestionJudge: FailedSuggestionJudge(),
+                model: "none"
+            )
+            try await pipeline.run(jobID: firstID)
+            let pending = try await store.listLearnings(status: .pending)
+            #expect(!pending.isEmpty)
+            for item in pending {
+                var next = item
+                next.status = .dismissed
+                next.resolvedAt = Date()
+                try await store.updateLearning(next)
+            }
+            let secondID = JobID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+            try await enqueueHarvestCopy(store: store, from: firstID, to: secondID)
+            try await pipeline.run(jobID: secondID)
+            let again = try await store.listLearnings(status: .pending)
+            #expect(!again.contains { $0.payloadJSON?.contains("harvest") == true })
+            let events = try await store.events(jobID: secondID)
+            #expect(events.contains { $0.message == "harvest_done" && $0.payloadJSON?.contains("\"skipped\":2") == true })
+        }
+    }
+
+    @Test
+    func acceptedHarvestDoesNotReappear() async throws {
+        try await withPackedHarvest { store, firstID in
+            let pipeline = HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: citedHarvestJSON),
+                suggestionJudge: FailedSuggestionJudge(),
+                model: "none"
+            )
+            try await pipeline.run(jobID: firstID)
+            for item in try await store.listLearnings(status: .pending) {
+                var next = item
+                next.status = .accepted
+                next.resolvedAt = Date()
+                try await store.updateLearning(next)
+            }
+            let secondID = JobID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+            try await enqueueHarvestCopy(store: store, from: firstID, to: secondID)
+            try await pipeline.run(jobID: secondID)
+            let again = try await store.listLearnings(status: .pending)
+            #expect(!again.contains { $0.payloadJSON?.contains("harvest") == true })
+        }
+    }
 }
 
 private let citedHarvestJSON = """
@@ -177,6 +231,16 @@ private struct DroppingSuggestionJudge: SuggestionJudging {
             containerName: "judge"
         )
     }
+}
+
+private func enqueueHarvestCopy(store: Store, from: JobID, to: JobID) async throws {
+    try await store.insertJob(sampleJob(id: to.rawValue, status: .queued))
+    let dest = store.blobs.archiveURL(jobID: to.rawValue)
+    try FileManager.default.createDirectory(
+        at: dest.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.copyItem(at: store.blobs.archiveURL(jobID: from.rawValue), to: dest)
 }
 
 private func withPackedHarvest(_ body: (Store, JobID) async throws -> Void) async throws {

@@ -134,6 +134,66 @@ struct MinerDedupTests {
     }
 }
 
+@Suite
+struct LearningDedupTests {
+    @Test
+    func settledTitleBlocksRepeat() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await store.insertLearning(
+                Learning(
+                    kind: .rule,
+                    status: .dismissed,
+                    title: "Use the project logger",
+                    body: "old",
+                    payloadJSON: #"{"rule_id":"harvest-use-the-project-logger"}"#,
+                    resolvedAt: Date()
+                )
+            )
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .rule,
+                    title: "use the  project logger",
+                    ruleID: "other"
+                )
+            )
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .rule,
+                    title: "A different rule",
+                    ruleID: "harvest-use-the-project-logger"
+                )
+            )
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .rule,
+                    title: "Brand new"
+                ) == false
+            )
+        }
+    }
+
+    @Test
+    func acceptedContextNoteBlocksRepeat() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await store.insertContextNote(
+                ContextNote(title: "OpenCode Server Control Plane", body: "durable")
+            )
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .context,
+                    title: "opencode server control plane"
+                )
+            )
+        }
+    }
+}
+
 private func sampleMinedRule(
     id: RuleID? = nil,
     title: String,
