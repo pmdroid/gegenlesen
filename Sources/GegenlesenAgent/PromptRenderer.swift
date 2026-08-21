@@ -194,25 +194,29 @@ public struct PromptRenderer: Sendable {
     private static let judgePrompt = """
     # gegenlesen judge
 
-    Read .gegenlesen/judge-input.json. That file is written by the host AFTER
-    the reviewer. Each candidate.id is a host ULID — echo it as finding_id.
-    evidence_ok and actual_slice are host-verified. Default is KEEP.
+    Read .gegenlesen/judge-input.json. The host wrote it AFTER the reviewers.
+    Each candidate.id is a host ULID — echo it as finding_id.
 
-    Do not Write judge.json until you have checked each candidate:
-    open file_path around start_line and compare actual_slice to the claim.
-    Use grep/LSP when the defect depends on callers or a missing test.
+    evidence_ok and actual_slice only mean the snippet exists at those
+    lines. They are not a KEEP. Do not decide from the finding title,
+    message, or actual_slice alone.
 
-    For each candidate, decide keep | drop | downgrade.
-    Drop ONLY when the cited evidence does not support the claim
-    (wrong file, snippet not about the alleged defect, rule does not apply).
-    If evidence_ok is false, say so; the host will drop regardless.
-    Do not drop because you consider the issue stylistic if the snippet
-    matches the rule. Downgrade when the defect is real but severity
-    is overstated.
+    For EACH candidate, before any Write:
+    1. Read file_path around start_line (enclosing function/type, not just
+       the snippet). If the path is missing, DROP.
+    2. Ask: does this code actually have the alleged defect? Follow
+       callers, tests, or LSP when the claim needs that.
+    3. KEEP only if you confirmed the claim in source.
+       DROP if the code does not match the claim, the snippet is
+       coincidental, or you skipped the file.
+       DOWNGRADE if the defect is real but severity is overstated.
+    4. If evidence_ok is false, say so; the host will drop it anyway.
+    5. Rationale must say what you saw in the file.
 
-    Write .gegenlesen/judge.json:
+    You MUST Write .gegenlesen/judge.json with one verdict per candidate:
       { "verdicts": [ { "finding_id", "verdict", "rationale", "severity"? } ] }
 
+    Never write "Called the Read tool" as text — invoke Read/Grep.
     Do not invent findings. Do not omit rationale.
     Do not use the question tool. Do not launch plan or subagents.
     Do not modify any file except .gegenlesen/judge.json.

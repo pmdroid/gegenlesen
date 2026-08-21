@@ -178,8 +178,12 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             defaultAgent: "judge",
             timeout: judgeTimeout,
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
-            extraFiles: ["/workspace/.gegenlesen/judge-input.json"],
-            message: "Check each candidate against the cited file, then write verdicts.",
+            extraFiles: [
+                "/workspace/.gegenlesen/judge-input.json",
+                "/workspace/.gegenlesen/diff.patch",
+                "/workspace/.gegenlesen/files.json",
+            ],
+            message: "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
             jobID: jobID,
             livePhase: "judge"
         )

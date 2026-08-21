@@ -100,7 +100,7 @@ public enum OpenCodeConfig: Sendable {
                     "temperature": 0.2,
                 ],
                 "judge": [
-                    "description": "Conservative findings judge that writes .gegenlesen/judge.json",
+                    "description": "Source-checking findings judge that writes .gegenlesen/judge.json",
                     "mode": "primary",
                     "temperature": 0.0,
                 ],

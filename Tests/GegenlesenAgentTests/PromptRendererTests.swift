@@ -20,4 +20,24 @@ struct PromptRendererTests {
         #expect(prompt.contains("You MUST Write that file before you stop"))
         #expect(prompt.contains("Never write \"Called the Read tool\""))
     }
+
+    @Test
+    func judgePromptRequiresReadingCitedSource() throws {
+        try withTempDir("judge-prompt") { root in
+            try PromptRenderer().write(
+                workspace: Workspace(root: root),
+                job: sampleJob(),
+                files: [],
+                rules: []
+            )
+            let text = try String(
+                contentsOf: root.appendingPathComponent(".gegenlesen/prompt-judge.md"),
+                encoding: .utf8
+            )
+            #expect(text.contains("Do not decide from the finding title"))
+            #expect(text.contains("Read file_path around start_line"))
+            #expect(text.contains("KEEP only if you confirmed the claim in source"))
+            #expect(!text.contains("Default is KEEP"))
+        }
+    }
 }
