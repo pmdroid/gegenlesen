@@ -28,17 +28,37 @@ extension Store {
                       reviewer_a_model_id, reviewer_b_model_id, judge_model_id,
                       base_sha, head_sha, default_branch, archive_sha256,
                       archive_bytes, file_count, error_message,
-                      container_name, container_name_a, container_name_b, timings_json
+                      container_name, container_name_a, container_name_b, timings_json,
+                      risk_verdict, risk_json
                     ) VALUES (
                       ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?,
                       ?, ?, ?,
                       ?, ?, ?, ?,
                       ?, ?, ?,
-                      ?, ?, ?, ?
+                      ?, ?, ?, ?,
+                      ?, ?
                     )
                     """,
                 arguments: job.sqlArguments
+            )
+        }
+    }
+
+    public func updateJobRisk(jobID: JobID, assessment: RiskAssessment) throws {
+        try write { db in
+            try db.execute(
+                sql: """
+                    UPDATE jobs
+                    SET risk_verdict = ?, risk_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    assessment.verdict.rawValue,
+                    RiskGate.encode(assessment),
+                    ISO8601Dates.string(from: Date()),
+                    jobID.rawValue,
+                ]
             )
         }
     }
@@ -713,6 +733,8 @@ extension Job {
             containerNameA,
             containerNameB,
             timings.flatMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) },
+            risk?.verdict.rawValue,
+            risk.flatMap(RiskGate.encode),
         ])
     }
 
@@ -745,7 +767,8 @@ extension Job {
             containerName: row.optionalString("container_name"),
             containerNameA: row.optionalString("container_name_a"),
             containerNameB: row.optionalString("container_name_b"),
-            timings: timings
+            timings: timings,
+            risk: RiskGate.decode(row.optionalString("risk_json"))
         )
     }
 }

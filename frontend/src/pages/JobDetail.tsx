@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest, type JobListItem, type JobStatus } from "../api";
-import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback } from "../client";
+import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback, postRiskLabel } from "../client";
 
 function shortSHA(sha: string | null): string {
   if (!sha) return "—";
@@ -83,6 +83,13 @@ export function JobDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ["learnings"] });
     },
   });
+  const riskLabel = useMutation({
+    mutationFn: (safeUnread: boolean) => postRiskLabel(id ?? "", safeUnread),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["job", id] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
 
   if (!id) {
     return (
@@ -153,6 +160,11 @@ export function JobDetailPage() {
           <span className="t">{detail.title ?? detail.id}</span>
           <span className="sha">{shortSHA(detail.head_sha ?? detail.base_sha)}</span>
           <span className={statusClass(detail.status)}>{detail.status}</span>
+          {detail.risk ? (
+            <span className={detail.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
+              {detail.risk.verdict}
+            </span>
+          ) : null}
         </div>
         <div className="pipe">{pipelineLine(detail)}</div>
         <div className="pipe" style={{ borderBottom: summaryLine(detail) ? undefined : 0 }}>
@@ -173,6 +185,57 @@ export function JobDetailPage() {
           </div>
         ) : null}
       </div>
+
+      {detail.risk ? (
+        <div className="jobblock">
+          <div className="jobhead">
+            <span className="t">risk</span>
+            <span className={detail.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
+              {detail.risk.verdict}
+            </span>
+            <span className="sha">{detail.risk.mode}</span>
+            {detail.risk.safe_unread === true ? <span className="st ok">labeled safe unread</span> : null}
+            {detail.risk.safe_unread === false ? <span className="st fail">labeled unsafe</span> : null}
+          </div>
+          {detail.risk.reasons.length === 0 ? (
+            <div className="pipe" style={{ borderBottom: 0 }}>
+              no vetoes
+            </div>
+          ) : (
+            detail.risk.reasons.map((reason, index) => (
+              <div
+                className="pipe"
+                style={{ borderBottom: index === detail.risk!.reasons.length - 1 ? 0 : undefined }}
+                key={`${reason.code}-${index}`}
+              >
+                {reason.code} · {reason.detail}
+              </div>
+            ))
+          )}
+          {detail.status === "succeeded" && detail.risk.safe_unread == null ? (
+            <div className="pipe" style={{ borderBottom: 0 }}>
+              would you have merged this without reading it?{" "}
+              <button
+                type="button"
+                className="btn"
+                disabled={riskLabel.isPending}
+                onClick={() => riskLabel.mutate(true)}
+              >
+                yes
+              </button>{" "}
+              <button
+                type="button"
+                className="btn"
+                disabled={riskLabel.isPending}
+                onClick={() => riskLabel.mutate(false)}
+              >
+                no
+              </button>
+            </div>
+          ) : null}
+          {riskLabel.isError ? <div className="formerr">could not save risk label</div> : null}
+        </div>
+      ) : null}
 
       <div className="pagehead">
         <h1>findings</h1>

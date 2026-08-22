@@ -21,7 +21,7 @@ struct HealthTests {
     func configureOpensSQLiteStore() async throws {
         try await withGegenlesenApp { app in
             let identifiers = try await app.gegenlesenStore.appliedMigrationIdentifiers()
-            #expect(identifiers == [Migrations.v1Initial, Migrations.v2Repositories])
+            #expect(identifiers == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk])
             #expect(!(try await app.gegenlesenStore.tableExists("settings")))
         }
     }

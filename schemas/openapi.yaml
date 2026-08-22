@@ -265,6 +265,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/FindingFeedbackListResponse" }
         "404": { $ref: "#/components/responses/Error" }
+  /api/jobs/{id}/risk-label:
+    post:
+      operationId: labelJobRisk
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [safe_unread]
+              properties:
+                safe_unread: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /api/findings/{id}/feedback:
     post:
       operationId: createFindingFeedback
@@ -581,10 +604,46 @@ components:
       properties:
         model_a: { type: string }
         model_b: { type: string }
+    RiskMode:
+      type: string
+      enum: [off, shadow, enforce]
+    RiskVerdict:
+      type: string
+      enum: [auto_approve, needs_human]
+    RiskConfig:
+      type: object
+      additionalProperties: false
+      required: [mode, max_files, max_lines, sensitive_globs]
+      properties:
+        mode: { $ref: "#/components/schemas/RiskMode" }
+        max_files: { type: integer, minimum: 0 }
+        max_lines: { type: integer, minimum: 0 }
+        sensitive_globs:
+          type: array
+          items: { type: string }
+    RiskReason:
+      type: object
+      additionalProperties: false
+      required: [code, detail, finding_id]
+      properties:
+        code: { type: string }
+        detail: { type: string }
+        finding_id: { type: ["string", "null"] }
+    RiskAssessment:
+      type: object
+      additionalProperties: false
+      required: [verdict, mode, reasons, safe_unread]
+      properties:
+        verdict: { $ref: "#/components/schemas/RiskVerdict" }
+        mode: { $ref: "#/components/schemas/RiskMode" }
+        reasons:
+          type: array
+          items: { $ref: "#/components/schemas/RiskReason" }
+        safe_unread: { type: ["boolean", "null"] }
     SettingsDTO:
       type: object
       additionalProperties: false
-      required: [bind, port, models, judge_model, opencode_image, limits, openrouter_configured]
+      required: [bind, port, models, judge_model, opencode_image, limits, openrouter_configured, risk]
       properties:
         bind: { type: string }
         port: { type: integer }
@@ -594,6 +653,7 @@ components:
         scanner_image: { type: string }
         limits: { $ref: "#/components/schemas/Limits" }
         openrouter_configured: { type: boolean }
+        risk: { $ref: "#/components/schemas/RiskConfig" }
     SettingsUpdate:
       type: object
       additionalProperties: false
@@ -680,6 +740,7 @@ components:
         - started_at
         - finished_at
         - error_message
+        - risk
       properties:
         id: { type: string, format: uuid }
         title: { type: ["string", "null"] }
@@ -698,6 +759,10 @@ components:
         started_at: { type: ["string", "null"], format: date-time }
         finished_at: { type: ["string", "null"], format: date-time }
         error_message: { type: ["string", "null"] }
+        risk:
+          oneOf:
+            - { $ref: "#/components/schemas/RiskAssessment" }
+            - { type: "null" }
     JobListResponse:
       type: object
       additionalProperties: false

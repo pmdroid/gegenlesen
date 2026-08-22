@@ -34,6 +34,7 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 .st.ok { background: #14301a; color: #81c784; }
 .st.run { background: #2b2a10; color: #d4c95a; }
 .st.fail { background: #331414; color: #e57373; }
+.st.human { background: #2b2a10; color: #d4c95a; }
 .pipe { padding: 6px 14px; color: #557a58; font-size: 11.5px; border-bottom: 1px solid #1e2b1a; }
 .pipe b { color: #a5d6a7; font-weight: 400; }
 

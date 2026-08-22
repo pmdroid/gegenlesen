@@ -3,11 +3,13 @@ import GRDB
 public enum Migrations {
     public static let v1Initial = "v1_initial"
     public static let v2Repositories = "v2_repositories"
+    public static let v3Risk = "v3_risk"
 
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration(v1Initial, migrate: migrateV1Initial)
         migrator.registerMigration(v2Repositories, migrate: migrateV2Repositories)
+        migrator.registerMigration(v3Risk, migrate: migrateV3Risk)
         return migrator
     }
 
@@ -183,5 +185,10 @@ public enum Migrations {
         try db.execute(sql: "CREATE INDEX jobs_repository ON jobs(repository)")
         try db.execute(sql: "CREATE INDEX rules_repository ON rules(repository)")
         try db.execute(sql: "CREATE INDEX context_notes_repository ON context_notes(repository)")
+    }
+
+    private static func migrateV3Risk(_ db: Database) throws {
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN risk_verdict TEXT")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN risk_json TEXT")
     }
 }

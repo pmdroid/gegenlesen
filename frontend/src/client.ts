@@ -154,6 +154,10 @@ export function learnFromJob(id: string): Promise<MineAccepted> {
   return sendJSON(`/api/jobs/${id}/learn`, "POST");
 }
 
+export function postRiskLabel(id: string, safeUnread: boolean): Promise<JobDetail> {
+  return sendJSON(`/api/jobs/${id}/risk-label`, "POST", { safe_unread: safeUnread });
+}
+
 export async function listInboxRules(): Promise<Rule[]> {
   const [suggested, mined, handwritten] = await Promise.all([
     listRules({ provenance: "suggested" }),
