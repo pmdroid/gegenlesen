@@ -228,6 +228,59 @@ struct EmbeddingRetrieveTests {
             }
         }
     }
+
+    @Test
+    func pendingArchitectureCardFromAnotherRepoDoesNotSkipMiner() async throws {
+        try await withTempDir("arch-other-repo") { root in
+            try writeFile("Package.swift", "// swift-tools-version: 6.0\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                let now = Date()
+                let other = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/other",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(other)
+                try await store.insertLearning(
+                    Learning(
+                        jobID: other.id,
+                        kind: .architecture,
+                        title: "Architecture card",
+                        body: "other repo card"
+                    )
+                )
+                let job = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/meister",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(job)
+                let miner = CountingArchitectureMiner()
+                miner.card = "# Architecture draft\n\nthis repo card\n"
+                let draft = try await ArchitectureIndexJob(
+                    store: store,
+                    skipAgent: false,
+                    miner: miner
+                ).run(workspace: Workspace(root: root), jobID: job.id)
+                #expect(miner.calls == 1)
+                #expect(draft.contains("this repo card"))
+                #expect(!draft.contains("other repo card"))
+            }
+        }
+    }
 }
 
 private final class CountingArchitectureMiner: MinerRunning, @unchecked Sendable {

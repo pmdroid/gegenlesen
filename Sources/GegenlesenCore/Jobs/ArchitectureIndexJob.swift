@@ -245,12 +245,32 @@ public struct ArchitectureIndexJob: Sendable {
             let body = global.body.trimmingCharacters(in: .whitespacesAndNewlines)
             if !body.isEmpty { return global.body }
         }
-        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
-        if let item = pending.first {
+        if let item = try await pendingArchitecture(repository: repository, allowUnscoped: true) {
             let body = item.body.trimmingCharacters(in: .whitespacesAndNewlines)
             if !body.isEmpty { return item.body }
         }
         return nil
+    }
+
+    private func pendingArchitecture(repository: String?, allowUnscoped: Bool) async throws -> Learning? {
+        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
+        var unscoped: Learning?
+        for item in pending {
+            let itemRepo = try await learningRepository(item)
+            if itemRepo == repository {
+                return item
+            }
+            if itemRepo == nil, unscoped == nil {
+                unscoped = item
+            }
+        }
+        if allowUnscoped { return unscoped }
+        return nil
+    }
+
+    private func learningRepository(_ item: Learning) async throws -> String? {
+        guard let jobID = item.jobID else { return nil }
+        return try await store.job(id: jobID)?.repository
     }
 
     private func draftFromMiner(workspace: Workspace, jobID: JobID, fallback: String) async -> String? {
@@ -311,8 +331,7 @@ public struct ArchitectureIndexJob: Sendable {
             let acceptedHash = ContentHash.sha256(Data(accepted.body.utf8))
             if acceptedHash == hash { return }
         }
-        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
-        if var existing = pending.first {
+        if var existing = try await pendingArchitecture(repository: repository, allowUnscoped: repository == nil) {
             existing.body = draft
             existing.title = "Architecture card"
             try await store.updateLearning(existing)
