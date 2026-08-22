@@ -151,6 +151,157 @@ struct EmbeddingRetrieveTests {
             }
         }
     }
+
+    @Test
+    func architectureMinerRunsOnceThenReusesStoredCard() async throws {
+        try await withTempDir("arch-once") { root in
+            try writeFile("Package.swift", "// swift-tools-version: 6.0\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                let now = Date()
+                let job = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/meister",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(job)
+                let miner = CountingArchitectureMiner()
+                let indexer = ArchitectureIndexJob(
+                    store: store,
+                    skipAgent: false,
+                    miner: miner
+                )
+                let first = try await indexer.run(workspace: Workspace(root: root), jobID: job.id)
+                #expect(miner.calls == 1)
+                #expect(first.contains("mined card"))
+                let pending = try await store.listLearnings(status: .pending, kind: .architecture)
+                #expect(pending.count == 1)
+
+                let second = try await indexer.run(workspace: Workspace(root: root), jobID: job.id)
+                #expect(miner.calls == 1)
+                #expect(second.contains("mined card"))
+            }
+        }
+    }
+
+    @Test
+    func acceptedArchitectureCardSkipsMiner() async throws {
+        try await withTempDir("arch-accepted") { root in
+            try writeFile("Package.swift", "// swift-tools-version: 6.0\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                try await store.insertContextNote(
+                    ContextNote(
+                        kind: .architecture,
+                        title: "Architecture card",
+                        body: "stored layers and entrypoints",
+                        repository: "github.com/acme/meister"
+                    )
+                )
+                let now = Date()
+                let job = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/meister",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(job)
+                let miner = CountingArchitectureMiner()
+                let draft = try await ArchitectureIndexJob(
+                    store: store,
+                    skipAgent: false,
+                    miner: miner
+                ).run(workspace: Workspace(root: root), jobID: job.id)
+                #expect(miner.calls == 0)
+                #expect(draft.contains("stored layers and entrypoints"))
+            }
+        }
+    }
+
+    @Test
+    func pendingArchitectureCardFromAnotherRepoDoesNotSkipMiner() async throws {
+        try await withTempDir("arch-other-repo") { root in
+            try writeFile("Package.swift", "// swift-tools-version: 6.0\n", in: root)
+            try await withTempDataDir { dir in
+                let store = try Store.open(dataDir: dir)
+                let now = Date()
+                let other = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/other",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(other)
+                try await store.insertLearning(
+                    Learning(
+                        jobID: other.id,
+                        kind: .architecture,
+                        title: "Architecture card",
+                        body: "other repo card"
+                    )
+                )
+                let job = Job(
+                    id: JobID.generate(),
+                    createdAt: now,
+                    updatedAt: now,
+                    status: .queued,
+                    scope: .full,
+                    repository: "github.com/acme/meister",
+                    reviewerAModelID: "a",
+                    reviewerBModelID: "b",
+                    judgeModelID: "j"
+                )
+                try await store.insertJob(job)
+                let miner = CountingArchitectureMiner()
+                miner.card = "# Architecture draft\n\nthis repo card\n"
+                let draft = try await ArchitectureIndexJob(
+                    store: store,
+                    skipAgent: false,
+                    miner: miner
+                ).run(workspace: Workspace(root: root), jobID: job.id)
+                #expect(miner.calls == 1)
+                #expect(draft.contains("this repo card"))
+                #expect(!draft.contains("other repo card"))
+            }
+        }
+    }
+}
+
+private final class CountingArchitectureMiner: MinerRunning, @unchecked Sendable {
+    var calls = 0
+    var card = "# Architecture draft\n\nmined card\n"
+
+    func runMiner(
+        jobID: JobID,
+        workspace: Workspace,
+        model: String,
+        isCancelled: (@Sendable () async -> Bool)?
+    ) async -> MinerRunResult {
+        calls += 1
+        let dest = workspace.root.appendingPathComponent(".gegenlesen/architecture-draft.md")
+        try? FileManager.default.createDirectory(
+            at: dest.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? card.write(to: dest, atomically: true, encoding: .utf8)
+        return MinerRunResult(containerName: "mine", failed: false)
+    }
 }
 
 final class CountingEmbedder: EmbeddingClient, @unchecked Sendable {

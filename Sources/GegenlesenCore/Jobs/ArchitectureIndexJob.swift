@@ -8,6 +8,7 @@ public struct ArchitectureIndexJob: Sendable {
     public var miner: (any MinerRunning)?
     public var model: String
     public var onWarning: (@Sendable (String) async -> Void)?
+    public var onInfo: (@Sendable (String) async -> Void)?
 
     public init(
         store: Store,
@@ -16,7 +17,8 @@ public struct ArchitectureIndexJob: Sendable {
         skipAgent: Bool = true,
         miner: (any MinerRunning)? = nil,
         model: String = "openrouter/openai/gpt-5.6-terra",
-        onWarning: (@Sendable (String) async -> Void)? = nil
+        onWarning: (@Sendable (String) async -> Void)? = nil,
+        onInfo: (@Sendable (String) async -> Void)? = nil
     ) {
         self.store = store
         self.embedder = embedder
@@ -25,6 +27,7 @@ public struct ArchitectureIndexJob: Sendable {
         self.miner = miner
         self.model = model
         self.onWarning = onWarning
+        self.onInfo = onInfo
     }
 
     public static func chunkID(kind: ChunkKind, ref: String, ordinal: Int) -> String {
@@ -34,9 +37,21 @@ public struct ArchitectureIndexJob: Sendable {
     @discardableResult
     public func run(workspace: Workspace, jobID: JobID?) async throws -> String {
         try await indexFiles(workspace: workspace)
-        var draft = renderDraft(modules: walk(workspace.root).modules, skipAgent: skipAgent)
-        if !skipAgent, let miner, let jobID {
-            draft = await draftFromMiner(workspace: workspace, jobID: jobID, fallback: draft)
+        let fallback = renderDraft(modules: walk(workspace.root).modules, skipAgent: skipAgent)
+        var draft = fallback
+        var storeDraft = true
+        if let stored = try await storedCard(jobID: jobID) {
+            draft = stored
+            await onInfo?("architecture_cached")
+        } else if !skipAgent, miner != nil, let jobID {
+            if let mined = await draftFromMiner(workspace: workspace, jobID: jobID, fallback: fallback) {
+                draft = mined
+                await onInfo?("architecture_mined")
+            } else {
+                draft = fallback
+                storeDraft = false
+                await onWarning?("architecture_index_failed")
+            }
         }
         let dest = workspace.root.appendingPathComponent(".gegenlesen/architecture-draft.md")
         try FileManager.default.createDirectory(
@@ -44,7 +59,9 @@ public struct ArchitectureIndexJob: Sendable {
             withIntermediateDirectories: true
         )
         try draft.write(to: dest, atomically: true, encoding: .utf8)
-        try await upsertArchitectureLearning(draft: draft, jobID: jobID)
+        if storeDraft {
+            try await upsertArchitectureLearning(draft: draft, jobID: jobID)
+        }
         return draft
     }
 
@@ -212,7 +229,51 @@ public struct ArchitectureIndexJob: Sendable {
         try await store.deleteChunks(ids: stale)
     }
 
-    private func draftFromMiner(workspace: Workspace, jobID: JobID, fallback: String) async -> String {
+    private func storedCard(jobID: JobID?) async throws -> String? {
+        let repository: String?
+        if let jobID {
+            repository = try await store.job(id: jobID)?.repository
+        } else {
+            repository = nil
+        }
+        if let accepted = try await store.acceptedArchitectureNote(repository: repository) {
+            let body = accepted.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { return accepted.body }
+        }
+        if repository != nil,
+           let global = try await store.acceptedArchitectureNote(repository: nil) {
+            let body = global.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { return global.body }
+        }
+        if let item = try await pendingArchitecture(repository: repository, allowUnscoped: true) {
+            let body = item.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { return item.body }
+        }
+        return nil
+    }
+
+    private func pendingArchitecture(repository: String?, allowUnscoped: Bool) async throws -> Learning? {
+        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
+        var unscoped: Learning?
+        for item in pending {
+            let itemRepo = try await learningRepository(item)
+            if itemRepo == repository {
+                return item
+            }
+            if itemRepo == nil, unscoped == nil {
+                unscoped = item
+            }
+        }
+        if allowUnscoped { return unscoped }
+        return nil
+    }
+
+    private func learningRepository(_ item: Learning) async throws -> String? {
+        guard let jobID = item.jobID else { return nil }
+        return try await store.job(id: jobID)?.repository
+    }
+
+    private func draftFromMiner(workspace: Workspace, jobID: JobID, fallback: String) async -> String? {
         let prompt = """
             Draft a short architecture card for this repository.
             Cover layers, entrypoints, logging conventions, and forbidden areas.
@@ -235,10 +296,9 @@ public struct ArchitectureIndexJob: Sendable {
                 encoding: .utf8
             )
         } catch {
-            await onWarning?("architecture_index_failed")
-            return fallback
+            return nil
         }
-        guard let miner else { return fallback }
+        guard let miner else { return nil }
         let result = await miner.runMiner(
             jobID: jobID,
             workspace: workspace,
@@ -246,14 +306,14 @@ public struct ArchitectureIndexJob: Sendable {
             isCancelled: nil
         )
         if result.failed {
-            await onWarning?("architecture_index_failed")
-            return fallback
+            return nil
         }
         let dest = workspace.root.appendingPathComponent(".gegenlesen/architecture-draft.md")
-        if let text = try? String(contentsOf: dest, encoding: .utf8), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let text = try? String(contentsOf: dest, encoding: .utf8),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text
         }
-        return fallback
+        return nil
     }
 
     private func upsertArchitectureLearning(draft: String, jobID: JobID?) async throws {
@@ -271,8 +331,7 @@ public struct ArchitectureIndexJob: Sendable {
             let acceptedHash = ContentHash.sha256(Data(accepted.body.utf8))
             if acceptedHash == hash { return }
         }
-        let pending = try await store.listLearnings(status: .pending, kind: .architecture)
-        if var existing = pending.first {
+        if var existing = try await pendingArchitecture(repository: repository, allowUnscoped: repository == nil) {
             existing.body = draft
             existing.title = "Architecture card"
             try await store.updateLearning(existing)
