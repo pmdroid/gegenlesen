@@ -148,6 +148,21 @@ struct RiskGateTests {
         ++++ token
         """.utf8)
         #expect(RiskGate.changedLines(in: patch) == 2)
+        let plusPlus = Data("+++ /dev/null\n+--\n+++\n".utf8)
+        #expect(RiskGate.changedLines(in: plusPlus) == 2)
+    }
+
+    @Test
+    func missingJudgeInputIsUnavailable() {
+        #expect(RiskGate.judgeDidNotRun(wroteInput: false, outcome: .verdicts(JudgeFile(verdicts: []))))
+        #expect(RiskGate.judgeDidNotRun(wroteInput: true, outcome: .containerFailed))
+        #expect(RiskGate.judgeDidNotRun(wroteInput: true, outcome: .invalidFile))
+        #expect(
+            !RiskGate.judgeDidNotRun(
+                wroteInput: true,
+                outcome: .verdicts(JudgeFile(verdicts: []))
+            )
+        )
     }
 }
 

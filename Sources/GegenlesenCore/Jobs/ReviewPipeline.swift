@@ -483,9 +483,7 @@ public struct ReviewPipeline: Sendable {
             patch: patchBytes,
             reviewersInvoked: true,
             validReviewerFiles: review.validFileCount,
-            judgeUnavailable: !wroteInput
-                || outcome == .containerFailed
-                || outcome == .invalidFile
+            judgeUnavailable: RiskGate.judgeDidNotRun(wroteInput: wroteInput, outcome: outcome)
         )
     }
 

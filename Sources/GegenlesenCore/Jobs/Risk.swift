@@ -299,7 +299,7 @@ public enum RiskGate: Sendable {
             if line.hasPrefix("diff ") || line.hasPrefix("index ") || line.hasPrefix("@@") {
                 continue
             }
-            if line.hasPrefix("+++ ") || line.hasPrefix("--- ") || line == "+++" || line == "---" {
+            if line.hasPrefix("+++ ") || line.hasPrefix("--- ") {
                 continue
             }
             if line.hasPrefix("+") || line.hasPrefix("-") {
@@ -307,6 +307,10 @@ public enum RiskGate: Sendable {
             }
         }
         return count
+    }
+
+    public static func judgeDidNotRun(wroteInput: Bool, outcome: JudgeOutcome) -> Bool {
+        !wroteInput || outcome == .containerFailed || outcome == .invalidFile
     }
 
     public static func encode(_ assessment: RiskAssessment) -> String? {
