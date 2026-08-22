@@ -343,12 +343,12 @@ public enum RiskGate: Sendable {
         hard: inout [RiskReason],
         scored: inout [RiskReason]
     ) {
-        if maxFiles > 0, files > maxFiles * 4 {
+        if files > maxFiles * 4 {
             hard.append(RiskReason(
                 code: "too_many_files",
                 detail: "\(files) files exceed 4× max_files \(maxFiles)"
             ))
-        } else if maxFiles > 0, files > maxFiles {
+        } else if files > maxFiles {
             scored.append(RiskReason(
                 code: "too_many_files",
                 detail: "\(files) files exceed max_files \(maxFiles)",
@@ -356,12 +356,12 @@ public enum RiskGate: Sendable {
             ))
         }
         if let lines {
-            if maxLines > 0, lines > maxLines * 4 {
+            if lines > maxLines * 4 {
                 hard.append(RiskReason(
                     code: "too_many_lines",
                     detail: "\(lines) changed lines exceed 4× max_lines \(maxLines)"
                 ))
-            } else if maxLines > 0, lines > maxLines {
+            } else if lines > maxLines {
                 scored.append(RiskReason(
                     code: "too_many_lines",
                     detail: "\(lines) changed lines exceed max_lines \(maxLines)",

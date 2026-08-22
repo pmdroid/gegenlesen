@@ -73,7 +73,69 @@ struct RiskGateTests {
                 status: .modified
             )
         }
-        #expect(RiskGate.evaluate(input).reasons.contains { $0.code == "too_many_files" })
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "too_many_files" })
+        #expect(report.reasons.contains { $0.code == "too_many_files" && $0.points == 1 })
+        #expect(report.verdict == .needsHuman)
+    }
+
+    @Test
+    func fourTimesFileCapIsHard() {
+        var input = baseInput()
+        input.files = (1...21).map {
+            JobFile(
+                jobID: JobID("11111111-1111-4111-8111-111111111111"),
+                path: "Sources/\($0).swift",
+                status: .modified
+            )
+        }
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "too_many_files" && $0.points == nil })
+        #expect(report.verdict == .needsHuman)
+        input.config.appetite = 5
+        #expect(RiskGate.evaluate(input).verdict == .needsHuman)
+    }
+
+    @Test
+    func zeroMaxFilesIsFailClosed() {
+        var input = baseInput()
+        input.config.maxFiles = 0
+        input.config.appetite = 5
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "too_many_files" && $0.points == nil })
+        #expect(report.verdict == .needsHuman)
+    }
+
+    @Test
+    func zeroMaxLinesIsFailClosed() {
+        var input = baseInput()
+        input.changedLines = 1
+        input.config.maxLines = 0
+        input.config.appetite = 5
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "too_many_lines" && $0.points == nil })
+        #expect(report.verdict == .needsHuman)
+    }
+
+    @Test
+    func unknownLineCountAddsAPoint() {
+        var input = baseInput()
+        input.changedLines = nil
+        let report = RiskGate.evaluate(input)
+        #expect(report.reasons.contains { $0.code == "unknown_line_count" && $0.points == 1 })
+        #expect(report.score == 2)
+        #expect(report.verdict == .needsHuman)
+    }
+
+    @Test
+    func levelFromPointsBoundaries() {
+        #expect(RiskGate.level(fromPoints: 0) == 1)
+        #expect(RiskGate.level(fromPoints: 1) == 2)
+        #expect(RiskGate.level(fromPoints: 2) == 3)
+        #expect(RiskGate.level(fromPoints: 3) == 4)
+        #expect(RiskGate.level(fromPoints: 4) == 4)
+        #expect(RiskGate.level(fromPoints: 5) == 5)
+        #expect(RiskGate.level(fromPoints: 9) == 5)
     }
 
     @Test
