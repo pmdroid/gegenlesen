@@ -164,6 +164,7 @@ public struct ReviewPipeline: Sendable {
 
         let files = try await store.jobFiles(id: jobID)
         let workspace = Workspace(root: workspaceURL)
+        patchBytes = loadPatchText(jobID: jobID, workspace: workspace)
         do {
             let indexer = ArchitectureIndexJob(
                 store: store,
