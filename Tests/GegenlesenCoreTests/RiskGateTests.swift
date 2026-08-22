@@ -136,6 +136,19 @@ struct RiskGateTests {
         """.utf8)
         #expect(RiskGate.changedLines(in: patch) == 3)
     }
+
+    @Test
+    func changedLinesCountsContentThatLooksLikeHeaders() {
+        let patch = Data("""
+        diff --git a/a.swift b/a.swift
+        --- a/a.swift
+        +++ b/a.swift
+        @@ -1 +1,2 @@
+        ---- token
+        ++++ token
+        """.utf8)
+        #expect(RiskGate.changedLines(in: patch) == 2)
+    }
 }
 
 private func baseInput() -> RiskGate.Input {

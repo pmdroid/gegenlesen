@@ -483,7 +483,9 @@ public struct ReviewPipeline: Sendable {
             patch: patchBytes,
             reviewersInvoked: true,
             validReviewerFiles: review.validFileCount,
-            judgeUnavailable: outcome == .containerFailed || outcome == .invalidFile
+            judgeUnavailable: !wroteInput
+                || outcome == .containerFailed
+                || outcome == .invalidFile
         )
     }
 

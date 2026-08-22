@@ -296,9 +296,10 @@ public enum RiskGate: Sendable {
         }
         var count = 0
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.hasPrefix("+++") || line.hasPrefix("---") || line.hasPrefix("diff ")
-                || line.hasPrefix("index ") || line.hasPrefix("@@")
-            {
+            if line.hasPrefix("diff ") || line.hasPrefix("index ") || line.hasPrefix("@@") {
+                continue
+            }
+            if line.hasPrefix("+++ ") || line.hasPrefix("--- ") || line == "+++" || line == "---" {
                 continue
             }
             if line.hasPrefix("+") || line.hasPrefix("-") {
