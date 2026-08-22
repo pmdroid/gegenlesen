@@ -83,13 +83,12 @@ public struct FindingMatcher: Sendable {
             return copy(parent, lifecycle: .resolved, path: path, start: parent.startLine, end: parent.endLine, now: now)
         }
 
-        let hits = Self.snippetHits(in: text ?? "", snippet: parent.snippet ?? "")
-        let sameLines = hits.contains { $0.start == parent.startLine && $0.end == parent.endLine }
         let sameSHA = childSHA != nil && childSHA == parentSHA
-
-        if sameSHA, sameLines {
+        if sameSHA {
             return copy(parent, lifecycle: .stillOpen, path: path, start: parent.startLine, end: parent.endLine, now: now)
         }
+
+        let hits = Self.snippetHits(in: text ?? "", snippet: parent.snippet ?? "")
         if hits.isEmpty {
             return copy(parent, lifecycle: .resolved, path: path, start: parent.startLine, end: parent.endLine, now: now)
         }
@@ -222,15 +221,20 @@ public struct FindingMatcher: Sendable {
     static func snippetHits(in text: String, snippet: String) -> [LineRange] {
         let needle = Normalize.whitespace(snippet)
         guard !needle.isEmpty else { return [] }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         var hits: [LineRange] = []
         for start in lines.indices {
             var chunk = ""
+            chunk.reserveCapacity(min(snippet.count, 4096))
             for end in start..<lines.count {
                 if !chunk.isEmpty { chunk.append("\n") }
-                chunk.append(lines[end])
-                if Normalize.whitespace(chunk) == needle {
+                chunk.append(contentsOf: lines[end])
+                let hay = Normalize.whitespace(chunk)
+                if hay == needle {
                     hits.append(LineRange(start: start + 1, end: end + 1))
+                    break
+                }
+                if hay.count > needle.count {
                     break
                 }
             }

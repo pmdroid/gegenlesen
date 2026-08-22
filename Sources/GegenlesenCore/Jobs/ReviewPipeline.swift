@@ -175,6 +175,9 @@ public struct ReviewPipeline: Sendable {
                 model: minerModel,
                 onWarning: { [store, jobID] message in
                     try? await store.appendEvent(jobID: jobID, level: .warning, message: message)
+                },
+                onInfo: { [store, jobID] message in
+                    try? await store.appendEvent(jobID: jobID, level: .info, message: message)
                 }
             )
             try await indexer.run(workspace: workspace, jobID: jobID)
