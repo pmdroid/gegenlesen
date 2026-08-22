@@ -130,6 +130,7 @@ public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {
     case siblingTest = "sibling_test"
     case command
     case openapiBreak = "openapi_break"
+    case riskWeight = "risk_weight"
 }
 
 public enum EventLevel: String, Codable, Sendable, Equatable {

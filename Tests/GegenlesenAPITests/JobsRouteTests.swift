@@ -402,6 +402,8 @@ struct JobsRouteTests {
             let assessment = RiskAssessment(
                 verdict: .autoApprove,
                 mode: .shadow,
+                score: 1,
+                appetite: 1,
                 reasons: []
             )
             let job = Job(

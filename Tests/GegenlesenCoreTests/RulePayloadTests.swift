@@ -39,6 +39,14 @@ struct RulePayloadTests {
     }
 
     @Test
+    func riskWeightRoundTrip() throws {
+        let payload = RulePayload.riskWeight(weight: 2, match: .all, veto: true)
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(RulePayload.self, from: data)
+        #expect(decoded == payload)
+    }
+
+    @Test
     func regexRoundTrip() throws {
         let payload = RulePayload.regex(pattern: "foo", flags: "i", message: "no")
         let data = try JSONEncoder().encode(payload)

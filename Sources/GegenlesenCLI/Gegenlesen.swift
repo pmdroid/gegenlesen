@@ -49,9 +49,10 @@ struct Review: AsyncParsableCommand {
             print(terminal.status)
         }
         if let risk = terminal.risk {
-            print("risk \(risk.verdict) \(risk.mode)")
+            print("risk \(risk.verdict) score \(risk.score ?? 0)/\(risk.appetite ?? 0) \(risk.mode)")
             for reason in risk.reasons {
-                print("  \(reason.code)  \(reason.detail)")
+                let points = reason.points.map { " \($0 > 0 ? "+" : "")\($0)" } ?? ""
+                print("  \(reason.code)\(points)  \(reason.detail)")
             }
         }
         if terminal.status == "failed" || terminal.status == "cancelled" {

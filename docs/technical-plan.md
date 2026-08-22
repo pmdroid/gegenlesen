@@ -131,13 +131,15 @@ enum RuleProvenance: String, Codable { case handwritten, mined }
 
 enum FileChangeStatus: String, Codable { case added, modified, deleted, renamed }
 
-enum DeterministicCheckerKind: String, Codable { case regex, denyApi = "deny_api", siblingTest = "sibling_test", command, openapiBreak = "openapi_break" }
+enum DeterministicCheckerKind: String, Codable { case regex, denyApi = "deny_api", siblingTest = "sibling_test", command, openapiBreak = "openapi_break", riskWeight = "risk_weight" }
 
 enum EventLevel: String, Codable { case debug, info, warning, error }
 
 enum RiskMode: String, Codable { case off, shadow, enforce }
 
 enum RiskVerdict: String, Codable { case autoApprove = "auto_approve", needsHuman = "needs_human" }
+
+Appetite is an integer 1–5 on `risk.appetite`. Job `RiskAssessment` includes `score` and `appetite`. Weight rules use payload checker `risk_weight`.
 
 enum AgentPhase: String, Codable { case review, judge, command, openapiBreak = "openapi_break", miner }
 

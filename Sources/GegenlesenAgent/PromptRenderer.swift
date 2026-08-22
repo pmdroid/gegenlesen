@@ -159,6 +159,13 @@ public struct PromptRenderer: Sendable {
             payload = ["checker": "command", "argv": argv, "timeout_sec": timeoutSec]
         case .openapiBreak(let specGlobs, let failOn, let message):
             payload = ["checker": "openapi_break", "spec_globs": specGlobs, "fail_on": failOn, "message": message]
+        case .riskWeight(let weight, let match, let veto):
+            payload = [
+                "checker": "risk_weight",
+                "weight": weight,
+                "match": match.rawValue,
+                "veto": veto,
+            ]
         }
         return [
             "id": rule.id.rawValue,

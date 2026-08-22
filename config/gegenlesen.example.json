@@ -28,6 +28,7 @@
   },
   "risk": {
     "mode": "shadow",
+    "appetite": 1,
     "max_files": 5,
     "max_lines": 200,
     "sensitive_globs": [

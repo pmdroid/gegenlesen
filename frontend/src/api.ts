@@ -99,6 +99,7 @@ export type RiskVerdict = "auto_approve" | "needs_human";
 
 export interface RiskConfig {
   mode: RiskMode;
+  appetite: number;
   max_files: number;
   max_lines: number;
   sensitive_globs: string[];
@@ -108,11 +109,14 @@ export interface RiskReason {
   code: string;
   detail: string;
   finding_id: FindingId | null;
+  points: number | null;
 }
 
 export interface RiskAssessment {
   verdict: RiskVerdict;
   mode: RiskMode;
+  score: number;
+  appetite: number;
   reasons: RiskReason[];
   safe_unread: boolean | null;
 }
@@ -134,6 +138,10 @@ export interface SettingsUpdate {
   judge_model?: string;
   openrouter_api_key?: string;
   scanner_image?: string;
+  risk?: {
+    mode?: RiskMode;
+    appetite?: number;
+  };
 }
 
 export interface OpenRouterModel {
@@ -275,6 +283,12 @@ export type RulePayload =
       spec_globs: string[];
       fail_on?: "breaking" | "changelog";
       message: string;
+    }
+  | {
+      checker: "risk_weight";
+      weight: number;
+      match: "any" | "all";
+      veto: boolean;
     }
   | { instruction: string; few_shots?: string[] };
 

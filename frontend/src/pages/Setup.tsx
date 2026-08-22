@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { RiskMode } from "../api";
 import { getSettings, listOpenRouterModels, putSettings } from "../client";
 import { ModelPicker } from "./ModelPicker";
+
+const APPETITE = [
+  { n: 1, copy: "only trivia" },
+  { n: 2, copy: "small, boring" },
+  { n: 3, copy: "typical small PR" },
+  { n: 4, copy: "most clean changes" },
+  { n: 5, copy: "everything the floor allows" },
+] as const;
 
 const SORTS = [
   { id: "most-popular", label: "popular" },
@@ -36,6 +45,8 @@ export function SetupPage() {
   const [category, setCategory] = useState("");
   const [freeOnly, setFreeOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appetite, setAppetite] = useState(1);
+  const [riskMode, setRiskMode] = useState<RiskMode>("shadow");
 
   useEffect(() => {
     const data = settings.data;
@@ -44,6 +55,8 @@ export function SetupPage() {
     setModelB(data.models.model_b);
     setJudge(data.judge_model);
     setScannerImage(data.scanner_image ?? "");
+    setAppetite(data.risk.appetite);
+    setRiskMode(data.risk.mode);
   }, [settings.data]);
 
   useEffect(() => {
@@ -100,6 +113,7 @@ export function SetupPage() {
         judge_model: judge.trim(),
         openrouter_api_key: apiKey.trim() || undefined,
         scanner_image: scannerImage.trim(),
+        risk: { mode: riskMode, appetite },
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -228,6 +242,39 @@ export function SetupPage() {
             Docker image for Gitleaks and OSV. Leave blank to skip scanners.
           </span>
         </label>
+        <h2>auto-approve</h2>
+        <p className="neverapply">
+          Hard safety checks always block: secrets, kept errors, a downed judge, a missing
+          reviewer, unverifiable evidence. Higher levels only relax size, path surcharge, and
+          warning tolerance.
+        </p>
+        <label>
+          mode
+          <select
+            value={riskMode}
+            onChange={(event) => setRiskMode(event.target.value as RiskMode)}
+          >
+            <option value="off">off</option>
+            <option value="shadow">shadow</option>
+            <option value="enforce">enforce</option>
+          </select>
+        </label>
+        <div className="picker-toolbar">
+          <span>appetite</span>
+          {APPETITE.map((item) => (
+            <button
+              type="button"
+              key={item.n}
+              className={appetite === item.n ? "chip on" : "chip"}
+              onClick={() => setAppetite(item.n)}
+            >
+              {item.n} · {item.copy}
+            </button>
+          ))}
+        </div>
+        {appetite >= 4 ? (
+          <div className="formerr">most jobs will auto-approve at this level</div>
+        ) : null}
         {error ? <div className="formerr">{error}</div> : null}
         <div className="formrow">
           <button type="submit" className="btn" disabled={save.isPending || settings.isLoading}>
