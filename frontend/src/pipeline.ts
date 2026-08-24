@@ -16,6 +16,7 @@ export function activePipelineStep(status: JobStatus): PipelineStep {
     case "reviewing":
       return "A ∥ B";
     case "judging":
+      return "judge";
     case "succeeded":
     case "failed":
     case "cancelled":
@@ -86,6 +87,12 @@ export function displayJobTitle(job: JobListItem, prNumber?: number | null): str
   return hash ?? repo ?? job.id;
 }
 
+export function pullMapKey(job: Pick<JobListItem, "repository" | "head_sha">): string | null {
+  const github = githubRepoParts(job.repository);
+  if (!github || !job.head_sha) return null;
+  return `${github.owner}/${github.repo}@${job.head_sha}`;
+}
+
 export function githubPullUrl(job: JobListItem, prNumber?: number | null): string | null {
   const github = githubRepoParts(job.repository);
   if (github && prNumber != null) {
@@ -104,6 +111,7 @@ export function findingCounts(job: JobListItem): string | null {
     summary.new ? `${summary.new} new` : null,
     summary.still_open ? `${summary.still_open} still open` : null,
     summary.dropped ? `${summary.dropped} dropped` : null,
+    summary.relocated ? `${summary.relocated} relocated` : null,
     summary.resolved ? `${summary.resolved} resolved` : null,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : "0 findings";

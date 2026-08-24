@@ -39,7 +39,7 @@ export function usePullNumbers(jobs: JobListItem[]): Record<string, number> {
       const map: Record<string, number> = {};
       for (const item of targets) {
         const number = await pullNumberForCommit(item.owner, item.repo, item.sha);
-        if (number != null) map[item.sha] = number;
+        if (number != null) map[`${item.owner}/${item.repo}@${item.sha}`] = number;
       }
       return map;
     },

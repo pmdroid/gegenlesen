@@ -87,21 +87,20 @@ function FindingRow({
     setCommentOpen(false);
   }
 
-  const kept = finding.judge_verdict !== "drop";
   const severity = finding.judge_severity ?? finding.severity;
+  const verdictName =
+    finding.judge_verdict === "drop"
+      ? "dropped"
+      : finding.judge_verdict === "unavailable"
+        ? "unavailable"
+        : finding.judge_verdict === "downgrade"
+          ? "downgrade"
+          : "kept";
 
   return (
     <div className="finding">
       <div className="fh">
-        <span className={kept ? "verdict kept" : "verdict dropped"}>
-          {finding.judge_verdict === "drop"
-            ? "dropped"
-            : finding.judge_verdict === "unavailable"
-              ? "unavailable"
-              : finding.judge_verdict === "downgrade"
-                ? "downgrade"
-                : "kept"}
-        </span>
+        <span className={`verdict ${verdictName === "downgrade" ? "kept" : verdictName}`}>{verdictName}</span>
         <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
           {severity}
         </span>

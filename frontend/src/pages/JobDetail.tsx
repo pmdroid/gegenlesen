@@ -7,7 +7,7 @@ import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest } from "../api";
 import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback, postRiskLabel } from "../client";
 import { usePullNumbers } from "../github";
-import { displayJobTitle, githubPullUrl, jobDuration, shortSHA, statusClass } from "../pipeline";
+import { displayJobTitle, githubPullUrl, jobDuration, pullMapKey, shortSHA, statusClass } from "../pipeline";
 import { repoLabel } from "../scope";
 
 export function JobDetailPage() {
@@ -92,7 +92,8 @@ export function JobDetailPage() {
     ? detail.findings
     : detail.findings.filter((finding) => finding.judge_verdict !== "drop");
   const duration = jobDuration(detail);
-  const prNumber = detail.head_sha ? pulls[detail.head_sha] : null;
+  const prKey = pullMapKey(detail);
+  const prNumber = prKey ? pulls[prKey] : null;
   const title = displayJobTitle(detail, prNumber);
   const pullUrl = githubPullUrl(detail, prNumber);
   const askMerge = detail.status === "succeeded" && detail.risk != null && detail.risk.safe_unread == null;

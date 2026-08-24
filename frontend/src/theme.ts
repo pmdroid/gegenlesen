@@ -36,7 +36,7 @@ export function writeThemePreference(preference: ThemePreference): void {
 }
 
 export function nextThemePreference(preference: ThemePreference): ThemePreference {
-  if (preference === "system") return resolveTheme(preference) === "light" ? "dark" : "light";
+  if (preference === "system") return "light";
   if (preference === "light") return "dark";
   return "system";
 }

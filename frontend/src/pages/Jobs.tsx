@@ -5,7 +5,7 @@ import { isTerminal, type JobListItem, type JobStatus } from "../api";
 import { listJobs, listLearnings, listRepositories } from "../client";
 import { PipelineRail } from "../components/PipelineRail";
 import { usePullNumbers } from "../github";
-import { displayJobTitle, findingCounts, shortSHA, statusClass } from "../pipeline";
+import { displayJobTitle, findingCounts, pullMapKey, shortSHA, statusClass } from "../pipeline";
 
 function statusChip(job: JobListItem): { className: string; label: string } {
   if (job.status === "failed" && job.error_message) {
@@ -22,7 +22,13 @@ function jobLine(job: JobListItem): string {
   const counts = findingCounts(job);
   if (job.status === "succeeded") {
     const unread =
-      job.risk?.safe_unread == null ? "merge-intent unanswered" : job.risk.safe_unread ? "would merge unread" : "would not merge unread";
+      job.risk == null
+        ? null
+        : job.risk.safe_unread == null
+          ? "merge-intent unanswered"
+          : job.risk.safe_unread
+            ? "would merge unread"
+            : "would not merge unread";
     return [counts, unread].filter(Boolean).join(" · ");
   }
   switch (job.status) {
@@ -130,11 +136,12 @@ export function JobsPage() {
       ) : (
         items.map((job) => {
           const chip = statusChip(job);
+          const key = pullMapKey(job);
           return (
             <div className="jobblock" key={job.id}>
               <div className="jobhead">
                 <Link className="t" to={`/jobs/${job.id}`}>
-                  {displayJobTitle(job, job.head_sha ? pulls[job.head_sha] : null)}
+                  {displayJobTitle(job, key ? pulls[key] : null)}
                 </Link>
                 <span className={chip.className}>{chip.label}</span>
                 {job.status === "succeeded" && job.risk ? (
