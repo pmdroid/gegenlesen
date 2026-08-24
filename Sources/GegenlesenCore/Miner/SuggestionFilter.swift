@@ -47,9 +47,6 @@ public enum SuggestionFilter: Sendable {
         for finding: Finding,
         feedback: [FindingFeedback]
     ) -> SuggestionSignal {
-        if finding.judgeVerdict == .drop {
-            return .reject
-        }
         let latest = feedback
             .filter { $0.findingID == finding.id && $0.verdict.isCurrentVerdict }
             .max(by: { $0.ts < $1.ts })
@@ -59,6 +56,11 @@ public enum SuggestionFilter: Sendable {
         case .disagree:
             return .reject
         default:
+            // Unendorsed judge-drops stay out of learn. A later agree / should_be_rule
+            // endorses eligibility only — it does not resurrect the finding in the job list.
+            if finding.judgeVerdict == .drop {
+                return .reject
+            }
             return .none
         }
     }
@@ -70,6 +72,7 @@ public enum SuggestionFilter: Sendable {
 
     /// Job-sourced one-off findings stay out of the inbox unless a human endorsed them,
     /// or the operator said they would not have merged and this finding is a kept error.
+    /// Agree / should_be_rule on a judge-dropped finding is learn eligibility only.
     /// The job-level merge-intent label never auto-suppresses a finding.
     /// Novel miner titles (no matching finding) stay as judge candidates.
     public static func keepJobRule(

@@ -124,6 +124,14 @@ public enum LearningStatus: String, Codable, Sendable, Equatable {
     case pending, accepted, dismissed
 }
 
+public enum LearningDismissReason: String, Codable, Sendable, Equatable, CaseIterable {
+    case duplicate
+    case alreadyCovered = "already_covered"
+    case tooSpecific = "too_specific"
+    case notARule = "not_a_rule"
+    case other
+}
+
 public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {
     case regex
     case denyApi = "deny_api"

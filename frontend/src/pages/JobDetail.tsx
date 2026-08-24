@@ -266,6 +266,7 @@ export function JobDetailPage() {
       </div>
       <FindingsTable
         findings={visibleFindings}
+        showDropped={showDropped}
         emptyLabel={
           detail.error_message === "provider_auth"
             ? "Review stopped before the second reviewer. Provider rejected the API key."
