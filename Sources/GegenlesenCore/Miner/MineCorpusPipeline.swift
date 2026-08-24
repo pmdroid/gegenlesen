@@ -145,8 +145,12 @@ public struct MineCorpusPipeline: Sendable {
                 options: .atomic
             )
             let feedback = try await store.findingFeedback(jobID: sourceID)
-            if !feedback.isEmpty,
-               let data = try? JSONSerialization.data(withJSONObject: feedback, options: [.sortedKeys]) {
+            let sourceJob = try await store.job(id: sourceID)
+            if let object = SuggestionFilter.stagedFeedbackJSON(
+                findingFeedback: feedback,
+                risk: sourceJob?.risk
+            ),
+               let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) {
                 try data.write(to: dest.appendingPathComponent("feedback.json"), options: .atomic)
             }
         }
@@ -158,6 +162,13 @@ public struct MineCorpusPipeline: Sendable {
             Write for FUTURE changes: generic, not this PR's file names, tickets,
             or one function. Prefer operator thumbs-up and should_be_rule in
             job/feedback.json. Do not turn every finding into a rule.
+            job/feedback.json may include merge_intent from the operator's
+            "would you have merged this unread?" label.
+            would_merge=true is a positive exemplar for this class of diff.
+            would_merge=false means kept errors on this job are mine-worthy
+            even without thumbs. weight=highest (auto_approve then the
+            operator said no) is the strongest would-not exemplar.
+            Never drop an individual finding because of the job-level label.
             For job sources, read job/change.patch, job/findings.json, and job/feedback.json.
             """
         try prompt.write(
@@ -224,7 +235,15 @@ public struct MineCorpusPipeline: Sendable {
         }
         let findings = try await store.findings(jobID: sourceID)
         let feedback = try await store.feedback(jobID: sourceID)
-        return drafts.filter { SuggestionFilter.keepJobRule(draft: $0, findings: findings, feedback: feedback) }
+        let sourceJob = try await store.job(id: sourceID)
+        return drafts.filter {
+            SuggestionFilter.keepJobRule(
+                draft: $0,
+                findings: findings,
+                feedback: feedback,
+                risk: sourceJob?.risk
+            )
+        }
     }
 
     private func fillInbox(

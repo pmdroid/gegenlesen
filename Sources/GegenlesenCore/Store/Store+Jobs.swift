@@ -664,8 +664,11 @@ extension Store {
                     FROM jobs j
                     WHERE j.status = 'succeeded'
                       AND (j.title IS NULL OR j.title NOT LIKE 'learn %')
-                      AND EXISTS (
-                        SELECT 1 FROM finding_feedback f WHERE f.job_id = j.id
+                      AND (
+                        EXISTS (
+                          SELECT 1 FROM finding_feedback f WHERE f.job_id = j.id
+                        )
+                        OR json_extract(j.risk_json, '$.safe_unread') IS NOT NULL
                       )
                       AND NOT EXISTS (
                         SELECT 1 FROM jobs c
@@ -674,7 +677,14 @@ extension Store {
                           AND c.status NOT IN ('succeeded', 'failed', 'cancelled')
                       )
                       AND (
-                        SELECT MAX(f.ts) FROM finding_feedback f WHERE f.job_id = j.id
+                        SELECT MAX(activity.ts) FROM (
+                          SELECT f.ts AS ts
+                          FROM finding_feedback f
+                          WHERE f.job_id = j.id
+                          UNION ALL
+                          SELECT j.updated_at AS ts
+                          WHERE json_extract(j.risk_json, '$.safe_unread') IS NOT NULL
+                        ) AS activity
                       ) > COALESCE(
                         (
                           SELECT MAX(c.finished_at)
@@ -687,7 +697,14 @@ extension Store {
                         '0000-01-01T00:00:00Z'
                       )
                     ORDER BY (
-                      SELECT MAX(f.ts) FROM finding_feedback f WHERE f.job_id = j.id
+                      SELECT MAX(activity.ts) FROM (
+                        SELECT f.ts AS ts
+                        FROM finding_feedback f
+                        WHERE f.job_id = j.id
+                        UNION ALL
+                        SELECT j.updated_at AS ts
+                        WHERE json_extract(j.risk_json, '$.safe_unread') IS NOT NULL
+                      ) AS activity
                     ) ASC
                     LIMIT 1
                     """

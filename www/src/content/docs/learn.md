@@ -16,7 +16,9 @@ Learn is not part of the review path. A review can write an architecture draft. 
 
 ## What becomes a candidate
 
-From the job, only findings you 👍 or marked `should_be_rule`. Judge-dropped findings never become suggestions.
+From the job, findings you 👍 or marked `should_be_rule`. Judge-dropped findings never become suggestions.
+
+A job-level merge-intent label (would you have merged unread?) also enqueues learn. Would-merge is a positive exemplar for that class of diff. Would-not treats kept errors as mine-worthy even without thumbs. Auto-approve then "no" is the strongest would-not. The label never auto-drops a finding and never enables a rule.
 
 ## Pipeline
 

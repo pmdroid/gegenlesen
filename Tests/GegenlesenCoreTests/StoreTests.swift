@@ -232,6 +232,80 @@ struct StoreTests {
     }
 
     @Test
+    func nextJobNeedingLearnIncludesSafeUnreadWithoutFindingFeedback() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            var labeled = sampleJob(id: "job-merge-intent", status: .succeeded, finishedAt: now)
+            labeled.title = "ship the hop fix"
+            labeled.updatedAt = now
+            labeled.risk = RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: [],
+                safeUnread: true
+            )
+            try await store.insertJob(labeled)
+
+            var unanswered = sampleJob(id: "job-risk-only", status: .succeeded, finishedAt: now)
+            unanswered.title = "other"
+            unanswered.risk = RiskAssessment(
+                verdict: .needsHuman,
+                mode: .shadow,
+                score: 3,
+                appetite: 1,
+                reasons: []
+            )
+            try await store.insertJob(unanswered)
+
+            var learnChild = sampleJob(id: "learn-self", status: .succeeded, finishedAt: now)
+            learnChild.title = "learn hop"
+            learnChild.risk = RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: [],
+                safeUnread: true
+            )
+            try await store.insertJob(learnChild)
+
+            #expect(try await store.nextJobNeedingLearn() == labeled.id)
+        }
+    }
+
+    @Test
+    func nextJobNeedingLearnSkipsAfterSucceededLearnChild() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let labeledAt = Date(timeIntervalSince1970: 1_000)
+            let learnedAt = Date(timeIntervalSince1970: 2_000)
+            var job = sampleJob(id: "job-learned-risk", status: .succeeded, finishedAt: labeledAt)
+            job.title = "ship the hop fix"
+            job.updatedAt = labeledAt
+            job.risk = RiskAssessment(
+                verdict: .needsHuman,
+                mode: .shadow,
+                score: 4,
+                appetite: 1,
+                reasons: [],
+                safeUnread: false
+            )
+            try await store.insertJob(job)
+            var learn = sampleJob(id: "learn-child", status: .succeeded, finishedAt: learnedAt)
+            learn.parentJobID = job.id
+            learn.title = "learn hop"
+            learn.createdAt = learnedAt
+            learn.updatedAt = learnedAt
+            try await store.insertJob(learn)
+
+            #expect(try await store.nextJobNeedingLearn() == nil)
+        }
+    }
+
+    @Test
     func usesWAL() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
