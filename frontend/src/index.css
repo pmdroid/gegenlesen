@@ -128,7 +128,16 @@ nav a.on { color: #a5d6a7; border-bottom: 1px solid #a5d6a7; }
 
 .finding { padding: 10px 14px; border-bottom: 1px solid #16200f; }
 .finding:last-child { border-bottom: 0; }
-.fh { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.fh { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fh .title { flex: 1; min-width: 12rem; }
+.fh .rxn { margin-top: 0; }
+.finding-more { margin-top: 6px; }
+.finding-more summary {
+  cursor: pointer; list-style: none; color: #557a58; font-size: 11px;
+}
+.finding-more summary::-webkit-details-marker { display: none; }
+.finding-more summary::before { content: "▸ "; }
+.finding-more[open] summary::before { content: "▾ "; }
 .id { color: #557a58; }
 .title { color: #e8f5e9; }
 .verdict { font-size: 11px; padding: 0 6px; border-radius: 3px; }

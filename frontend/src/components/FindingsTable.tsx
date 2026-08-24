@@ -88,74 +88,74 @@ function FindingRow({
   }
 
   const kept = finding.judge_verdict !== "drop";
+  const severity = finding.judge_severity ?? finding.severity;
 
   return (
     <div className="finding">
       <div className="fh">
         <span className="title">{finding.title}</span>
-        <span className={kept ? "verdict kept" : "verdict dropped"}>
-          {finding.judge_verdict === "drop"
-            ? "dropped"
-            : finding.judge_verdict === "unavailable"
-              ? "unavailable"
-              : finding.judge_verdict === "downgrade"
-                ? "downgrade"
-                : "kept"}
-        </span>
-        <span className={`st ${(finding.judge_severity ?? finding.severity) === "error" ? "fail" : (finding.judge_severity ?? finding.severity) === "warning" ? "run" : "ok"}`}>
-          {finding.judge_severity ?? finding.severity}
-        </span>
-      </div>
-      <div className="src">{loc(finding)}</div>
-      {finding.snippet ? (
-        <details>
-          <summary className="src">{finding.message ?? "snippet"}</summary>
-          <pre>{finding.snippet}</pre>
-        </details>
-      ) : finding.message ? (
-        <div className="src">{finding.message}</div>
-      ) : null}
-      {comments.length > 0 ? (
-        <div className="logline">
-          {comments.map((row) => (
-            <div key={row.id}>{row.comment}</div>
-          ))}
+        <div className="rxn">
+          <button
+            type="button"
+            className={reaction === "thumbs_up" ? "on" : undefined}
+            disabled={pending}
+            onClick={() => onFeedback(finding.id, { reaction: "👍" })}
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            className={reaction === "thumbs_down" ? "on" : undefined}
+            disabled={pending}
+            onClick={() => onFeedback(finding.id, { reaction: "👎" })}
+          >
+            👎
+          </button>
+          <button type="button" disabled={pending} onClick={() => setCommentOpen((open) => !open)}>
+            💬
+          </button>
+          <button
+            type="button"
+            className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
+            disabled={pending}
+            onClick={() =>
+              onFeedback(finding.id, {
+                verdict: "should_be_rule",
+                comment: commentOpen ? comment.trim() || undefined : undefined,
+              })
+            }
+          >
+            → rule
+          </button>
         </div>
-      ) : null}
-      <div className="rxn">
-        <button
-          type="button"
-          className={reaction === "thumbs_up" ? "on" : undefined}
-          disabled={pending}
-          onClick={() => onFeedback(finding.id, { reaction: "👍" })}
-        >
-          👍
-        </button>
-        <button
-          type="button"
-          className={reaction === "thumbs_down" ? "on" : undefined}
-          disabled={pending}
-          onClick={() => onFeedback(finding.id, { reaction: "👎" })}
-        >
-          👎
-        </button>
-        <button type="button" disabled={pending} onClick={() => setCommentOpen((open) => !open)}>
-          💬 comment
-        </button>
-        <button
-          type="button"
-          className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
-          disabled={pending}
-          onClick={() =>
-            onFeedback(finding.id, {
-              verdict: "should_be_rule",
-              comment: commentOpen ? comment.trim() || undefined : undefined,
-            })
-          }
-        >
-          → should be a rule
-        </button>
       </div>
+      <details className="finding-more">
+        <summary>description</summary>
+        <div className="src">
+          <span className={kept ? "verdict kept" : "verdict dropped"}>
+            {finding.judge_verdict === "drop"
+              ? "dropped"
+              : finding.judge_verdict === "unavailable"
+                ? "unavailable"
+                : finding.judge_verdict === "downgrade"
+                  ? "downgrade"
+                  : "kept"}
+          </span>{" "}
+          <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
+            {severity}
+          </span>{" "}
+          {loc(finding)}
+        </div>
+        {finding.message ? <div className="src">{finding.message}</div> : null}
+        {finding.snippet ? <pre>{finding.snippet}</pre> : null}
+        {comments.length > 0 ? (
+          <div className="logline">
+            {comments.map((row) => (
+              <div key={row.id}>{row.comment}</div>
+            ))}
+          </div>
+        ) : null}
+      </details>
       {commentOpen ? (
         <form className="form" onSubmit={submitComment}>
           <label>
