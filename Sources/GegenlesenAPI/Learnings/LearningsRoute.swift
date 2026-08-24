@@ -7,6 +7,7 @@ enum LearningsRoute {
         app.get("api", "learnings", use: list)
         app.post("api", "learnings", ":id", "accept", use: accept)
         app.post("api", "learnings", ":id", "dismiss", use: dismiss)
+        app.post("api", "learnings", ":id", "restore", use: restore)
     }
 
     static func list(_ req: Request) async throws -> LearningListResponse {
@@ -28,8 +29,13 @@ enum LearningsRoute {
         } else {
             kind = nil
         }
-        let items = try await req.application.gegenlesenStore.listLearnings(status: status, kind: kind)
-        return LearningListResponse(learnings: items.map(LearningDTO.init(learning:)))
+        let store = req.application.gegenlesenStore
+        let items = try await store.listLearnings(status: status, kind: kind)
+        let all = try await store.listLearnings(status: nil, kind: kind)
+        return LearningListResponse(
+            learnings: items.map(LearningDTO.init(learning:)),
+            yield: LearningDedup.yield(from: all).map(LearningYieldDTO.init(yield:))
+        )
     }
 
     static func accept(_ req: Request) async throws -> LearningDTO {
@@ -60,6 +66,18 @@ enum LearningsRoute {
         item.applyDismiss(reason: body.reason, comment: body.comment)
         item.status = .dismissed
         item.resolvedAt = Date()
+        try await req.application.gegenlesenStore.updateLearning(item)
+        return LearningDTO(learning: item)
+    }
+
+    static func restore(_ req: Request) async throws -> LearningDTO {
+        var item = try await requireLearning(req)
+        if item.status != .dismissed {
+            throw APIError.conflict("learning is already \(item.status.rawValue)")
+        }
+        item.clearDismiss()
+        item.status = .pending
+        item.resolvedAt = nil
         try await req.application.gegenlesenStore.updateLearning(item)
         return LearningDTO(learning: item)
     }

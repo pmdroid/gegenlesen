@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { Learning, LearningDismissReason, LearningDismissRequest } from "../api";
-import { acceptLearning, dismissLearning, listLearnings } from "../client";
+import type {
+  Learning,
+  LearningDismissReason,
+  LearningDismissRequest,
+  LearningYield,
+} from "../api";
+import { acceptLearning, dismissLearning, listLearnings, restoreLearning } from "../client";
 
 const dismissReasons: { value: LearningDismissReason; label: string }[] = [
   { value: "duplicate", label: "duplicate" },
@@ -16,6 +21,10 @@ export function LearningsPage() {
   const inbox = useQuery({
     queryKey: ["learnings", "pending"],
     queryFn: () => listLearnings({ status: "pending" }),
+  });
+  const dismissed = useQuery({
+    queryKey: ["learnings", "dismissed"],
+    queryFn: () => listLearnings({ status: "dismissed" }),
   });
   const accept = useMutation({
     mutationFn: (id: string) => acceptLearning(id),
@@ -32,17 +41,27 @@ export function LearningsPage() {
       void queryClient.invalidateQueries({ queryKey: ["learnings"] });
     },
   });
+  const restore = useMutation({
+    mutationFn: (id: string) => restoreLearning(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["learnings"] });
+    },
+  });
 
   const items = inbox.data?.learnings ?? [];
+  const dismissedItems = dismissed.data?.learnings ?? [];
+  const yieldRows = inbox.data?.yield ?? dismissed.data?.yield ?? [];
 
   return (
     <div className="page">
       <h1>learnings</h1>
       <div className="neverapply">nothing auto-applies — accept writes, dismiss hides</div>
+      <YieldRow rows={yieldRows} />
       {items.length === 0 ? (
         <div className="empty">
           Rule, architecture, and context suggestions land here after learn
           (job learn, background sweeper, or <code>gegenlesen harvest</code>).
+          Rules need thumbs from two jobs.
         </div>
       ) : (
         items.map((item) => (
@@ -56,6 +75,49 @@ export function LearningsPage() {
           />
         ))
       )}
+      {dismissedItems.length > 0 ? (
+        <>
+          <h2>dismissed</h2>
+          {dismissedItems.map((item) => (
+            <div className="learn" key={item.id}>
+              <div className="pagehead">
+                <span className="rn">{item.title}</span>
+                <span className="rk">
+                  {item.kind}
+                  {item.dismiss_reason ? ` · ${item.dismiss_reason}` : ""}
+                </span>
+              </div>
+              <div className="formrow">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={restore.isPending}
+                  onClick={() => restore.mutate(item.id)}
+                >
+                  restore
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function YieldRow({ rows }: { rows: LearningYield[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="yield">
+      {rows.map((row) => {
+        const n = row.accepted + row.dismissed;
+        const pct = n === 0 ? "—" : `${Math.round(row.rate * 100)}%`;
+        return (
+          <span className="rk" key={row.kind}>
+            {row.kind}: {row.accepted} accept / {row.dismissed} dismiss ({pct})
+          </span>
+        );
+      })}
     </div>
   );
 }

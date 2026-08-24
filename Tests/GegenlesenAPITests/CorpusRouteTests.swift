@@ -117,61 +117,34 @@ struct CorpusRouteTests {
     func learnEnqueuesMinerAndSkipAgentDoesNotFail() async throws {
         try await withGegenlesenApp(startQueue: true) { app in
             let now = Date()
-            let job = Job(
-                id: JobID("11111111-1111-4111-8111-111111111111"),
-                createdAt: now,
-                updatedAt: now,
-                status: .succeeded,
-                scope: .full,
+            let first = try await insertEndorsedLearnJob(
+                app,
+                id: "11111111-1111-4111-8111-111111111111",
                 title: "Learn unique finding title",
-                reviewerAModelID: "a",
-                reviewerBModelID: "b",
-                judgeModelID: "j"
-            )
-            try await app.gegenlesenStore.insertJob(job)
-            let workspace = app.gegenlesenStore.blobs.workspaceURL(jobID: job.id.rawValue)
-            try FileManager.default.createDirectory(
-                at: workspace.appendingPathComponent("Sources", isDirectory: true),
-                withIntermediateDirectories: true
-            )
-            try "print(1)\n".write(
-                to: workspace.appendingPathComponent("Sources/A.swift"),
-                atomically: true,
-                encoding: .utf8
-            )
-            let inserted = try await app.gegenlesenStore.insertFindings(
-                [
-                    FindingDraft(
-                        ruleID: nil,
-                        phase: .agent,
-                        severity: .warning,
-                        title: "Learn unique finding title",
-                        message: "do not do that",
-                        filePath: "Sources/A.swift",
-                        startLine: 1,
-                        endLine: 1,
-                        snippet: "let x = 1"
-                    ),
-                ],
-                jobID: job.id,
                 now: now
             )
-            _ = try await app.gegenlesenStore.applyFindingFeedback(
-                finding: inserted[0],
-                verdict: .agree,
-                reaction: .thumbsUp,
-                comment: nil,
-                now: now
-            )
+            try await learnAndWait(app, jobID: first)
 
-            var captured: TestingHTTPResponse?
-            try await app.testing().test(.POST, "/api/jobs/\(job.id.rawValue)/learn") { res async in
-                captured = res
+            try await app.testing().test(.GET, "/api/rules?provenance=suggested") { response async throws in
+                let body = try jsonObject(response)
+                let rules = try #require(body["rules"] as? [[String: Any]])
+                #expect(!rules.contains { ($0["title"] as? String) == "Learn unique finding title" })
             }
-            let res = try #require(captured)
-            #expect(res.status == .accepted)
-            let accepted = try JSONDecoder().decode(MineAccepted.self, from: bodyData(res))
-            try await waitSucceeded(app, jobID: accepted.jobID)
+            try await app.testing().test(.GET, "/api/learnings?status=pending") { response async throws in
+                let items = try #require(try jsonObject(response)["learnings"] as? [[String: Any]])
+                let kinds = Set(items.compactMap { $0["kind"] as? String })
+                #expect(!kinds.contains("rule"))
+                #expect(kinds.contains("architecture"))
+                #expect(kinds.contains("context"))
+            }
+
+            let second = try await insertEndorsedLearnJob(
+                app,
+                id: "33333333-3333-4333-8333-333333333333",
+                title: "Learn unique finding title",
+                now: now
+            )
+            try await learnAndWait(app, jobID: second)
 
             try await app.testing().test(.GET, "/api/rules?provenance=suggested") { response async throws in
                 let body = try jsonObject(response)
@@ -181,11 +154,14 @@ struct CorpusRouteTests {
                 #expect(match?["enabled"] as? Bool == false)
             }
             try await app.testing().test(.GET, "/api/learnings?status=pending") { response async throws in
-                let items = try #require(try jsonObject(response)["learnings"] as? [[String: Any]])
+                let body = try jsonObject(response)
+                let items = try #require(body["learnings"] as? [[String: Any]])
                 let kinds = Set(items.compactMap { $0["kind"] as? String })
                 #expect(kinds.contains("rule"))
                 #expect(kinds.contains("architecture"))
                 #expect(kinds.contains("context"))
+                let yield = try #require(body["yield"] as? [[String: Any]])
+                #expect(yield.contains { $0["kind"] as? String == "rule" })
             }
         }
     }
@@ -241,6 +217,72 @@ struct CorpusRouteTests {
             }
         }
     }
+}
+
+private func insertEndorsedLearnJob(
+    _ app: Application,
+    id: String,
+    title: String,
+    now: Date
+) async throws -> JobID {
+    let job = Job(
+        id: JobID(id),
+        createdAt: now,
+        updatedAt: now,
+        status: .succeeded,
+        scope: .full,
+        title: title,
+        reviewerAModelID: "a",
+        reviewerBModelID: "b",
+        judgeModelID: "j"
+    )
+    try await app.gegenlesenStore.insertJob(job)
+    let workspace = app.gegenlesenStore.blobs.workspaceURL(jobID: job.id.rawValue)
+    try FileManager.default.createDirectory(
+        at: workspace.appendingPathComponent("Sources", isDirectory: true),
+        withIntermediateDirectories: true
+    )
+    try "print(1)\n".write(
+        to: workspace.appendingPathComponent("Sources/A.swift"),
+        atomically: true,
+        encoding: .utf8
+    )
+    let inserted = try await app.gegenlesenStore.insertFindings(
+        [
+            FindingDraft(
+                ruleID: nil,
+                phase: .agent,
+                severity: .warning,
+                title: title,
+                message: "do not do that",
+                filePath: "Sources/A.swift",
+                startLine: 1,
+                endLine: 1,
+                snippet: "let x = 1"
+            ),
+        ],
+        jobID: job.id,
+        now: now
+    )
+    _ = try await app.gegenlesenStore.applyFindingFeedback(
+        finding: inserted[0],
+        verdict: .agree,
+        reaction: .thumbsUp,
+        comment: nil,
+        now: now
+    )
+    return job.id
+}
+
+private func learnAndWait(_ app: Application, jobID: JobID) async throws {
+    var captured: TestingHTTPResponse?
+    try await app.testing().test(.POST, "/api/jobs/\(jobID.rawValue)/learn") { res async in
+        captured = res
+    }
+    let res = try #require(captured)
+    #expect(res.status == .accepted)
+    let accepted = try JSONDecoder().decode(MineAccepted.self, from: bodyData(res))
+    try await waitSucceeded(app, jobID: accepted.jobID)
 }
 
 private func minedWidgetRules(_ app: Application) async throws -> [[String: Any]] {
