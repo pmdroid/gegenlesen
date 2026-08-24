@@ -4,6 +4,28 @@ import FoundationNetworking
 #endif
 import GegenlesenCore
 
+public enum OpenCodeHTTPError: Error, Sendable, Equatable, CustomStringConvertible {
+    case providerAuth(status: Int, body: String)
+
+    public var description: String {
+        switch self {
+        case .providerAuth(let status, let body):
+            return "provider_auth status=\(status) \(body)"
+        }
+    }
+
+    public static func classify(status: Int, body: Data) -> OpenCodeHTTPError? {
+        let snippet = String(data: body, encoding: .utf8).map { String($0.prefix(500)) } ?? ""
+        if status == 401 || status == 403 {
+            return .providerAuth(status: status, body: snippet)
+        }
+        if let auth = ReviewFailureClass.providerAuthHTTPStatus(in: snippet) {
+            return .providerAuth(status: auth, body: snippet)
+        }
+        return nil
+    }
+}
+
 public protocol OpenCodeHTTPClienting: Sendable {
     func waitUntilHealthy(baseURL: URL, password: String, timeout: Duration) async -> Bool
     func createSession(baseURL: URL, password: String, title: String) async throws -> String
@@ -94,13 +116,17 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             "parts": parts,
         ]
         let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await request(
+        let (data, response) = try await request(
             url: url,
             method: "POST",
             password: password,
             body: payload,
             timeout: timeout.timeInterval
         )
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if let error = OpenCodeHTTPError.classify(status: status, body: data) {
+            throw error
+        }
     }
 
     public func abort(baseURL: URL, password: String, sessionID: String) async {
@@ -132,7 +158,12 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        return try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+            throw OpenCodeHTTPError.classify(status: http.statusCode, body: data)
+                ?? .providerAuth(status: http.statusCode, body: "")
+        }
+        return (data, response)
     }
 }
 
