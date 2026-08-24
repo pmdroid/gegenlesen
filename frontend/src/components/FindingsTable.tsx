@@ -93,6 +93,18 @@ function FindingRow({
   return (
     <div className="finding">
       <div className="fh">
+        <span className={kept ? "verdict kept" : "verdict dropped"}>
+          {finding.judge_verdict === "drop"
+            ? "dropped"
+            : finding.judge_verdict === "unavailable"
+              ? "unavailable"
+              : finding.judge_verdict === "downgrade"
+                ? "downgrade"
+                : "kept"}
+        </span>
+        <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
+          {severity}
+        </span>
         <span className="title">{finding.title}</span>
         <div className="rxn">
           <button
@@ -131,21 +143,7 @@ function FindingRow({
       </div>
       <details className="finding-more">
         <summary>description</summary>
-        <div className="src">
-          <span className={kept ? "verdict kept" : "verdict dropped"}>
-            {finding.judge_verdict === "drop"
-              ? "dropped"
-              : finding.judge_verdict === "unavailable"
-                ? "unavailable"
-                : finding.judge_verdict === "downgrade"
-                  ? "downgrade"
-                  : "kept"}
-          </span>{" "}
-          <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
-            {severity}
-          </span>{" "}
-          {loc(finding)}
-        </div>
+        <div className="src">{loc(finding)}</div>
         {finding.message ? <div className="src">{finding.message}</div> : null}
         {finding.snippet ? <pre>{finding.snippet}</pre> : null}
         {comments.length > 0 ? (
