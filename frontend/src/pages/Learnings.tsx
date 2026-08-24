@@ -22,6 +22,10 @@ export function LearningsPage() {
     queryKey: ["learnings", "pending"],
     queryFn: () => listLearnings({ status: "pending" }),
   });
+  const rejudge = useQuery({
+    queryKey: ["learnings", "needs_rejudge"],
+    queryFn: () => listLearnings({ status: "needs_rejudge" }),
+  });
   const dismissed = useQuery({
     queryKey: ["learnings", "dismissed"],
     queryFn: () => listLearnings({ status: "dismissed" }),
@@ -49,8 +53,9 @@ export function LearningsPage() {
   });
 
   const items = inbox.data?.learnings ?? [];
+  const rejudgeItems = rejudge.data?.learnings ?? [];
   const dismissedItems = dismissed.data?.learnings ?? [];
-  const yieldRows = inbox.data?.yield ?? dismissed.data?.yield ?? [];
+  const yieldRows = inbox.data?.yield ?? dismissed.data?.yield ?? rejudge.data?.yield ?? [];
 
   return (
     <div className="page">
@@ -75,6 +80,35 @@ export function LearningsPage() {
           />
         ))
       )}
+      {rejudgeItems.length > 0 ? (
+        <>
+          <h2>needs rejudge</h2>
+          <div className="neverapply">
+            miner or suggestion judge failed — not in the ordinary inbox, not accepted
+          </div>
+          {rejudgeItems.map((item) => (
+            <div className="learn" key={item.id}>
+              <div className="pagehead">
+                <span className="rn">{item.title}</span>
+                <span className="rk">
+                  {item.kind} · {item.status}
+                </span>
+              </div>
+              <div className="ctx">{item.body}</div>
+              <div className="formrow">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={dismiss.isPending}
+                  onClick={() => dismiss.mutate({ id: item.id })}
+                >
+                  dismiss
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      ) : null}
       {dismissedItems.length > 0 ? (
         <>
           <h2>dismissed</h2>

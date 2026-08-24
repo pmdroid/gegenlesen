@@ -29,6 +29,8 @@ public enum HarvestIngestError: Error, Sendable, Equatable {
 public enum HarvestFile: Sendable {
     public static let maxRules = 10
     public static let maxNotes = 5
+    public static let maxNoteBodyChars = 2_000
+    public static let minWholeFileDumpChars = 400
 
     public static func parse(_ data: Data) throws -> HarvestBundle {
         let decoded = try JSONDecoder().decode(Row.self, from: data)
@@ -46,10 +48,45 @@ public enum HarvestFile: Sendable {
     }
 
     public static func cap(_ bundle: HarvestBundle) -> HarvestBundle {
-        HarvestBundle(
+        let notes = bundle.notes.compactMap(sanitizeNote)
+        return HarvestBundle(
             rules: Array(bundle.rules.prefix(maxRules)),
-            notes: Array(bundle.notes.prefix(maxNotes))
+            notes: Array(notes.prefix(maxNotes))
         )
+    }
+
+    public static func isProseDumpPath(_ path: String) -> Bool {
+        let lower = path.lowercased().replacingOccurrences(of: "\\", with: "/")
+        let base = URL(fileURLWithPath: lower).lastPathComponent
+        if base == "readme.md" || base == "readme" { return true }
+        return lower.hasPrefix("docs/") && lower.hasSuffix(".md")
+    }
+
+    public static func isWholeFileDump(_ note: HarvestNoteDraft) -> Bool {
+        guard !note.evidence.isEmpty else { return false }
+        let allProse = note.evidence.allSatisfy { evidence in
+            guard let path = evidence.path else { return false }
+            return isProseDumpPath(path)
+        }
+        guard allProse else { return false }
+        let body = note.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if body.count > maxNoteBodyChars { return true }
+        for evidence in note.evidence {
+            let excerpt = evidence.excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard excerpt.count >= minWholeFileDumpChars else { continue }
+            if excerpt.hasPrefix(body) || body.hasPrefix(excerpt) { return true }
+            if body.contains(excerpt.prefix(minWholeFileDumpChars)) { return true }
+        }
+        return false
+    }
+
+    static func sanitizeNote(_ note: HarvestNoteDraft) -> HarvestNoteDraft? {
+        if isWholeFileDump(note) { return nil }
+        var next = note
+        if next.body.count > maxNoteBodyChars {
+            next.body = String(next.body.prefix(maxNoteBodyChars))
+        }
+        return next
     }
 
     private static func hasCitation(_ text: String) -> Bool {
