@@ -8,7 +8,7 @@ Extract a small set of reusable house rules for FUTURE changes.
 Write `.gegenlesen/mined-rules.json` only.
 You may use bash, LSP, and search. Do not use the question tool.
 Do not launch the plan agent or subagents.
-Prefer operator thumbs-up / should_be_rule. Do not restate every finding.
+Prefer operator thumbs-up / should_be_rule, including on judge-dropped findings. Do not restate every finding.
 Keep titles and instructions generic (no one-PR file names or tickets).
 
 If `job/feedback.json` has `merge_intent`:

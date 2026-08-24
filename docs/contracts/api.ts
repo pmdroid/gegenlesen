@@ -367,6 +367,12 @@ export type ContextNoteKind = "user" | "architecture";
 export type ChunkKind = "file" | "architecture" | "user" | "rule";
 export type LearningKind = "rule" | "architecture" | "context";
 export type LearningStatus = "pending" | "accepted" | "dismissed";
+export type LearningDismissReason =
+  | "duplicate"
+  | "already_covered"
+  | "too_specific"
+  | "not_a_rule"
+  | "other";
 
 export interface ContextNote {
   id: string;
@@ -395,7 +401,15 @@ export interface Learning {
   status: LearningStatus;
   title: string;
   body: string;
+  judged?: boolean | null;
+  dismiss_reason?: LearningDismissReason | null;
+  dismiss_comment?: string | null;
   created_at: string;
+}
+
+export interface LearningDismissRequest {
+  reason?: LearningDismissReason;
+  comment?: string;
 }
 
 export interface LearningListResponse {
