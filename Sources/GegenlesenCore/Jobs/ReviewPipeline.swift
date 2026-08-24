@@ -62,11 +62,9 @@ public struct ReviewPipeline: Sendable {
         } catch let error as StoreJobError where error == .notFound {
             return
         } catch {
-            _ = try? await store.apply(
-                jobID: jobID,
-                event: .identifyFailed("internal"),
-                errorMessage: String(describing: error)
-            )
+            let message = String(describing: error)
+            _ = try? await store.finishJob(id: jobID, status: .failed, errorMessage: message)
+            try? await store.appendEvent(jobID: jobID, level: .error, message: "internal")
         }
     }
 

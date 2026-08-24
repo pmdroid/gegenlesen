@@ -170,6 +170,14 @@ public struct DockerResult: Sendable {
         self.timedOut = timedOut
         self.oom = oom
     }
+
+    public var outputText: String {
+        let out = String(data: stdout, encoding: .utf8) ?? ""
+        let err = String(data: stderr, encoding: .utf8) ?? ""
+        if err.isEmpty { return out }
+        if out.isEmpty { return err }
+        return out + err
+    }
 }
 
 /// Sandboxed command / openapi_break runner. Tests inject NoopDocker or scripted stdout.
