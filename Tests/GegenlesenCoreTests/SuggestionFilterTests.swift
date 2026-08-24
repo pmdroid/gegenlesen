@@ -65,6 +65,191 @@ struct SuggestionFilterTests {
     }
 
     @Test
+    func jobLevelLabelNeverAutoSuppressesAFinding() {
+        let finding = sampleFinding(title: "Silent hop errors", verdict: .keep)
+        let draft = MinedRuleDraft(
+            title: "Silent hop errors",
+            payload: .semantic(instruction: "log hop failures", fewShots: []),
+            body: "log hop failures"
+        )
+        let up = FindingFeedback(
+            id: 1,
+            findingID: finding.id,
+            jobID: finding.jobID,
+            ts: Date(),
+            verdict: .agree,
+            reaction: .thumbsUp
+        )
+        let wouldMerge = RiskAssessment(
+            verdict: .needsHuman,
+            mode: .shadow,
+            score: 3,
+            appetite: 1,
+            reasons: [],
+            safeUnread: true
+        )
+        let wouldNot = RiskAssessment(
+            verdict: .needsHuman,
+            mode: .shadow,
+            score: 3,
+            appetite: 1,
+            reasons: [],
+            safeUnread: false
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: draft,
+                findings: [finding],
+                feedback: [up],
+                risk: wouldMerge
+            ) == true
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: draft,
+                findings: [finding],
+                feedback: [up],
+                risk: wouldNot
+            ) == true
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: draft,
+                findings: [finding],
+                feedback: [],
+                risk: wouldMerge
+            ) == false
+        )
+        let down = FindingFeedback(
+            id: 2,
+            findingID: finding.id,
+            jobID: finding.jobID,
+            ts: Date(),
+            verdict: .disagree,
+            reaction: .thumbsDown
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: draft,
+                findings: [finding],
+                feedback: [down],
+                risk: wouldMerge
+            ) == false
+        )
+    }
+
+    @Test
+    func wouldNotMinesKeptErrorsWithoutThumbs() {
+        let error = sampleFinding(title: "Hardcoded secret", verdict: .keep, severity: .error)
+        let warning = sampleFinding(title: "noisy log", verdict: .keep, severity: .warning)
+        let dropped = sampleFinding(title: "flaky test note", verdict: .drop, severity: .error)
+        let wouldNot = RiskAssessment(
+            verdict: .needsHuman,
+            mode: .shadow,
+            score: 5,
+            appetite: 1,
+            reasons: [],
+            safeUnread: false
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: MinedRuleDraft(
+                    title: "Hardcoded secret",
+                    payload: .semantic(instruction: "x", fewShots: []),
+                    body: "x"
+                ),
+                findings: [error],
+                feedback: [],
+                risk: wouldNot
+            ) == true
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: MinedRuleDraft(
+                    title: "noisy log",
+                    payload: .semantic(instruction: "x", fewShots: []),
+                    body: "x"
+                ),
+                findings: [warning],
+                feedback: [],
+                risk: wouldNot
+            ) == false
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: MinedRuleDraft(
+                    title: "flaky test note",
+                    payload: .semantic(instruction: "x", fewShots: []),
+                    body: "x"
+                ),
+                findings: [dropped],
+                feedback: [],
+                risk: wouldNot
+            ) == false
+        )
+    }
+
+    @Test
+    func autoApproveThenUnsafeIsHighestWeight() {
+        let highest = MergeIntentContext.from(
+            RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: [],
+                safeUnread: false
+            )
+        )
+        #expect(highest?.wouldMerge == false)
+        #expect(highest?.weight == "highest")
+        let normal = MergeIntentContext.from(
+            RiskAssessment(
+                verdict: .needsHuman,
+                mode: .shadow,
+                score: 4,
+                appetite: 1,
+                reasons: [],
+                safeUnread: false
+            )
+        )
+        #expect(normal?.weight == "normal")
+        #expect(MergeIntentContext.from(
+            RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: []
+            )
+        ) == nil)
+    }
+
+    @Test
+    func stagedFeedbackJSONPutsMergeIntentBesideFindingFeedback() throws {
+        let object = try #require(
+            SuggestionFilter.stagedFeedbackJSON(
+                findingFeedback: [["finding_id": "fnd_1", "verdict": "agree", "ts": "t"]],
+                risk: RiskAssessment(
+                    verdict: .autoApprove,
+                    mode: .enforce,
+                    score: 1,
+                    appetite: 1,
+                    reasons: [],
+                    safeUnread: false
+                )
+            )
+        )
+        #expect((object["finding_feedback"] as? [[String: String]])?.count == 1)
+        let intent = try #require(object["merge_intent"] as? [String: Any])
+        #expect(intent["would_merge"] as? Bool == false)
+        #expect(intent["safe_unread"] as? Bool == false)
+        #expect(intent["weight"] as? String == "highest")
+        #expect(intent["risk_verdict"] as? String == "auto_approve")
+        #expect(SuggestionFilter.stagedFeedbackJSON(findingFeedback: [], risk: nil) == nil)
+    }
+
+    @Test
     func suggestionJudgeDefaultsToDropAndAppliesRewrite() {
         let candidates = [
             SuggestionCandidate(id: "sug_rule_0", kind: .rule, title: "t", body: "b"),
@@ -107,12 +292,16 @@ struct SuggestionFilterTests {
     }
 }
 
-private func sampleFinding(title: String, verdict: JudgeVerdict) -> Finding {
+private func sampleFinding(
+    title: String,
+    verdict: JudgeVerdict,
+    severity: Severity = .warning
+) -> Finding {
     Finding(
         id: FindingID.generate(),
         jobID: JobID("job-1"),
         phase: .agent,
-        severity: .warning,
+        severity: severity,
         title: title,
         message: "m",
         filePath: "Sources/A.swift",

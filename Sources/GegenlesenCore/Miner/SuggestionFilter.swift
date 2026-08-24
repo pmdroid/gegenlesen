@@ -6,6 +6,42 @@ public enum SuggestionSignal: String, Sendable, Equatable {
     case none
 }
 
+/// Job-level "would you have merged unread?" label. Miner context only.
+/// Never used to auto-drop or auto-enable a finding.
+public struct MergeIntentContext: Sendable, Equatable {
+    public var wouldMerge: Bool
+    public var weight: String
+    public var riskVerdict: RiskVerdict
+    public var safeUnread: Bool
+
+    public init(wouldMerge: Bool, weight: String, riskVerdict: RiskVerdict, safeUnread: Bool) {
+        self.wouldMerge = wouldMerge
+        self.weight = weight
+        self.riskVerdict = riskVerdict
+        self.safeUnread = safeUnread
+    }
+
+    public static func from(_ risk: RiskAssessment?) -> MergeIntentContext? {
+        guard let risk, let safe = risk.safeUnread else { return nil }
+        let highest = !safe && risk.verdict == .autoApprove
+        return MergeIntentContext(
+            wouldMerge: safe,
+            weight: highest ? "highest" : "normal",
+            riskVerdict: risk.verdict,
+            safeUnread: safe
+        )
+    }
+
+    public var jsonObject: [String: Any] {
+        [
+            "safe_unread": safeUnread,
+            "would_merge": wouldMerge,
+            "weight": weight,
+            "risk_verdict": riskVerdict.rawValue,
+        ]
+    }
+}
+
 public enum SuggestionFilter: Sendable {
     public static func signal(
         for finding: Finding,
@@ -32,17 +68,52 @@ public enum SuggestionFilter: Sendable {
         return findings.first { Normalize.titleKey($0.title) == needle }
     }
 
-    /// Job-sourced one-off findings stay out of the inbox unless a human endorsed them.
+    /// Job-sourced one-off findings stay out of the inbox unless a human endorsed them,
+    /// or the operator said they would not have merged and this finding is a kept error.
+    /// The job-level merge-intent label never auto-suppresses a finding.
     /// Novel miner titles (no matching finding) stay as judge candidates.
     public static func keepJobRule(
         draft: MinedRuleDraft,
         findings: [Finding],
-        feedback: [FindingFeedback]
+        feedback: [FindingFeedback],
+        risk: RiskAssessment? = nil
     ) -> Bool {
         guard let finding = matchingFinding(title: draft.title, in: findings) else {
             return true
         }
-        return signal(for: finding, feedback: feedback) == .endorse
+        switch signal(for: finding, feedback: feedback) {
+        case .endorse:
+            return true
+        case .reject:
+            return false
+        case .none:
+            guard let intent = MergeIntentContext.from(risk), !intent.wouldMerge else {
+                return false
+            }
+            return isKeptError(finding)
+        }
+    }
+
+    public static func isKeptError(_ finding: Finding) -> Bool {
+        if finding.lifecycle == .resolved { return false }
+        if finding.judgeVerdict == .drop || finding.judgeVerdict == .unavailable {
+            return false
+        }
+        return (finding.judgeSeverity ?? finding.severity) == .error
+    }
+
+    /// Wire object for `job/feedback.json`. Nil when there is nothing to stage.
+    public static func stagedFeedbackJSON(
+        findingFeedback: [[String: String]],
+        risk: RiskAssessment?
+    ) -> [String: Any]? {
+        let intent = MergeIntentContext.from(risk)
+        if findingFeedback.isEmpty, intent == nil { return nil }
+        var object: [String: Any] = ["finding_feedback": findingFeedback]
+        if let intent {
+            object["merge_intent"] = intent.jsonObject
+        }
+        return object
     }
 
     public static func endorsedFindings(
