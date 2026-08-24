@@ -16,11 +16,10 @@ public enum OpenCodeHTTPError: Error, Sendable, Equatable, CustomStringConvertib
 
     public static func classify(status: Int, body: Data) -> OpenCodeHTTPError? {
         let snippet = String(data: body, encoding: .utf8).map { String($0.prefix(500)) } ?? ""
+        // HTTP status only. Do not sniff 2xx bodies — reviewer output quoting
+        // "HTTP 401" / "User not found" is not a provider auth failure.
         if status == 401 || status == 403 {
             return .providerAuth(status: status, body: snippet)
-        }
-        if let auth = ReviewFailureClass.providerAuthHTTPStatus(in: snippet) {
-            return .providerAuth(status: auth, body: snippet)
         }
         return nil
     }
