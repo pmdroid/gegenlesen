@@ -592,7 +592,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         do {
             let result = try await docker.run(dockerRequest)
             transcript.append(SecretRedactor().redact(Data(result.outputText.utf8)))
-            providerAuth = DockerRunner.providerAuthStatus(in: result) != nil || Self.isProviderAuth(transcript)
+            if result.exitCode != 0 || result.timedOut {
+                providerAuth = DockerRunner.providerAuthStatus(in: result) != nil
+            }
         } catch let error as OpenCodeHTTPError {
             let body = SecretRedactor().redact(String(describing: error))
             transcript.append(Data(body.utf8))
@@ -621,7 +623,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 findings: parsed.findings,
                 valid: true,
                 transcript: transcript,
-                providerAuth: providerAuth
+                providerAuth: false
             )
         } catch {
             return SlotOutcome(findings: [], valid: false, transcript: transcript, providerAuth: providerAuth)

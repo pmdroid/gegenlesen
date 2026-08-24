@@ -32,14 +32,9 @@ struct OpenCodeHTTPClientTests {
     }
 
     @Test
-    func classifies200ErrorEventBodyAsProviderAuth() {
+    func ignores200BodiesThatQuoteAuthErrors() {
         let body = Data(#"{"type":"error","error":{"message":"User not found.","code":401}}"#.utf8)
-        let error = OpenCodeHTTPError.classify(status: 200, body: body)
-        guard case .providerAuth(let status, _) = error else {
-            Issue.record("expected providerAuth from body")
-            return
-        }
-        #expect(status == 401)
+        #expect(OpenCodeHTTPError.classify(status: 200, body: body) == nil)
     }
 
     @Test
