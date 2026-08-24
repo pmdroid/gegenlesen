@@ -383,7 +383,20 @@ struct OpenCodeInvocationTests {
             #expect(result.failed == true)
             #expect(result.validFileCount == 0)
             #expect(result.errorMessage == "reviewer_no_findings_file")
+            #expect(result.payloadJSON?.contains("no_findings_file") == true)
         }
+    }
+
+    @Test
+    func reviewEventPayloadIncludesOpenRouterStatus() {
+        let transcript = Data(#"HTTP 401 {"error":{"message":"User not found.","code":401}}"#.utf8)
+        let payload = OpenCodeInvocation.reviewEventPayload(
+            errorMessage: "reviewer_no_findings_file",
+            transcripts: [transcript]
+        )
+        #expect(payload?.contains("\"status\":401") == true)
+        #expect(payload?.contains("openrouter") == true)
+        #expect(payload?.contains("provider_auth") == true)
     }
 }
 

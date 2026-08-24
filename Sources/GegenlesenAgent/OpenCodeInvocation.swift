@@ -70,11 +70,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 diffPatch: diffPatch
             )
         } catch {
+            let message = String(describing: error)
             return AgentReviewResult(
                 findings: [],
                 validFileCount: 0,
                 failed: request.newWork,
-                errorMessage: String(describing: error),
+                errorMessage: message,
+                payloadJSON: Self.reviewEventPayload(errorMessage: message, transcripts: []),
                 containerNameA: nameA,
                 containerNameB: nameB,
                 containerName: judgeName
@@ -101,15 +103,54 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let failed = request.newWork && valid == 0
         persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
         persistAgentCopies(workspace: request.workspace, jobID: jobID)
+        let errorMessage = failed ? "reviewer_no_findings_file" : nil
         return AgentReviewResult(
             findings: findings,
             validFileCount: valid,
             failed: failed,
-            errorMessage: failed ? "reviewer_no_findings_file" : nil,
+            errorMessage: errorMessage,
+            payloadJSON: failed
+                ? Self.reviewEventPayload(
+                    errorMessage: errorMessage ?? ReviewFailureClass.noFindingsFile.rawValue,
+                    transcripts: [resultA.transcript, resultB.transcript]
+                )
+                : nil,
             containerNameA: nameA,
             containerNameB: nameB,
             containerName: judgeName
         )
+    }
+
+    static func reviewEventPayload(errorMessage: String, transcripts: [Data]) -> String? {
+        var object: [String: Any] = ["message": errorMessage]
+        let text = transcripts.compactMap { String(data: $0, encoding: .utf8) }.joined(separator: "\n")
+        if let parsed = openRouterError(in: text) {
+            object["provider"] = "openrouter"
+            object["status"] = parsed.status
+            object["body"] = parsed.body
+        }
+        let encoded = JobEvent.payloadJSON(object)
+        object["error_class"] = ReviewFailureClass.classify(
+            errorMessage: errorMessage,
+            payloadJSON: encoded
+        ).rawValue
+        return JobEvent.payloadJSON(object)
+    }
+
+    static func openRouterError(in text: String) -> (status: Int, body: String)? {
+        guard !text.isEmpty else { return nil }
+        let statuses = [401, 403, 429, 500, 502, 503]
+        guard let status = statuses.first(where: { code in
+            text.contains("\"status\":\(code)")
+                || text.contains("\"status\": \(code)")
+                || text.contains("\"code\":\(code)")
+                || text.contains("\"code\": \(code)")
+                || text.contains("HTTP \(code)")
+        }) else {
+            return nil
+        }
+        let body = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+        return (status, body)
     }
 
     public static func containerName(jobID: JobID, slot: ReviewerSlot) -> String {

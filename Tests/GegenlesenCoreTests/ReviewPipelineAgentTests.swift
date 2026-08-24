@@ -6,6 +6,29 @@ import Testing
 @Suite
 struct ReviewPipelineAgentTests {
     @Test
+    func reviewFailureClassPrefersProviderAuth() {
+        #expect(
+            ReviewFailureClass.classify(
+                errorMessage: "reviewer_no_findings_file",
+                payloadJSON: #"{"provider":"openrouter","status":401}"#
+            ) == .providerAuth
+        )
+        #expect(
+            ReviewFailureClass.classify(
+                errorMessage: "reviewer_no_findings_file",
+                payloadJSON: nil
+            ) == .noFindingsFile
+        )
+        #expect(
+            ReviewFailureClass.classify(
+                errorMessage: "boom",
+                payloadJSON: nil
+            ) == .reviewerFailed
+        )
+    }
+
+
+    @Test
     func skipAgentPackedRepoSucceedsWithoutReviewer() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
@@ -18,6 +41,13 @@ struct ReviewPipelineAgentTests {
                 let after = try #require(try await store.job(id: job.id))
                 #expect(after.status == .succeeded)
                 #expect(after.containerNameA == nil)
+                #expect(after.risk != nil)
+                let timings = try #require(after.timings)
+                #expect(timings.unpackMS != nil)
+                #expect(timings.identifyMS != nil)
+                #expect(timings.deterministicMS != nil)
+                #expect(timings.reviewMS == nil)
+                #expect(timings.judgeMS == nil)
                 let findings = try await store.findings(jobID: job.id)
                 #expect(!findings.contains { $0.phase == .agent })
                 let context = store.blobs.workspaceURL(jobID: job.id.rawValue)
@@ -45,8 +75,44 @@ struct ReviewPipelineAgentTests {
                 try await pipeline.run(jobID: job.id)
                 let after = try #require(try await store.job(id: job.id))
                 #expect(after.status == .failed)
-                #expect(after.errorMessage == "reviewer_no_findings_file")
+                #expect(after.errorMessage == "no_findings_file")
                 #expect(after.containerNameA == "gegenlesen-review-\(job.id.rawValue)-a")
+                let risk = try #require(after.risk)
+                #expect(risk.verdict == .needsHuman)
+                #expect(risk.reasons.contains { $0.code == "no_findings_file" })
+                let events = try await store.events(jobID: job.id)
+                let failed = try #require(events.first { $0.message == "review_failed" })
+                #expect(failed.payloadJSON?.contains("no_findings_file") == true)
+                #expect(failed.payloadJSON?.contains("reviewer_no_findings_file") == true)
+                let timings = try #require(after.timings)
+                #expect(timings.reviewMS != nil)
+            }
+        }
+    }
+
+    @Test
+    func providerAuthFailurePersistsCompactRiskAndPayload() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: ProviderAuthReviewer()
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "provider_auth")
+                let risk = try #require(after.risk)
+                #expect(risk.reasons.contains { $0.code == "provider_auth" })
+                let events = try await store.events(jobID: job.id)
+                let failed = try #require(events.first { $0.message == "review_failed" })
+                #expect(failed.payloadJSON?.contains("\"status\":401") == true)
+                #expect(failed.payloadJSON?.contains("openrouter") == true)
             }
         }
     }
@@ -73,6 +139,10 @@ struct ReviewPipelineAgentTests {
                 let after = try #require(try await store.job(id: job.id))
                 #expect(after.status == .succeeded)
                 #expect(after.containerNameA == "gegenlesen-review-\(job.id.rawValue)-a")
+                #expect(after.risk != nil)
+                let timings = try #require(after.timings)
+                #expect(timings.reviewMS != nil)
+                #expect(timings.judgeMS != nil)
                 let findings = try await store.findings(jobID: job.id)
                 #expect(findings.contains { $0.phase == .agent && $0.reviewerSlot == .modelA })
                 #expect(findings.contains { $0.judgeVerdict == .unavailable })
@@ -222,6 +292,27 @@ struct ReviewPipelineAgentTests {
                 #expect(events.contains { $0.level == .warning && $0.message == "command_error" })
             }
         }
+    }
+}
+
+struct ProviderAuthReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        AgentReviewResult(
+            findings: [],
+            validFileCount: 0,
+            failed: true,
+            errorMessage: "User not found.",
+            payloadJSON: JobEvent.payloadJSON([
+                "body": "User not found.",
+                "error_class": "provider_auth",
+                "message": "User not found.",
+                "provider": "openrouter",
+                "status": 401,
+            ]),
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
     }
 }
 
