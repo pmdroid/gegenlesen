@@ -61,4 +61,48 @@ struct MineCorpusPipelineTests {
             )
         }
     }
+
+    @Test
+    func learnStagesMergeIntentOnFeedbackJSON() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            var source = sampleJob(
+                id: "11111111-1111-4111-8111-111111111111",
+                status: .succeeded,
+                finishedAt: now
+            )
+            source.risk = RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: [],
+                safeUnread: false
+            )
+            try await store.insertJob(source)
+            try Data("diff --git a/A.swift b/A.swift\n".utf8).write(
+                to: store.blobs.patchURL(jobID: source.id.rawValue)
+            )
+
+            let mineID = JobID("22222222-2222-4222-8222-222222222222")
+            try await store.insertJob(sampleJob(id: mineID.rawValue, status: .queued))
+            try await MineCorpusPipeline(store: store, skipAgent: true, model: "none").run(
+                jobID: mineID,
+                spec: MineJobSpec(source: .job, sourceJobID: source.id)
+            )
+
+            let raw = try Data(
+                contentsOf: store.blobs.workspaceURL(jobID: mineID.rawValue)
+                    .appendingPathComponent("job/feedback.json")
+            )
+            let object = try #require(
+                try JSONSerialization.jsonObject(with: raw) as? [String: Any]
+            )
+            let intent = try #require(object["merge_intent"] as? [String: Any])
+            #expect(intent["would_merge"] as? Bool == false)
+            #expect(intent["weight"] as? String == "highest")
+            #expect(intent["safe_unread"] as? Bool == false)
+        }
+    }
 }

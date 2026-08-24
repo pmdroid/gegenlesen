@@ -144,6 +144,55 @@ struct LearnSweepJobTests {
             #expect(await box.ids.isEmpty)
         }
     }
+
+    @Test
+    func enqueuesSucceededJobWithOnlySafeUnread() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            var job = sampleJob(id: "job-risk-only", status: .succeeded, finishedAt: now)
+            job.title = "ship the hop fix"
+            job.risk = RiskAssessment(
+                verdict: .needsHuman,
+                mode: .shadow,
+                score: 3,
+                appetite: 1,
+                reasons: [],
+                safeUnread: true
+            )
+            try await store.insertJob(job)
+
+            let box = EnqueueBox()
+            try await LearnSweepJob(store: store, intervalMinutes: 15, now: now) { id in
+                await box.record(id)
+            }.run()
+            #expect(await box.ids == [job.id])
+        }
+    }
+
+    @Test
+    func skipsUnansweredRiskLabel() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            var job = sampleJob(id: "job-risk-unanswered", status: .succeeded, finishedAt: now)
+            job.title = "ship the hop fix"
+            job.risk = RiskAssessment(
+                verdict: .autoApprove,
+                mode: .shadow,
+                score: 1,
+                appetite: 1,
+                reasons: []
+            )
+            try await store.insertJob(job)
+
+            let box = EnqueueBox()
+            try await LearnSweepJob(store: store, intervalMinutes: 15, now: now) { id in
+                await box.record(id)
+            }.run()
+            #expect(await box.ids.isEmpty)
+        }
+    }
 }
 
 private actor EnqueueBox {
