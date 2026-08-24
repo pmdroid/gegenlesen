@@ -16,7 +16,7 @@ It does not start reviews. Use `gegenlesen review` or `POST /api/jobs`.
 | `/jobs/:id` | Findings, events, thumbs, comments, learn button |
 | `/rules` | Handwritten and mined rules |
 | `/context` | Operator notes |
-| `/learnings` | Suggested rules and context, accept or dismiss (optional reason) |
+| `/learnings` | Suggested rules and context, accept / dismiss / restore, accept vs dismiss rate per kind |
 
 ## Feedback
 

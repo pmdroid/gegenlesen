@@ -260,3 +260,7 @@ export function dismissLearning(id: string, body?: LearningDismissRequest): Prom
   const empty = body == null || (body.reason == null && (body.comment == null || body.comment === ""));
   return sendJSON(`/api/learnings/${id}/dismiss`, "POST", empty ? undefined : body);
 }
+
+export function restoreLearning(id: string): Promise<Learning> {
+  return sendJSON(`/api/learnings/${id}/restore`, "POST");
+}

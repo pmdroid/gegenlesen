@@ -80,6 +80,48 @@ struct SuggestionFilterTests {
     }
 
     @Test
+    func ruleProposalNeedsTwoDistinctJobs() {
+        let first = sampleFinding(title: "Silent hop errors", verdict: .keep, jobID: JobID("job-1"))
+        let second = sampleFinding(title: "silent  hop errors", verdict: .keep, jobID: JobID("job-2"))
+        let up1 = FindingFeedback(
+            id: 1,
+            findingID: first.id,
+            jobID: first.jobID,
+            ts: Date(),
+            verdict: .agree,
+            reaction: .thumbsUp
+        )
+        let up2 = FindingFeedback(
+            id: 2,
+            findingID: second.id,
+            jobID: second.jobID,
+            ts: Date(),
+            verdict: .shouldBeRule
+        )
+        #expect(
+            SuggestionFilter.enoughRuleEndorsements(
+                titles: ["Silent hop errors"],
+                findings: [first],
+                feedback: [up1]
+            ) == false
+        )
+        #expect(
+            SuggestionFilter.endorsingJobIDs(
+                titles: ["Silent hop errors"],
+                findings: [first, first],
+                feedback: [up1]
+            ).count == 1
+        )
+        #expect(
+            SuggestionFilter.enoughRuleEndorsements(
+                titles: ["Silent hop errors"],
+                findings: [first, second],
+                feedback: [up1, up2]
+            )
+        )
+    }
+
+    @Test
     func contextOmitsUnendorsedDump() {
         let finding = sampleFinding(title: "one", verdict: .keep)
         #expect(SuggestionFilter.contextBody(findings: [finding], feedback: []) == nil)
@@ -325,11 +367,12 @@ struct SuggestionFilterTests {
 private func sampleFinding(
     title: String,
     verdict: JudgeVerdict,
-    severity: Severity = .warning
+    severity: Severity = .warning,
+    jobID: JobID = JobID("job-1")
 ) -> Finding {
     Finding(
         id: FindingID.generate(),
-        jobID: JobID("job-1"),
+        jobID: jobID,
         phase: .agent,
         severity: severity,
         title: title,

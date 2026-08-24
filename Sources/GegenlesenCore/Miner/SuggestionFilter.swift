@@ -65,9 +65,38 @@ public enum SuggestionFilter: Sendable {
         }
     }
 
+    public static let minRuleEndorsementJobs = 2
+
     public static func matchingFinding(title: String, in findings: [Finding]) -> Finding? {
         let needle = Normalize.titleKey(title)
         return findings.first { Normalize.titleKey($0.title) == needle }
+    }
+
+    /// Distinct review jobs whose latest current verdict on a matching title is endorse.
+    public static func endorsingJobIDs(
+        titles: [String],
+        findings: [Finding],
+        feedback: [FindingFeedback]
+    ) -> Set<JobID> {
+        let keys = Set(titles.map(Normalize.titleKey).filter { !$0.isEmpty })
+        guard !keys.isEmpty else { return [] }
+        var jobs = Set<JobID>()
+        for finding in findings {
+            guard keys.contains(Normalize.titleKey(finding.title)) else { continue }
+            if signal(for: finding, feedback: feedback) == .endorse {
+                jobs.insert(finding.jobID)
+            }
+        }
+        return jobs
+    }
+
+    public static func enoughRuleEndorsements(
+        titles: [String],
+        findings: [Finding],
+        feedback: [FindingFeedback]
+    ) -> Bool {
+        endorsingJobIDs(titles: titles, findings: findings, feedback: feedback).count
+            >= minRuleEndorsementJobs
     }
 
     /// Job-sourced one-off findings stay out of the inbox unless a human endorsed them,

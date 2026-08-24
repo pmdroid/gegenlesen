@@ -69,6 +69,26 @@ struct ContextNoteDTO: Content {
 
 struct LearningListResponse: Content {
     var learnings: [LearningDTO]
+    var yield: [LearningYieldDTO]
+
+    init(learnings: [LearningDTO], yield: [LearningYieldDTO]) {
+        self.learnings = learnings
+        self.yield = yield
+    }
+}
+
+struct LearningYieldDTO: Content {
+    var kind: LearningKind
+    var accepted: Int
+    var dismissed: Int
+    var rate: Double
+
+    init(yield: LearningYield) {
+        kind = yield.kind
+        accepted = yield.accepted
+        dismissed = yield.dismissed
+        rate = yield.rate
+    }
 }
 
 struct LearningDismissRequest: Content {

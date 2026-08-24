@@ -29,6 +29,18 @@ extension Store {
         }
     }
 
+    public func findingsAndFeedback() throws -> (findings: [Finding], feedback: [FindingFeedback]) {
+        try read { db in
+            let findings = try Row.fetchAll(db, sql: "SELECT * FROM findings")
+                .map(Finding.init(row:))
+            let feedback = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM finding_feedback ORDER BY id"
+            ).map(FindingFeedback.init(row:))
+            return (findings, feedback)
+        }
+    }
+
     public func applyFindingFeedback(
         finding: Finding,
         verdict: FeedbackVerdict,

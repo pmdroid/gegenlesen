@@ -116,7 +116,7 @@ public enum ChunkKind: String, Codable, Sendable, Equatable {
     case file, architecture, user, rule
 }
 
-public enum LearningKind: String, Codable, Sendable, Equatable {
+public enum LearningKind: String, Codable, CaseIterable, Sendable, Equatable {
     case rule, architecture, context
 }
 
