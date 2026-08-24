@@ -63,6 +63,25 @@ extension Store {
         }
     }
 
+    public func updateJobTimings(jobID: JobID, timings: JobTimings) throws {
+        let data = try JSONEncoder().encode(timings)
+        guard let encoded = String(data: data, encoding: .utf8) else { return }
+        try write { db in
+            try db.execute(
+                sql: """
+                    UPDATE jobs
+                    SET timings_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    encoded,
+                    ISO8601Dates.string(from: Date()),
+                    jobID.rawValue,
+                ]
+            )
+        }
+    }
+
     public func job(id: JobID) throws -> Job? {
         try read { db in
             try Row.fetchOne(db, sql: "SELECT * FROM jobs WHERE id = ?", arguments: [id.rawValue])
