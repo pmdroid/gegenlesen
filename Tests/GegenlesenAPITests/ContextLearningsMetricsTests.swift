@@ -173,6 +173,25 @@ struct ContextLearningsMetricsTests {
             #expect(try await app.gegenlesenStore.learning(id: bogus.id)?.status == .pending)
         }
     }
+
+    @Test
+    func acceptingRuleLearningEnablesHandwrittenRule() async throws {
+        try await withGegenlesenApp { app in
+            let item = Learning(
+                kind: .rule,
+                title: "Log hop failures without secrets",
+                body: "Log far-end open errors with a credential-free target."
+            )
+            try await app.gegenlesenStore.insertLearning(item)
+            try await app.testing().test(.POST, "/api/learnings/\(item.id)/accept") { res async throws in
+                #expect(res.status == .ok)
+            }
+            let rules = try await app.gegenlesenStore.listRules(RuleListFilter(includeDeleted: false))
+            let stored = try #require(rules.first { $0.title == item.title })
+            #expect(stored.enabled == true)
+            #expect(stored.provenance == .handwritten)
+        }
+    }
 }
 
 private func jsonObject(_ res: TestingHTTPResponse) throws -> [String: Any] {

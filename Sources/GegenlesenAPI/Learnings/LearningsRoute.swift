@@ -97,8 +97,17 @@ enum LearningsRoute {
             createdAt: now,
             updatedAt: now
         )
-        _ = try await MinerDedup.upsert(rule, into: store, now: now)
-        if let stored = try await store.rule(id: rule.id) {
+        let outcome = try await MinerDedup.upsert(rule, into: store, now: now)
+        let storedID: RuleID
+        switch outcome {
+        case .inserted(let id), .attached(let id):
+            storedID = id
+        }
+        if var stored = try await store.rule(id: storedID) {
+            stored.enabled = true
+            stored.provenance = .handwritten
+            stored.updatedAt = now
+            try await store.updateRule(stored)
             await embedRule(stored, on: req)
         }
     }

@@ -304,6 +304,26 @@ struct SuggestionFilterTests {
     }
 
     @Test
+    func suggestionJudgeDuplicateIdsKeepLast() {
+        let candidates = [
+            SuggestionCandidate(id: "sug_rule_0", kind: .rule, title: "t", body: "b"),
+        ]
+        let payload = """
+        {"verdicts":[
+          {"finding_id":"sug_rule_0","verdict":"drop","rationale":"first"},
+          {"finding_id":"sug_rule_0","verdict":"keep","rationale":"last"}
+        ]}
+        """
+        let kept = SuggestionJudge.apply(
+            outcome: SuggestionJudge.parse(Data(payload.utf8)),
+            candidates: candidates,
+            fallbackIDs: []
+        )
+        #expect(kept.count == 1)
+        #expect(kept[0].id == "sug_rule_0")
+    }
+
+    @Test
     func suggestionJudgeEventPayloadIncludesFailureReason() {
         let payload = SuggestionJudge.eventPayload(
             candidates: 13,
