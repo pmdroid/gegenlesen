@@ -50,6 +50,24 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
         return .reviewerFailed
     }
 
+    /// 401/403 from OpenCode/OpenRouter HTTP or `opencode run` stdout/stderr. Not a host LLM call.
+    public static func providerAuthHTTPStatus(in text: String?) -> Int? {
+        guard let text, !text.isEmpty else { return nil }
+        if text.contains("User not found") { return 401 }
+        for code in [401, 403] {
+            let markers = [
+                "\"status\":\(code)", "\"status\": \(code)",
+                "\"statusCode\":\(code)", "\"statusCode\": \(code)",
+                "\"code\":\(code)", "\"code\": \(code)",
+                "HTTP \(code)",
+            ]
+            if markers.contains(where: { text.contains($0) }) {
+                return code
+            }
+        }
+        return nil
+    }
+
     private static func containsNoFindingsFile(_ text: String?) -> Bool {
         text?.contains("no_findings_file") == true
     }
@@ -57,13 +75,6 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
     private static func looksLikeProviderAuth(_ text: String?) -> Bool {
         guard let text, !text.isEmpty else { return false }
         if text.contains("provider_auth") { return true }
-        let markers = [
-            "\"status\":401", "\"status\": 401",
-            "\"status\":403", "\"status\": 403",
-            "\"code\":401", "\"code\": 401",
-            "\"code\":403", "\"code\": 403",
-            "HTTP 401", "HTTP 403",
-        ]
-        return markers.contains { text.contains($0) }
+        return providerAuthHTTPStatus(in: text) != nil
     }
 }

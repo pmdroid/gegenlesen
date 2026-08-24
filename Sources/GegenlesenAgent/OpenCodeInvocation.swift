@@ -84,19 +84,55 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
 
         let known = Set(request.rules.map(\.id))
-        async let slotA = runSlot(
+        let resultA = await runSlot(
             request,
             slot: .modelA,
             model: request.job.reviewerAModelID,
             known: known
         )
-        async let slotB = runSlot(
+        if resultA.providerAuth {
+            persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript])
+            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            let errorMessage = ReviewFailureClass.providerAuth.rawValue
+            return AgentReviewResult(
+                findings: resultA.findings,
+                validFileCount: resultA.valid ? 1 : 0,
+                failed: true,
+                errorMessage: errorMessage,
+                payloadJSON: Self.reviewEventPayload(
+                    errorMessage: errorMessage,
+                    transcripts: [resultA.transcript]
+                ),
+                containerNameA: nameA,
+                containerNameB: nameB,
+                containerName: judgeName
+            )
+        }
+
+        let resultB = await runSlot(
             request,
             slot: .modelB,
             model: request.job.reviewerBModelID,
             known: known
         )
-        let (resultA, resultB) = await (slotA, slotB)
+        if resultB.providerAuth {
+            persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
+            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            let errorMessage = ReviewFailureClass.providerAuth.rawValue
+            return AgentReviewResult(
+                findings: resultA.findings + resultB.findings,
+                validFileCount: (resultA.valid ? 1 : 0) + (resultB.valid ? 1 : 0),
+                failed: true,
+                errorMessage: errorMessage,
+                payloadJSON: Self.reviewEventPayload(
+                    errorMessage: errorMessage,
+                    transcripts: [resultA.transcript, resultB.transcript]
+                ),
+                containerNameA: nameA,
+                containerNameB: nameB,
+                containerName: judgeName
+            )
+        }
 
         let findings = resultA.findings + resultB.findings
         let valid = (resultA.valid ? 1 : 0) + (resultB.valid ? 1 : 0)
@@ -139,18 +175,20 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
     static func openRouterError(in text: String) -> (status: Int, body: String)? {
         guard !text.isEmpty else { return nil }
-        let statuses = [401, 403, 429, 500, 502, 503]
-        guard let status = statuses.first(where: { code in
+        let status = ReviewFailureClass.providerAuthHTTPStatus(in: text) ?? [429, 500, 502, 503].first(where: { code in
             text.contains("\"status\":\(code)")
                 || text.contains("\"status\": \(code)")
                 || text.contains("\"code\":\(code)")
                 || text.contains("\"code\": \(code)")
                 || text.contains("HTTP \(code)")
-        }) else {
-            return nil
-        }
+        })
+        guard let status else { return nil }
         let body = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
         return (status, body)
+    }
+
+    static func isProviderAuth(_ transcript: Data) -> Bool {
+        ReviewFailureClass.providerAuthHTTPStatus(in: String(data: transcript, encoding: .utf8)) != nil
     }
 
     public static func containerName(jobID: JobID, slot: ReviewerSlot) -> String {
@@ -525,6 +563,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var findings: [Finding]
         var valid: Bool
         var transcript: Data
+        var providerAuth: Bool
     }
 
     private func runSlot(
@@ -534,7 +573,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         known: Set<RuleID>
     ) async -> SlotOutcome {
         if await request.isCancelled?() == true {
-            return SlotOutcome(findings: [], valid: false, transcript: Data())
+            return SlotOutcome(findings: [], valid: false, transcript: Data(), providerAuth: false)
         }
         let dockerRequest: DockerRequest
         do {
@@ -546,19 +585,29 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 incremental: request.job.scope == .incremental
             )
         } catch {
-            return SlotOutcome(findings: [], valid: false, transcript: Data())
+            return SlotOutcome(findings: [], valid: false, transcript: Data(), providerAuth: false)
         }
         var transcript = Data()
-        if let result = try? await docker.run(dockerRequest) {
-            transcript.append(SecretRedactor().redact(result.stdout))
-            transcript.append(SecretRedactor().redact(result.stderr))
+        var providerAuth = false
+        do {
+            let result = try await docker.run(dockerRequest)
+            transcript.append(SecretRedactor().redact(Data(result.outputText.utf8)))
+            providerAuth = DockerRunner.providerAuthStatus(in: result) != nil || Self.isProviderAuth(transcript)
+        } catch let error as OpenCodeHTTPError {
+            let body = SecretRedactor().redact(String(describing: error))
+            transcript.append(Data(body.utf8))
+            providerAuth = true
+        } catch {
+            let body = SecretRedactor().redact(String(describing: error))
+            transcript.append(Data(body.utf8))
+            providerAuth = Self.isProviderAuth(transcript)
         }
 
         let url = FindingsParser.findingsURL(workspace: request.workspace, slot: slot)
         let shared = request.workspace.root.appendingPathComponent(".gegenlesen/findings.json")
         let data = (try? Data(contentsOf: url)) ?? (try? Data(contentsOf: shared))
         guard let data else {
-            return SlotOutcome(findings: [], valid: false, transcript: transcript)
+            return SlotOutcome(findings: [], valid: false, transcript: transcript, providerAuth: providerAuth)
         }
         do {
             let parsed = try FindingsParser.parse(
@@ -568,9 +617,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 jobID: request.job.id,
                 slot: slot
             )
-            return SlotOutcome(findings: parsed.findings, valid: true, transcript: transcript)
+            return SlotOutcome(
+                findings: parsed.findings,
+                valid: true,
+                transcript: transcript,
+                providerAuth: providerAuth
+            )
         } catch {
-            return SlotOutcome(findings: [], valid: false, transcript: transcript)
+            return SlotOutcome(findings: [], valid: false, transcript: transcript, providerAuth: providerAuth)
         }
     }
 

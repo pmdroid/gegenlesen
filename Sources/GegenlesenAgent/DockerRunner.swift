@@ -100,6 +100,10 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         )
     }
 
+    public static func providerAuthStatus(in result: DockerResult) -> Int? {
+        ReviewFailureClass.providerAuthHTTPStatus(in: result.outputText)
+    }
+
     public func kill(containerName: String) async {
         Self.killSync(dockerPath: dockerPath, name: containerName)
     }

@@ -24,6 +24,16 @@ function summaryLine(job: JobListItem): string | null {
   return `${summary.new} new · ${summary.still_open} still_open · ${summary.resolved} resolved · ${summary.relocated} relocated · ${summary.dropped} dropped`;
 }
 
+function failureLine(errorMessage: string | null): string {
+  if (errorMessage === "provider_auth") {
+    return "failed · provider_auth · provider rejected the API key";
+  }
+  if (errorMessage === "no_findings_file" || errorMessage === "reviewer_no_findings_file") {
+    return `failed · ${errorMessage}`;
+  }
+  return errorMessage ? `failed · ${errorMessage}` : "failed";
+}
+
 function pipelineLine(job: JobListItem): string {
   switch (job.status) {
     case "queued":
@@ -41,7 +51,7 @@ function pipelineLine(job: JobListItem): string {
     case "succeeded":
       return "det → A ∥ B → judge";
     case "failed":
-      return job.error_message ? `failed · ${job.error_message}` : "failed";
+      return failureLine(job.error_message);
     case "cancelled":
       return "cancelled";
   }
@@ -257,9 +267,11 @@ export function JobDetailPage() {
       <FindingsTable
         findings={visibleFindings}
         emptyLabel={
-          detail.findings.length === 0
-            ? "No findings yet."
-            : "No kept findings. Toggle show dropped to inspect judge drops."
+          detail.error_message === "provider_auth"
+            ? "Review stopped before the second reviewer. Provider rejected the API key."
+            : detail.findings.length === 0
+              ? "No findings yet."
+              : "No kept findings. Toggle show dropped to inspect judge drops."
         }
         feedback={feedback.data?.feedback ?? []}
         pending={send.isPending}
