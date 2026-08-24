@@ -160,7 +160,7 @@ struct FindingsRouteTests {
                 res async throws in
                 let listed = try jsonObject(res)
                 let rows = try #require(listed["feedback"] as? [[String: Any]])
-                #expect(rows.count == 4)
+                #expect(rows.count == 3)
                 let comments = rows.filter { $0["verdict"] as? String == "comment" }
                 #expect(comments.count == 2)
                 let current = rows.reversed().first { ($0["verdict"] as? String) != "comment" }

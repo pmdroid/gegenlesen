@@ -285,8 +285,14 @@ struct HarvestFileTests {
         #expect(HarvestFile.isWholeFileDump(readme))
         #expect(HarvestFile.isWholeFileDump(design))
         #expect(!HarvestFile.isWholeFileDump(short))
-        let capped = HarvestFile.cap(HarvestBundle(notes: [readme, design, short]))
-        #expect(capped.notes.map(\.title) == ["CI is optional"])
+        let original = HarvestNoteDraft(
+            title: "Long original",
+            body: String(repeating: "Prefer structured logs. ", count: 30),
+            evidence: [RuleExample(path: "docs/logging.md", excerpt: "use the project logger")]
+        )
+        #expect(!HarvestFile.isWholeFileDump(original))
+        let capped = HarvestFile.cap(HarvestBundle(notes: [readme, design, short, original]))
+        #expect(capped.notes.map(\.title) == ["CI is optional", "Long original"])
     }
 
     @Test

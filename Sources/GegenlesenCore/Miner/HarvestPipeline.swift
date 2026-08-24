@@ -51,7 +51,6 @@ public struct HarvestPipeline: Sendable {
                 atomically: true,
                 encoding: .utf8
             )
-            try await dismissUnvettedHarvest(now: Date())
 
             var bundle: HarvestBundle
             if skipAgent || miner == nil {
@@ -96,6 +95,7 @@ public struct HarvestPipeline: Sendable {
                 try await failHarvest(jobID: jobID, message: "harvest_judge_failed")
                 return
             }
+            try await dismissUnvettedHarvest(now: now)
             let counts = try await persist(judged.bundle, jobID: jobID, now: now, judged: judged.judged)
 
             let indexer = ArchitectureIndexJob(

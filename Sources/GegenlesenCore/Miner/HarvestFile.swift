@@ -70,7 +70,6 @@ public enum HarvestFile: Sendable {
         }
         guard allProse else { return false }
         let body = note.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        if body.count >= minWholeFileDumpChars { return true }
         if body.count > maxNoteBodyChars { return true }
         for evidence in note.evidence {
             let excerpt = evidence.excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
