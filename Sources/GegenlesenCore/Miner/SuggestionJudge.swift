@@ -102,7 +102,7 @@ public enum SuggestionJudge: Sendable {
         # gegenlesen harvest suggestion judge
 
         You filter harvest drafts from an existing repo. Decide FIRST.
-        These are not review findings.
+        Default is DROP. These are not review findings.
 
         Read .gegenlesen/suggestion-judge-input.json. Echo each candidate.id
         as finding_id.

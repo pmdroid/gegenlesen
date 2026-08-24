@@ -6,7 +6,7 @@ order: 5
 
 Learn is not part of the review path. A review can write an architecture draft. It does not invent rules from findings.
 
-`gegenlesen harvest` is a separate first-run pass over a packed tree. It scans lint configs as suppressions, Flash drafts cited conventions, Terra drops most of them, and Ledger gets disabled drafts tagged `source: harvest`. Nothing auto-enables.
+`gegenlesen harvest` is a separate first-run pass over a packed tree. It scans lint configs as suppressions, Flash drafts cited conventions, Terra drops most of them, and Ledger gets disabled drafts tagged `source: harvest`. If the miner or suggestion judge fails, harvest does not write the ordinary inbox; drafts go to `needs_rejudge` (or the job fails with `harvest_judge_failed`). Context notes are capped at 2000 characters. Whole README.md / docs/*.md dumps are dropped. Nothing auto-enables.
 
 ## When it runs
 
