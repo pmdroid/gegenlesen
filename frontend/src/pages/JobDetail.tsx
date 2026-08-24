@@ -154,10 +154,13 @@ export function JobDetailPage() {
       {learn.isError ? <div className="formerr">could not start learn</div> : null}
       <FindingsTable
         findings={visibleFindings}
+        showDropped={showDropped}
         emptyLabel={
-          detail.findings.length === 0
-            ? "No findings yet."
-            : "No kept findings. Toggle show dropped to inspect judge drops."
+          detail.error_message === "provider_auth"
+            ? "Review stopped before the second reviewer. Provider rejected the API key."
+            : detail.findings.length === 0
+              ? "No findings yet."
+              : "No kept findings. Toggle show dropped to inspect judge drops."
         }
         feedback={feedback.data?.feedback ?? []}
         pending={send.isPending}

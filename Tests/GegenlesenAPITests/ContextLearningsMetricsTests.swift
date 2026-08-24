@@ -120,8 +120,107 @@ struct ContextLearningsMetricsTests {
             let other = Learning(kind: .architecture, title: "Layers", body: "API over Core")
             try await app.gegenlesenStore.insertLearning(other)
             try await app.testing().test(.POST, "/api/learnings/\(other.id)/dismiss") { res async throws in
-                #expect(try jsonObject(res)["status"] as? String == "dismissed")
+                let dismissed = try jsonObject(res)
+                #expect(dismissed["status"] as? String == "dismissed")
+                #expect(dismissed["dismiss_reason"] as? String == nil)
             }
+
+            let tagged = Learning(
+                kind: .rule,
+                title: "Use the project logger",
+                body: "no print",
+                payloadJSON: #"{"rule_id":"use-project-logger","source":"harvest"}"#
+            )
+            try await app.gegenlesenStore.insertLearning(tagged)
+            try await app.testing().test(
+                .POST,
+                "/api/learnings/\(tagged.id)/dismiss",
+                beforeRequest: { req in
+                    req.headers.contentType = .json
+                    req.body = .init(data: Data(#"{"reason":"already_covered","comment":"house logger rule exists"}"#.utf8))
+                },
+                afterResponse: { res async throws in
+                    #expect(res.status == .ok)
+                    let body = try jsonObject(res)
+                    #expect(body["status"] as? String == "dismissed")
+                    #expect(body["dismiss_reason"] as? String == "already_covered")
+                    #expect(body["dismiss_comment"] as? String == "house logger rule exists")
+                }
+            )
+            let stored = try #require(try await app.gegenlesenStore.learning(id: tagged.id))
+            #expect(stored.status == .dismissed)
+            #expect(stored.dismissReason == .alreadyCovered)
+            #expect(stored.dismissComment == "house logger rule exists")
+            #expect(stored.payloadString("rule_id") == "use-project-logger")
+            #expect(stored.payloadString("source") == "harvest")
+
+            let bogus = Learning(kind: .context, title: "Skip", body: "x")
+            try await app.gegenlesenStore.insertLearning(bogus)
+            try await app.testing().test(
+                .POST,
+                "/api/learnings/\(bogus.id)/dismiss",
+                beforeRequest: { req in
+                    req.headers.contentType = .json
+                    req.body = .init(data: Data(#"{"reason":"not_a_real_reason"}"#.utf8))
+                },
+                afterResponse: { res async throws in
+                    #expect(res.status == .badRequest)
+                    let object = try jsonObject(res)
+                    let error = try #require(object["error"] as? [String: Any])
+                    #expect(error["code"] as? String == "bad_request")
+                }
+            )
+            #expect(try await app.gegenlesenStore.learning(id: bogus.id)?.status == .pending)
+
+            try await app.testing().test(.GET, "/api/learnings?status=pending") { res async throws in
+                let body = try jsonObject(res)
+                let yield = try #require(body["yield"] as? [[String: Any]])
+                let rule = try #require(yield.first { $0["kind"] as? String == "rule" })
+                #expect((rule["accepted"] as? NSNumber)?.intValue == 0)
+                #expect((rule["dismissed"] as? NSNumber)?.intValue == 1)
+                #expect((rule["rate"] as? NSNumber)?.doubleValue == 0)
+                let context = try #require(yield.first { $0["kind"] as? String == "context" })
+                #expect((context["accepted"] as? NSNumber)?.intValue == 1)
+                #expect((context["dismissed"] as? NSNumber)?.intValue == 0)
+                #expect((context["rate"] as? NSNumber)?.doubleValue == 1)
+                let architecture = try #require(yield.first { $0["kind"] as? String == "architecture" })
+                #expect((architecture["dismissed"] as? NSNumber)?.intValue == 1)
+            }
+
+            try await app.testing().test(.POST, "/api/learnings/\(tagged.id)/restore") { res async throws in
+                #expect(res.status == .ok)
+                let body = try jsonObject(res)
+                #expect(body["status"] as? String == "pending")
+                #expect(body["dismiss_reason"] as? String == nil)
+            }
+            let restored = try #require(try await app.gegenlesenStore.learning(id: tagged.id))
+            #expect(restored.status == .pending)
+            #expect(restored.dismissReason == nil)
+            #expect(restored.resolvedAt == nil)
+            #expect(restored.payloadString("rule_id") == "use-project-logger")
+
+            try await app.testing().test(.POST, "/api/learnings/\(learning.id)/restore") { res async throws in
+                #expect(res.status == .conflict)
+            }
+        }
+    }
+
+    @Test
+    func acceptingRuleLearningEnablesHandwrittenRule() async throws {
+        try await withGegenlesenApp { app in
+            let item = Learning(
+                kind: .rule,
+                title: "Log hop failures without secrets",
+                body: "Log far-end open errors with a credential-free target."
+            )
+            try await app.gegenlesenStore.insertLearning(item)
+            try await app.testing().test(.POST, "/api/learnings/\(item.id)/accept") { res async throws in
+                #expect(res.status == .ok)
+            }
+            let rules = try await app.gegenlesenStore.listRules(RuleListFilter(includeDeleted: false))
+            let stored = try #require(rules.first { $0.title == item.title })
+            #expect(stored.enabled == true)
+            #expect(stored.provenance == .handwritten)
         }
     }
 }

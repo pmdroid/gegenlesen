@@ -392,6 +392,13 @@ struct JobsRouteTests {
                 let reasons = try #require(risk["reasons"] as? [[String: Any]])
                 #expect(reasons.contains { $0["code"] as? String == "reviewers_skipped" })
             }
+            let stored = try #require(try await app.gegenlesenStore.job(id: accepted.id))
+            let timings = try #require(stored.timings)
+            #expect(timings.unpackMS != nil)
+            #expect(timings.identifyMS != nil)
+            #expect(timings.deterministicMS != nil)
+            #expect(timings.reviewMS == nil)
+            #expect(timings.judgeMS == nil)
         }
     }
 

@@ -116,12 +116,21 @@ public enum ChunkKind: String, Codable, Sendable, Equatable {
     case file, architecture, user, rule
 }
 
-public enum LearningKind: String, Codable, Sendable, Equatable {
+public enum LearningKind: String, Codable, CaseIterable, Sendable, Equatable {
     case rule, architecture, context
 }
 
 public enum LearningStatus: String, Codable, Sendable, Equatable {
     case pending, accepted, dismissed
+    case needsRejudge = "needs_rejudge"
+}
+
+public enum LearningDismissReason: String, Codable, Sendable, Equatable, CaseIterable {
+    case duplicate
+    case alreadyCovered = "already_covered"
+    case tooSpecific = "too_specific"
+    case notARule = "not_a_rule"
+    case other
 }
 
 public enum DeterministicCheckerKind: String, Codable, Sendable, Equatable {

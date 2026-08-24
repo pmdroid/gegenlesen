@@ -33,6 +33,7 @@ public struct AgentReviewResult: Sendable {
     public var validFileCount: Int
     public var failed: Bool
     public var errorMessage: String?
+    public var payloadJSON: String?
     public var containerNameA: String
     public var containerNameB: String
     public var containerName: String
@@ -42,6 +43,7 @@ public struct AgentReviewResult: Sendable {
         validFileCount: Int,
         failed: Bool,
         errorMessage: String? = nil,
+        payloadJSON: String? = nil,
         containerNameA: String,
         containerNameB: String,
         containerName: String
@@ -50,6 +52,7 @@ public struct AgentReviewResult: Sendable {
         self.validFileCount = validFileCount
         self.failed = failed
         self.errorMessage = errorMessage
+        self.payloadJSON = payloadJSON
         self.containerNameA = containerNameA
         self.containerNameB = containerNameB
         self.containerName = containerName

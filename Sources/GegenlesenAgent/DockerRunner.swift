@@ -78,6 +78,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             }
             try? await Task.sleep(for: .milliseconds(50))
         }
+        process.waitUntilExit()
 
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil
@@ -98,6 +99,10 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             timedOut: timedOut || capture.isCapped,
             oom: false
         )
+    }
+
+    public static func providerAuthStatus(in result: DockerResult) -> Int? {
+        ReviewFailureClass.providerAuthHTTPStatus(in: result.outputText)
     }
 
     public func kill(containerName: String) async {

@@ -62,11 +62,9 @@ public struct ReviewPipeline: Sendable {
         } catch let error as StoreJobError where error == .notFound {
             return
         } catch {
-            _ = try? await store.apply(
-                jobID: jobID,
-                event: .identifyFailed("internal"),
-                errorMessage: String(describing: error)
-            )
+            let message = String(describing: error)
+            _ = try? await store.finishJob(id: jobID, status: .failed, errorMessage: message)
+            try? await store.appendEvent(jobID: jobID, level: .error, message: "internal")
         }
     }
 
@@ -78,20 +76,29 @@ public struct ReviewPipeline: Sendable {
         _ = try await store.apply(jobID: jobID, event: .dequeued)
         if try await stopped(jobID) { return }
 
+        var timings = JobTimings()
         let workspaceURL = store.blobs.workspaceURL(jobID: jobID.rawValue)
         let archive = store.blobs.archiveURL(jobID: jobID.rawValue)
+        let unpackStarted = ContinuousClock.now
         do {
             try ArchiveUnpacker().unpack(archive: archive, into: workspaceURL)
+            try await recordTiming(\.unpackMS, from: unpackStarted, jobID: jobID, timings: &timings)
             try await store.appendEvent(jobID: jobID, level: .info, message: "unpacked")
             _ = try await store.apply(jobID: jobID, event: .unpackOK)
             try await fillRepositoryIfNeeded(jobID: jobID, workspace: workspaceURL)
         } catch {
+            try await recordTiming(\.unpackMS, from: unpackStarted, jobID: jobID, timings: &timings)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .unpackFailed(String(describing: error)),
                 errorMessage: String(describing: error)
             )
-            try await store.appendEvent(jobID: jobID, level: .error, message: "unpack_failed")
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .error,
+                message: "unpack_failed",
+                payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
+            )
             return
         }
         if try await stopped(jobID) { return }
@@ -102,6 +109,7 @@ public struct ReviewPipeline: Sendable {
         var incrementalScope = false
         var changeSource: ChangeSet.Source?
         var patchBytes: Data?
+        let identifyStarted = ContinuousClock.now
         do {
             let meta = loadIdentifyMeta(jobID: jobID)
             let patch = loadMultipartPatch(jobID: jobID)
@@ -131,6 +139,7 @@ public struct ReviewPipeline: Sendable {
             }
             changeSource = changeSet.source
             try await store.replaceJobFiles(changeSet.files)
+            try await recordTiming(\.identifyMS, from: identifyStarted, jobID: jobID, timings: &timings)
             try await store.appendEvent(
                 jobID: jobID,
                 level: .info,
@@ -144,20 +153,32 @@ public struct ReviewPipeline: Sendable {
                 fileCount: changeSet.files.count
             )
         } catch let error as IdentifyError {
+            try await recordTiming(\.identifyMS, from: identifyStarted, jobID: jobID, timings: &timings)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .identifyFailed(error.errorMessage),
                 errorMessage: error.errorMessage
             )
-            try await store.appendEvent(jobID: jobID, level: .error, message: error.errorMessage)
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .error,
+                message: error.errorMessage,
+                payloadJSON: JobEvent.payloadJSON(["message": error.errorMessage])
+            )
             return
         } catch {
+            try await recordTiming(\.identifyMS, from: identifyStarted, jobID: jobID, timings: &timings)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .identifyFailed("no_change_set"),
                 errorMessage: "no_change_set"
             )
-            try await store.appendEvent(jobID: jobID, level: .error, message: "no_change_set")
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .error,
+                message: "no_change_set",
+                payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
+            )
             return
         }
         if try await stopped(jobID) { return }
@@ -186,7 +207,8 @@ public struct ReviewPipeline: Sendable {
             try await store.appendEvent(
                 jobID: jobID,
                 level: .warning,
-                message: "architecture_index_failed"
+                message: "architecture_index_failed",
+                payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
             )
         }
         if try await stopped(jobID) { return }
@@ -211,7 +233,12 @@ public struct ReviewPipeline: Sendable {
                 event: .rulesFailed("internal"),
                 errorMessage: "internal"
             )
-            try await store.appendEvent(jobID: jobID, level: .error, message: "rules_failed")
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .error,
+                message: "rules_failed",
+                payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
+            )
             return
         }
         if try await stopped(jobID) { return }
@@ -238,6 +265,7 @@ public struct ReviewPipeline: Sendable {
             workspace: workspace
         )
         try await store.appendEvent(jobID: jobID, level: .info, message: "deterministic")
+        let deterministicStarted = ContinuousClock.now
         var result: DeterministicRunResult
         if let deterministic {
             result = await deterministic.run(
@@ -254,8 +282,14 @@ public struct ReviewPipeline: Sendable {
         }
         if try await stopped(jobID) { return }
         if result.timedOut {
+            try await recordTiming(\.deterministicMS, from: deterministicStarted, jobID: jobID, timings: &timings)
             _ = try await store.apply(jobID: jobID, event: .deterministicTimeout)
-            try await store.appendEvent(jobID: jobID, level: .error, message: "deterministic_timeout")
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .error,
+                message: "deterministic_timeout",
+                payloadJSON: JobEvent.payloadJSON(["message": "deterministic_timeout"])
+            )
             return
         }
         if let scanner {
@@ -276,6 +310,7 @@ public struct ReviewPipeline: Sendable {
                 warnings: result.warnings + scan.warnings
             )
         }
+        try await recordTiming(\.deterministicMS, from: deterministicStarted, jobID: jobID, timings: &timings)
         if try await stopped(jobID) { return }
         for warning in result.warnings {
             try await store.appendEvent(
@@ -345,10 +380,14 @@ public struct ReviewPipeline: Sendable {
 
         guard let job = try await store.job(id: jobID) else { return }
         guard let reviewer else {
-            _ = try await store.apply(
+            try await failReview(
                 jobID: jobID,
-                event: .reviewFailed("reviewer_unavailable"),
-                errorMessage: "reviewer_unavailable"
+                errorClass: .reviewerFailed,
+                errorMessage: "reviewer_unavailable",
+                payloadJSON: JobEvent.payloadJSON([
+                    "error_class": ReviewFailureClass.reviewerFailed.rawValue,
+                    "message": "reviewer_unavailable",
+                ])
             )
             return
         }
@@ -364,6 +403,7 @@ public struct ReviewPipeline: Sendable {
         )
         if try await stopped(jobID) { return }
 
+        let reviewStarted = ContinuousClock.now
         let review = await reviewer.run(
             AgentReviewRequest(
                 job: job,
@@ -377,6 +417,7 @@ public struct ReviewPipeline: Sendable {
                 }
             )
         )
+        try await recordTiming(\.reviewMS, from: reviewStarted, jobID: jobID, timings: &timings)
         if try await stopped(jobID) { return }
         let reviewFindings = review.findings.compactMap { finding -> Finding? in
             let collapsed = matcher.collapse(
@@ -394,12 +435,20 @@ public struct ReviewPipeline: Sendable {
             try await store.insertParsedFindings(reviewFindings)
         }
         if review.failed {
-            _ = try await store.apply(
-                jobID: jobID,
-                event: .reviewFailed(review.errorMessage ?? "reviewer_failed"),
-                errorMessage: review.errorMessage ?? "reviewer_failed"
+            let detail = review.errorMessage ?? ReviewFailureClass.reviewerFailed.rawValue
+            let errorClass = ReviewFailureClass.classify(
+                errorMessage: detail,
+                payloadJSON: review.payloadJSON
             )
-            try await store.appendEvent(jobID: jobID, level: .error, message: "review_failed")
+            try await failReview(
+                jobID: jobID,
+                errorClass: errorClass,
+                errorMessage: detail,
+                payloadJSON: review.payloadJSON ?? JobEvent.payloadJSON([
+                    "error_class": errorClass.rawValue,
+                    "message": detail,
+                ])
+            )
             return
         }
 
@@ -448,6 +497,7 @@ public struct ReviewPipeline: Sendable {
         if try await stopped(jobID) { return }
 
         try await store.updateJobContainers(jobID: jobID, containerName: judgeName)
+        let judgeStarted = ContinuousClock.now
         let outcome: JudgeOutcome
         if wroteInput, let judge {
             let judged = await judge.run(
@@ -467,6 +517,7 @@ public struct ReviewPipeline: Sendable {
             // No judge-input on disk — merge locally so !evidence_ok still drops.
             outcome = .verdicts(JudgeFile(verdicts: []))
         }
+        try await recordTiming(\.judgeMS, from: judgeStarted, jobID: jobID, timings: &timings)
         if try await stopped(jobID) { return }
 
         let merged = JudgeMerge.merge(candidates: candidates, judge: outcome)
@@ -636,7 +687,8 @@ public struct ReviewPipeline: Sendable {
                 try await store.appendEvent(
                     jobID: jobID,
                     level: .warning,
-                    message: "embedding_failed"
+                    message: "embedding_failed",
+                    payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
                 )
             }
         }
@@ -683,6 +735,67 @@ public struct ReviewPipeline: Sendable {
 
     private func stopped(_ jobID: JobID) async throws -> Bool {
         try await store.job(id: jobID)?.status.isTerminal ?? true
+    }
+
+    private func milliseconds(since start: ContinuousClock.Instant) -> Int {
+        let ms = (ContinuousClock.now - start).timeInterval * 1000
+        return max(0, Int(ms.rounded()))
+    }
+
+    private func recordTiming(
+        _ keyPath: WritableKeyPath<JobTimings, Int?>,
+        from start: ContinuousClock.Instant,
+        jobID: JobID,
+        timings: inout JobTimings
+    ) async throws {
+        timings[keyPath: keyPath] = milliseconds(since: start)
+        try await store.updateJobTimings(jobID: jobID, timings: timings)
+    }
+
+    private func failReview(
+        jobID: JobID,
+        errorClass: ReviewFailureClass,
+        errorMessage: String,
+        payloadJSON: String?
+    ) async throws {
+        _ = try await store.apply(
+            jobID: jobID,
+            event: .reviewFailed(errorClass.rawValue),
+            errorMessage: errorClass.rawValue
+        )
+        try await store.appendEvent(
+            jobID: jobID,
+            level: .error,
+            message: "review_failed",
+            payloadJSON: payloadJSON
+        )
+        try await persistCompactFailureRisk(
+            jobID: jobID,
+            errorClass: errorClass,
+            detail: errorMessage
+        )
+    }
+
+    private func persistCompactFailureRisk(
+        jobID: JobID,
+        errorClass: ReviewFailureClass,
+        detail: String
+    ) async throws {
+        let assessment = RiskAssessment(
+            verdict: .needsHuman,
+            mode: risk.mode,
+            score: 5,
+            appetite: risk.appetite,
+            reasons: [
+                RiskReason(code: errorClass.rawValue, detail: detail),
+            ]
+        )
+        try await store.updateJobRisk(jobID: jobID, assessment: assessment)
+        try await store.appendEvent(
+            jobID: jobID,
+            level: .info,
+            message: "risk_\(assessment.verdict.rawValue)"
+        )
     }
 
     private func persistRisk(

@@ -4,6 +4,37 @@ import FoundationNetworking
 #endif
 import GegenlesenCore
 
+public enum OpenCodeHTTPError: Error, Sendable, Equatable, CustomStringConvertible {
+    case providerAuth(status: Int, body: String)
+    case httpStatus(status: Int, body: String)
+
+    public var description: String {
+        switch self {
+        case .providerAuth(let status, let body):
+            return "provider_auth status=\(status) \(body)"
+        case .httpStatus(let status, let body):
+            return "opencode_http status=\(status) \(body)"
+        }
+    }
+
+    public static func classify(status: Int, body: Data) -> OpenCodeHTTPError? {
+        let snippet = String(data: body, encoding: .utf8).map { String($0.prefix(500)) } ?? ""
+        // HTTP status only. Do not sniff 2xx bodies — reviewer output quoting
+        // "HTTP 401" / "User not found" is not a provider auth failure.
+        if status == 401 || status == 403 {
+            return .providerAuth(status: status, body: snippet)
+        }
+        return nil
+    }
+
+    public static func failure(status: Int, body: Data) -> OpenCodeHTTPError? {
+        if (200 ..< 300).contains(status) { return nil }
+        if let auth = classify(status: status, body: body) { return auth }
+        let snippet = String(data: body, encoding: .utf8).map { String($0.prefix(500)) } ?? ""
+        return .httpStatus(status: status, body: snippet)
+    }
+}
+
 public protocol OpenCodeHTTPClienting: Sendable {
     func waitUntilHealthy(baseURL: URL, password: String, timeout: Duration) async -> Bool
     func createSession(baseURL: URL, password: String, title: String) async throws -> String
@@ -94,13 +125,17 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             "parts": parts,
         ]
         let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await request(
+        let (data, response) = try await request(
             url: url,
             method: "POST",
             password: password,
             body: payload,
             timeout: timeout.timeInterval
         )
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if let error = OpenCodeHTTPError.failure(status: status, body: data) {
+            throw error
+        }
     }
 
     public func abort(baseURL: URL, password: String, sessionID: String) async {
@@ -132,7 +167,12 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
-        return try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+            throw OpenCodeHTTPError.classify(status: http.statusCode, body: data)
+                ?? .providerAuth(status: http.statusCode, body: "")
+        }
+        return (data, response)
     }
 }
 

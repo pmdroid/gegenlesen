@@ -51,7 +51,6 @@ public struct HarvestPipeline: Sendable {
                 atomically: true,
                 encoding: .utf8
             )
-            try await dismissUnvettedHarvest(now: Date())
 
             var bundle: HarvestBundle
             if skipAgent || miner == nil {
@@ -72,20 +71,31 @@ public struct HarvestPipeline: Sendable {
                    let parsed = try? HarvestFile.parse(data) {
                     bundle = parsed
                 } else {
-                    if result.failed {
-                        try await store.appendEvent(
-                            jobID: jobID,
-                            level: .warning,
-                            message: result.errorMessage ?? "miner_failed"
-                        )
-                    }
-                    bundle = hostOnly(scan: scan)
+                    let message = result.errorMessage ?? "miner_failed"
+                    try await store.appendEvent(jobID: jobID, level: .error, message: message)
+                    try await failHarvest(jobID: jobID, message: message)
+                    return
                 }
             }
 
             bundle = HarvestFile.cap(HarvestFile.dropUncited(bundle))
             let judged = try await judge(bundle, workspace: workspaceURL, jobID: jobID)
             let now = Date()
+            if judged.failed {
+                let quarantined = try await quarantine(bundle, jobID: jobID, now: now)
+                try await store.appendEvent(
+                    jobID: jobID,
+                    level: .error,
+                    message: "harvest_judge_failed",
+                    payloadJSON: Self.jsonObject([
+                        "quarantined": quarantined,
+                        "judged": false,
+                    ])
+                )
+                try await failHarvest(jobID: jobID, message: "harvest_judge_failed")
+                return
+            }
+            try await dismissUnvettedHarvest(now: now)
             let counts = try await persist(judged.bundle, jobID: jobID, now: now, judged: judged.judged)
 
             let indexer = ArchitectureIndexJob(
@@ -149,7 +159,7 @@ public struct HarvestPipeline: Sendable {
         let notes = scan.prose.prefix(HarvestFile.maxNotes).map { item in
             HarvestNoteDraft(
                 title: "From \(item.path)",
-                body: String(item.excerpt.prefix(1_200)),
+                body: String(item.excerpt.prefix(HarvestFile.maxNoteBodyChars)),
                 evidence: [RuleExample(path: item.path, excerpt: String(item.excerpt.prefix(240)))]
             )
         }
@@ -160,7 +170,7 @@ public struct HarvestPipeline: Sendable {
         _ bundle: HarvestBundle,
         workspace: URL,
         jobID: JobID
-    ) async throws -> (bundle: HarvestBundle, judged: Bool) {
+    ) async throws -> (bundle: HarvestBundle, judged: Bool, failed: Bool) {
         var candidates: [SuggestionCandidate] = []
         for (index, rule) in bundle.rules.enumerated() {
             candidates.append(
@@ -195,11 +205,14 @@ public struct HarvestPipeline: Sendable {
                 workspace: Workspace(root: workspace)
             )
             didJudge = !judged.failed
-            kept = SuggestionJudge.apply(
-                outcome: judged.outcome,
-                candidates: candidates,
-                fallbackIDs: Set(candidates.map(\.id))
-            )
+            // Harvest has no host endorsement. Judge failure must not keep drafts.
+            kept = judged.failed
+                ? []
+                : SuggestionJudge.apply(
+                    outcome: judged.outcome,
+                    candidates: candidates,
+                    fallbackIDs: []
+                )
             try await store.appendEvent(
                 jobID: jobID,
                 level: judged.failed ? .warning : .info,
@@ -210,6 +223,9 @@ public struct HarvestPipeline: Sendable {
                     result: judged
                 )
             )
+            if judged.failed {
+                return (HarvestBundle(), false, true)
+            }
         }
         let byID = Dictionary(uniqueKeysWithValues: kept.map { ($0.id, $0) })
         var rules: [MinedRuleDraft] = []
@@ -228,7 +244,102 @@ public struct HarvestPipeline: Sendable {
             guard let keptItem = byID["sug_note_\(index)"] else { continue }
             notes.append(HarvestNoteDraft(title: keptItem.title, body: keptItem.body, evidence: draft.evidence))
         }
-        return (HarvestFile.cap(HarvestBundle(rules: rules, notes: notes)), didJudge)
+        return (HarvestFile.cap(HarvestBundle(rules: rules, notes: notes)), didJudge, false)
+    }
+
+    private func failHarvest(jobID: JobID, message: String) async throws {
+        _ = try await store.finishJob(id: jobID, status: .failed, errorMessage: message)
+    }
+
+    private func quarantine(
+        _ bundle: HarvestBundle,
+        jobID: JobID,
+        now: Date
+    ) async throws -> Int {
+        var count = 0
+        for draft in bundle.rules {
+            if try await promoteNeedsRejudge(
+                kind: .rule,
+                title: draft.title,
+                body: draft.body,
+                extra: ["source": "harvest", "judged": false]
+            ) {
+                count += 1
+                continue
+            }
+            if try await LearningDedup.alreadySettled(store: store, kind: .rule, title: draft.title) {
+                continue
+            }
+            try await store.insertLearning(
+                Learning(
+                    jobID: jobID,
+                    kind: .rule,
+                    status: .needsRejudge,
+                    title: draft.title,
+                    body: draft.body,
+                    payloadJSON: Self.jsonObject([
+                        "source": "harvest",
+                        "judged": false,
+                    ]),
+                    createdAt: now
+                )
+            )
+            count += 1
+        }
+        for note in bundle.notes {
+            if try await promoteNeedsRejudge(
+                kind: .context,
+                title: note.title,
+                body: note.body,
+                extra: ["source": "harvest", "judged": false]
+            ) {
+                count += 1
+                continue
+            }
+            if try await LearningDedup.alreadySettled(store: store, kind: .context, title: note.title) {
+                continue
+            }
+            try await store.insertLearning(
+                Learning(
+                    jobID: jobID,
+                    kind: .context,
+                    status: .needsRejudge,
+                    title: note.title,
+                    body: note.body,
+                    payloadJSON: Self.jsonObject([
+                        "source": "harvest",
+                        "judged": false,
+                    ]),
+                    createdAt: now
+                )
+            )
+            count += 1
+        }
+        return count
+    }
+
+    private func promoteNeedsRejudge(
+        kind: LearningKind,
+        title: String,
+        body: String,
+        extra: [String: Any],
+        to status: LearningStatus = .needsRejudge
+    ) async throws -> Bool {
+        let items = try await store.listLearnings(status: .needsRejudge, kind: kind)
+        guard var existing = items.first(where: {
+            Normalize.titleKey($0.title) == Normalize.titleKey(title)
+        }) else {
+            return false
+        }
+        existing.status = status
+        existing.title = title
+        existing.body = body
+        if status == .pending {
+            existing.resolvedAt = nil
+        }
+        existing.mergePayload(extra)
+        try await store.updateLearning(existing)
+        return true
     }
 
     private func persist(
@@ -256,28 +367,27 @@ public struct HarvestPipeline: Sendable {
                 skipped += 1
                 continue
             }
-            let rule = Rule(
-                id: RuleID.slug(from: "harvest-\(draft.title)"),
-                title: draft.title,
-                severity: draft.severity,
-                kind: draft.kind,
-                enabled: false,
-                provenance: .harvest,
-                languages: draft.languages.isEmpty ? ["*"] : draft.languages,
-                pathGlobs: draft.pathGlobs,
-                repository: repository,
-                payload: draft.payload,
-                examples: draft.examples,
-                sourcePRRefs: ["harvest"],
-                body: draft.body,
-                createdAt: now,
-                updatedAt: now
-            )
+            let rule = harvestRule(from: draft, repository: repository, now: now)
             let outcome = try await MinerDedup.upsert(rule, into: store, now: now)
             let ruleID: RuleID
             switch outcome {
             case .inserted(let id): ruleID = id
             case .attached(let id): ruleID = id
+            }
+            let payload: [String: Any] = [
+                "source": "harvest",
+                "rule_id": ruleID.rawValue,
+                "judged": judged,
+            ]
+            if try await promoteNeedsRejudge(
+                kind: .rule,
+                title: draft.title,
+                body: draft.body,
+                extra: payload,
+                to: .pending
+            ) {
+                ruleCount += 1
+                continue
             }
             try await store.insertLearning(
                 Learning(
@@ -285,11 +395,7 @@ public struct HarvestPipeline: Sendable {
                     kind: .rule,
                     title: draft.title,
                     body: draft.body,
-                    payloadJSON: Self.jsonObject([
-                        "source": "harvest",
-                        "rule_id": ruleID.rawValue,
-                        "judged": judged,
-                    ]),
+                    payloadJSON: Self.jsonObject(payload),
                     createdAt: now
                 )
             )
@@ -297,6 +403,19 @@ public struct HarvestPipeline: Sendable {
         }
         var noteCount = 0
         for note in bundle.notes {
+            if try await promoteNeedsRejudge(
+                kind: .context,
+                title: note.title,
+                body: note.body,
+                extra: [
+                    "source": "harvest",
+                    "judged": judged,
+                ],
+                to: .pending
+            ) {
+                noteCount += 1
+                continue
+            }
             if try await LearningDedup.alreadySettled(
                 store: store,
                 kind: .context,
@@ -321,6 +440,30 @@ public struct HarvestPipeline: Sendable {
             noteCount += 1
         }
         return (ruleCount, noteCount, skipped)
+    }
+
+    private func harvestRule(
+        from draft: MinedRuleDraft,
+        repository: String?,
+        now: Date
+    ) -> Rule {
+        Rule(
+            id: RuleID.slug(from: "harvest-\(draft.title)"),
+            title: draft.title,
+            severity: draft.severity,
+            kind: draft.kind,
+            enabled: false,
+            provenance: .harvest,
+            languages: draft.languages.isEmpty ? ["*"] : draft.languages,
+            pathGlobs: draft.pathGlobs,
+            repository: repository,
+            payload: draft.payload,
+            examples: draft.examples,
+            sourcePRRefs: ["harvest"],
+            body: draft.body,
+            createdAt: now,
+            updatedAt: now
+        )
     }
 
     private func dismissUnvettedHarvest(now: Date) async throws {
@@ -361,6 +504,8 @@ public struct HarvestPipeline: Sendable {
 
         Prefer conventions seen in two files. Each item needs evidence
         {path, excerpt}. Drop taste and README wishes with no matching code.
+        Do not paste whole README.md or docs/*.md files into notes.
+        Note body at most \(HarvestFile.maxNoteBodyChars) characters.
 
         JSON only:
         {"rules":[{"title","severity","kind":"semantic","languages":["*"],"path_globs":["**/*"],"instruction","body","evidence":[{"path","excerpt"}]}],"notes":[{"title","body","evidence":[{"path","excerpt"}]}]}

@@ -16,11 +16,13 @@ It does not start reviews. Use `gegenlesen review` or `POST /api/jobs`.
 | `/jobs/:id` | Findings, events, thumbs, comments, learn button |
 | `/rules` | Handwritten and mined rules |
 | `/context` | Operator notes |
-| `/learnings` | Suggested rules and context, accept or dismiss |
+| `/learnings` | Suggested rules and context, accept / dismiss / restore, accept vs dismiss rate per kind |
 
 ## Feedback
 
 Thumbs and comments store on the finding. They do not mint a rule by themselves.
+
+Show dropped to 👍 a judge-drop. That records learn intent; it does not restore the finding.
 
 `should_be_rule` immediately drafts a **disabled** rule. Everything else waits for a learn job.
 

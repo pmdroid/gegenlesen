@@ -366,7 +366,13 @@ export interface MineAccepted {
 export type ContextNoteKind = "user" | "architecture";
 export type ChunkKind = "file" | "architecture" | "user" | "rule";
 export type LearningKind = "rule" | "architecture" | "context";
-export type LearningStatus = "pending" | "accepted" | "dismissed";
+export type LearningStatus = "pending" | "accepted" | "dismissed" | "needs_rejudge";
+export type LearningDismissReason =
+  | "duplicate"
+  | "already_covered"
+  | "too_specific"
+  | "not_a_rule"
+  | "other";
 
 export interface ContextNote {
   id: string;
@@ -396,11 +402,26 @@ export interface Learning {
   title: string;
   body: string;
   judged?: boolean | null;
+  dismiss_reason?: LearningDismissReason | null;
+  dismiss_comment?: string | null;
   created_at: string;
+}
+
+export interface LearningDismissRequest {
+  reason?: LearningDismissReason;
+  comment?: string;
+}
+
+export interface LearningYield {
+  kind: LearningKind;
+  accepted: number;
+  dismissed: number;
+  rate: number;
 }
 
 export interface LearningListResponse {
   learnings: Learning[];
+  yield: LearningYield[];
 }
 
 /** Agent-written `.gegenlesen/findings.json` */

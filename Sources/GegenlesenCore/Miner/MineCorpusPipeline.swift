@@ -77,6 +77,7 @@ public struct MineCorpusPipeline: Sendable {
             let filtered = try await filterDrafts(drafts, spec: spec)
             let now = Date()
             let counts = try await fillInbox(
+                items: items,
                 spec: spec,
                 drafts: filtered,
                 workspace: workspaceURL,
@@ -145,8 +146,12 @@ public struct MineCorpusPipeline: Sendable {
                 options: .atomic
             )
             let feedback = try await store.findingFeedback(jobID: sourceID)
-            if !feedback.isEmpty,
-               let data = try? JSONSerialization.data(withJSONObject: feedback, options: [.sortedKeys]) {
+            let sourceJob = try await store.job(id: sourceID)
+            if let object = SuggestionFilter.stagedFeedbackJSON(
+                findingFeedback: feedback,
+                risk: sourceJob?.risk
+            ),
+               let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) {
                 try data.write(to: dest.appendingPathComponent("feedback.json"), options: .atomic)
             }
         }
@@ -158,6 +163,13 @@ public struct MineCorpusPipeline: Sendable {
             Write for FUTURE changes: generic, not this PR's file names, tickets,
             or one function. Prefer operator thumbs-up and should_be_rule in
             job/feedback.json. Do not turn every finding into a rule.
+            job/feedback.json may include merge_intent from the operator's
+            "would you have merged this unread?" label.
+            would_merge=true is a positive exemplar for this class of diff.
+            would_merge=false means kept errors on this job are mine-worthy
+            even without thumbs. weight=highest (auto_approve then the
+            operator said no) is the strongest would-not exemplar.
+            Never drop an individual finding because of the job-level label.
             For job sources, read job/change.patch, job/findings.json, and job/feedback.json.
             """
         try prompt.write(
@@ -171,16 +183,6 @@ public struct MineCorpusPipeline: Sendable {
         if spec.source == .job, let sourceID = spec.sourceJobID {
             let findings = try await store.findings(jobID: sourceID)
             if findings.isEmpty {
-                if let job = try await store.job(id: sourceID), let title = job.title, !title.isEmpty {
-                    return [
-                        MinedRuleDraft(
-                            title: title,
-                            payload: .semantic(instruction: title, fewShots: []),
-                            sourcePRRefs: [sourceID.rawValue],
-                            body: title
-                        ),
-                    ]
-                }
                 return []
             }
             return findings.map { finding in
@@ -224,10 +226,19 @@ public struct MineCorpusPipeline: Sendable {
         }
         let findings = try await store.findings(jobID: sourceID)
         let feedback = try await store.feedback(jobID: sourceID)
-        return drafts.filter { SuggestionFilter.keepJobRule(draft: $0, findings: findings, feedback: feedback) }
+        let sourceJob = try await store.job(id: sourceID)
+        return drafts.filter {
+            SuggestionFilter.keepJobRule(
+                draft: $0,
+                findings: findings,
+                feedback: feedback,
+                risk: sourceJob?.risk
+            )
+        }
     }
 
     private func fillInbox(
+        items: [CorpusItem],
         spec: MineJobSpec,
         drafts: [MinedRuleDraft],
         workspace: URL,
@@ -281,7 +292,7 @@ public struct MineCorpusPipeline: Sendable {
                         Self.rule(
                             from: draft,
                             provenance: provenance,
-                            fallbackRefs: fallbackRefs(items: [], spec: spec),
+                            fallbackRefs: fallbackRefs(items: items, spec: spec),
                             now: now
                         )
                     ) : draft.body
@@ -325,15 +336,29 @@ public struct MineCorpusPipeline: Sendable {
         }
 
         let keptByID = Dictionary(uniqueKeysWithValues: keptCandidates.map { ($0.id, $0) })
+        let catalog: (findings: [Finding], feedback: [FindingFeedback])
+        if spec.source == .job {
+            catalog = try await store.findingsAndFeedback()
+        } else {
+            catalog = ([], [])
+        }
         var inserted = 0
         var attached = 0
         for (index, draft) in drafts.enumerated() {
             let key = "sug_rule_\(index)"
             guard let kept = keptByID[key] else { continue }
+            if spec.source == .job {
+                let original = candidates[index]
+                guard SuggestionFilter.enoughRuleEndorsements(
+                    titles: [kept.title, original.title, draft.title],
+                    findings: catalog.findings,
+                    feedback: catalog.feedback
+                ) else { continue }
+            }
             var rule = Self.rule(
                 from: draft,
                 provenance: provenance,
-                fallbackRefs: fallbackRefs(items: [], spec: spec),
+                fallbackRefs: fallbackRefs(items: items, spec: spec),
                 now: now
             )
             rule.title = kept.title

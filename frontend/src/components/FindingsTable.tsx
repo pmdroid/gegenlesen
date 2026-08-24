@@ -24,12 +24,14 @@ export function FindingsTable({
   feedback,
   onFeedback,
   pending,
+  showDropped = false,
   emptyLabel = "No findings yet.",
 }: {
   findings: Finding[];
   feedback: FindingFeedback[];
   onFeedback: (findingId: string, body: FindingFeedbackRequest) => void;
   pending: boolean;
+  showDropped?: boolean;
   emptyLabel?: string;
 }) {
   const byFinding = useMemo(() => {
@@ -55,6 +57,7 @@ export function FindingsTable({
           rows={byFinding.get(finding.id) ?? []}
           onFeedback={onFeedback}
           pending={pending}
+          showDropped={showDropped}
         />
       ))}
     </div>
@@ -66,17 +69,21 @@ function FindingRow({
   rows,
   onFeedback,
   pending,
+  showDropped,
 }: {
   finding: Finding;
   rows: FindingFeedback[];
   onFeedback: (findingId: string, body: FindingFeedbackRequest) => void;
   pending: boolean;
+  showDropped: boolean;
 }) {
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   const reaction = currentReaction(rows);
   const verdict = currentVerdict(rows);
   const comments = rows.filter((row) => row.verdict === "comment" && row.comment);
+  const dropped = finding.judge_verdict === "drop";
+  const canEndorse = !dropped || showDropped;
 
   function submitComment(event: FormEvent) {
     event.preventDefault();

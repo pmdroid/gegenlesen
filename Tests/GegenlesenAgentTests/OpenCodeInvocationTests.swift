@@ -363,8 +363,9 @@ struct OpenCodeInvocationTests {
     func missingFindingsFilesFailWhenNewWork() async throws {
         try await withTempDir("invoke-none") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 1, stderr: Data("docker not wired".utf8)))
             let invocation = OpenCodeInvocation(
-                docker: NoopDocker(),
+                docker: docker,
                 image: "gegenlesen/opencode-runner:0.1.0",
                 runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
@@ -383,6 +384,102 @@ struct OpenCodeInvocationTests {
             #expect(result.failed == true)
             #expect(result.validFileCount == 0)
             #expect(result.errorMessage == "reviewer_no_findings_file")
+            #expect(result.errorMessage != ReviewFailureClass.providerAuth.rawValue)
+            #expect(result.payloadJSON?.contains("no_findings_file") == true)
+            #expect(result.payloadJSON?.contains("provider_auth") != true)
+            let requests = await docker.requests
+            #expect(requests.count == 2)
+        }
+    }
+
+    @Test
+    func providerAuthOnFirstSlotSkipsSecondReviewer() async throws {
+        try await withTempDir("invoke-auth") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = RecordingDocker(
+                result: DockerResult(
+                    exitCode: 1,
+                    stdout: Data(#"HTTP 401 {"error":{"message":"User not found.","code":401}}"#.utf8)
+                )
+            )
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == true)
+            #expect(result.errorMessage == ReviewFailureClass.providerAuth.rawValue)
+            #expect(result.errorMessage != "reviewer_no_findings_file")
+            #expect(result.validFileCount == 0)
+            #expect(result.payloadJSON?.contains("\"status\":401") == true)
+            #expect(result.payloadJSON?.contains("openrouter") == true)
+            #expect(result.payloadJSON?.contains("provider_auth") == true)
+            let requests = await docker.requests
+            #expect(requests.count == 1)
+            #expect(requests[0].name.hasSuffix("-a"))
+        }
+    }
+
+    @Test
+    func reviewEventPayloadIncludesOpenRouterStatus() {
+        let transcript = Data(#"HTTP 401 {"error":{"message":"User not found.","code":401}}"#.utf8)
+        let payload = OpenCodeInvocation.reviewEventPayload(
+            errorMessage: "reviewer_no_findings_file",
+            transcripts: [transcript]
+        )
+        #expect(payload?.contains("\"status\":401") == true)
+        #expect(payload?.contains("openrouter") == true)
+        #expect(payload?.contains("provider_auth") == true)
+        #expect(DockerRunner.providerAuthStatus(
+            in: DockerResult(exitCode: 1, stdout: transcript)
+        ) == 401)
+    }
+
+    @Test
+    func successfulSlotWithAuthQuotedInTranscriptStillRunsBothReviewers() async throws {
+        try await withTempDir("invoke-quoted-auth") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let finding = """
+            {"findings":[{"title":"n","message":"m","severity":"warning","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"let x = 1"}]}
+            """
+            try writeFile(".gegenlesen/findings-model_a.json", finding, in: root)
+            try writeFile(".gegenlesen/findings-model_b.json", finding, in: root)
+            let quoted = Data(#"HTTP 401 {"error":{"message":"User not found.","code":401}}"#.utf8)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 0, stdout: quoted))
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == false)
+            #expect(result.errorMessage != ReviewFailureClass.providerAuth.rawValue)
+            #expect(result.validFileCount == 2)
+            let requests = await docker.requests
+            #expect(requests.count == 2)
         }
     }
 }
