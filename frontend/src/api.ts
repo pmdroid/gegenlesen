@@ -366,7 +366,7 @@ export interface MineAccepted {
 export type ContextNoteKind = "user" | "architecture";
 export type ChunkKind = "file" | "architecture" | "user" | "rule";
 export type LearningKind = "rule" | "architecture" | "context";
-export type LearningStatus = "pending" | "accepted" | "dismissed";
+export type LearningStatus = "pending" | "accepted" | "dismissed" | "needs_rejudge";
 export type LearningDismissReason =
   | "duplicate"
   | "already_covered"

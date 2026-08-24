@@ -122,6 +122,7 @@ public enum LearningKind: String, Codable, CaseIterable, Sendable, Equatable {
 
 public enum LearningStatus: String, Codable, Sendable, Equatable {
     case pending, accepted, dismissed
+    case needsRejudge = "needs_rejudge"
 }
 
 public enum LearningDismissReason: String, Codable, Sendable, Equatable, CaseIterable {

@@ -346,6 +346,20 @@ struct SuggestionFilterTests {
     }
 
     @Test
+    func suggestionJudgeFailureDropsWithoutHostFallback() {
+        let candidates = [
+            SuggestionCandidate(id: "sug_rule_0", kind: .rule, title: "t", body: "b"),
+            SuggestionCandidate(id: "sug_note_0", kind: .context, title: "n", body: "n"),
+        ]
+        let kept = SuggestionJudge.apply(
+            outcome: .failed,
+            candidates: candidates,
+            fallbackIDs: []
+        )
+        #expect(kept.isEmpty)
+    }
+
+    @Test
     func suggestionJudgeEventPayloadIncludesFailureReason() {
         let payload = SuggestionJudge.eventPayload(
             candidates: 13,

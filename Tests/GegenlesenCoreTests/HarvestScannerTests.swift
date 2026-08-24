@@ -55,7 +55,7 @@ struct HarvestPipelineTests {
     }
 
     @Test
-    func failedJudgeKeepsCitedMinerDrafts() async throws {
+    func failedJudgeQuarantinesAndSkipsInbox() async throws {
         try await withPackedHarvest { store, jobID in
             try await HarvestPipeline(
                 store: store,
@@ -65,16 +65,46 @@ struct HarvestPipelineTests {
                 model: "none"
             ).run(jobID: jobID)
             let job = try #require(await store.job(id: jobID))
-            #expect(job.status == .succeeded)
-            let learnings = try await store.listLearnings(status: .pending)
-            #expect(learnings.contains { $0.kind == .rule && $0.title.contains("project logger") })
-            #expect(learnings.contains { $0.kind == .context && $0.title.contains("CI is optional") })
+            #expect(job.status == .failed)
+            #expect(job.errorMessage == "harvest_judge_failed")
+            let pending = try await store.listLearnings(status: .pending)
+            #expect(!pending.contains { $0.payloadJSON?.contains("harvest") == true })
+            let quarantined = try await store.listLearnings(status: .needsRejudge)
+            #expect(quarantined.contains { $0.kind == .rule && $0.title.contains("project logger") })
+            #expect(quarantined.contains { $0.kind == .context && $0.title.contains("CI is optional") })
+            #expect(quarantined.allSatisfy { $0.payloadJSON?.contains("\"judged\":false") == true })
             let events = try await store.events(jobID: jobID)
             let failed = try #require(events.first { $0.message == "suggestion_judge_failed" })
             #expect(failed.level == .warning)
             #expect(failed.payloadJSON?.contains("\"judged\":false") == true)
             #expect(failed.payloadJSON?.contains("missing_suggestion_judge_file") == true)
-            #expect(learnings.contains { $0.payloadJSON?.contains("\"judged\":false") == true })
+            #expect(events.contains { $0.message == "harvest_judge_failed" && $0.level == .error })
+            #expect(!events.contains { $0.message == "harvest_done" })
+            let rules = try await store.listRules(RuleListFilter(includeDeleted: true))
+            #expect(!rules.contains { $0.provenance == .harvest })
+        }
+    }
+
+    @Test
+    func minerFailureSkipsInboxAndDoesNotHarvestDone() async throws {
+        try await withPackedHarvest { store, jobID in
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: FailedHarvestMiner(),
+                suggestionJudge: FailedSuggestionJudge(),
+                model: "none"
+            ).run(jobID: jobID)
+            let job = try #require(await store.job(id: jobID))
+            #expect(job.status == .failed)
+            #expect(job.errorMessage == "miner_failed")
+            let pending = try await store.listLearnings(status: .pending)
+            let quarantined = try await store.listLearnings(status: .needsRejudge)
+            #expect(pending.isEmpty)
+            #expect(quarantined.isEmpty)
+            let events = try await store.events(jobID: jobID)
+            #expect(events.contains { $0.message == "miner_failed" })
+            #expect(!events.contains { $0.message == "harvest_done" })
         }
     }
 
@@ -127,7 +157,7 @@ struct HarvestPipelineTests {
                 store: store,
                 skipAgent: false,
                 miner: HarvestMinerStub(json: citedHarvestJSON),
-                suggestionJudge: FailedSuggestionJudge(),
+                suggestionJudge: KeepingSuggestionJudge(),
                 model: "none"
             )
             try await pipeline.run(jobID: firstID)
@@ -156,7 +186,7 @@ struct HarvestPipelineTests {
                 store: store,
                 skipAgent: false,
                 miner: HarvestMinerStub(json: citedHarvestJSON),
-                suggestionJudge: FailedSuggestionJudge(),
+                suggestionJudge: KeepingSuggestionJudge(),
                 model: "none"
             )
             try await pipeline.run(jobID: firstID)
@@ -200,7 +230,7 @@ struct HarvestPipelineTests {
                 store: store,
                 skipAgent: false,
                 miner: HarvestMinerStub(json: citedHarvestJSON),
-                suggestionJudge: FailedSuggestionJudge(),
+                suggestionJudge: KeepingSuggestionJudge(),
                 model: "none"
             ).run(jobID: jobID)
             let loggerRules = try await store.listRules(RuleListFilter(includeDeleted: false))
@@ -210,7 +240,83 @@ struct HarvestPipelineTests {
             #expect(loggerRules[0].provenance == .handwritten)
         }
     }
+
+    @Test
+    func capsNoteBodyAndDropsWholeFileMarkdownDumps() async throws {
+        try await withPackedHarvest { store, jobID in
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: dumpHarvestJSON),
+                suggestionJudge: KeepingSuggestionJudge(),
+                model: "none"
+            ).run(jobID: jobID)
+            let job = try #require(await store.job(id: jobID))
+            #expect(job.status == .succeeded)
+            let pending = try await store.listLearnings(status: .pending)
+            #expect(!pending.contains { $0.title.contains("README dump") })
+            #expect(!pending.contains { $0.title.contains("Design dump") })
+            let kept = try #require(pending.first { $0.title.contains("Logger note") })
+            #expect(kept.body.count == HarvestFile.maxNoteBodyChars)
+            #expect(!kept.body.contains("TAIL"))
+        }
+    }
 }
+
+@Suite
+struct HarvestFileTests {
+    @Test
+    func rejectsWholeReadmeAndDocsDumps() {
+        let readme = HarvestNoteDraft(
+            title: "README dump",
+            body: String(repeating: "House style. ", count: 80),
+            evidence: [RuleExample(path: "README.md", excerpt: String(repeating: "House style. ", count: 80))]
+        )
+        let design = HarvestNoteDraft(
+            title: "Design dump",
+            body: String(repeating: "Architecture. ", count: 50),
+            evidence: [RuleExample(path: "docs/design.md", excerpt: String(repeating: "Architecture. ", count: 50))]
+        )
+        let short = HarvestNoteDraft(
+            title: "CI is optional",
+            body: "Guest boot is not a required check.",
+            evidence: [RuleExample(path: "docs/ci.md", excerpt: "never a required status check")]
+        )
+        #expect(HarvestFile.isWholeFileDump(readme))
+        #expect(HarvestFile.isWholeFileDump(design))
+        #expect(!HarvestFile.isWholeFileDump(short))
+        let capped = HarvestFile.cap(HarvestBundle(notes: [readme, design, short]))
+        #expect(capped.notes.map(\.title) == ["CI is optional"])
+    }
+
+    @Test
+    func truncatesOversizedNoteBodies() {
+        let body = String(repeating: "x", count: HarvestFile.maxNoteBodyChars + 80)
+        let note = HarvestNoteDraft(
+            title: "Logger note",
+            body: body,
+            evidence: [RuleExample(path: "Sources/Log.swift", excerpt: "Logger.shared")]
+        )
+        let capped = HarvestFile.cap(HarvestBundle(notes: [note]))
+        #expect(capped.notes.count == 1)
+        #expect(capped.notes[0].body.count == HarvestFile.maxNoteBodyChars)
+    }
+}
+
+private let dumpHarvestJSON: String = {
+    let dump = String(repeating: "House style. ", count: 80)
+    let long = String(repeating: "x", count: HarvestFile.maxNoteBodyChars) + "TAIL"
+    return """
+    {
+      "rules": [],
+      "notes": [
+        {"title": "README dump", "body": "\(dump)", "evidence": [{"path": "README.md", "excerpt": "\(dump)"}]},
+        {"title": "Design dump", "body": "\(dump)", "evidence": [{"path": "docs/design.md", "excerpt": "\(dump)"}]},
+        {"title": "Logger note", "body": "\(long)", "evidence": [{"path": "Sources/Log.swift", "excerpt": "Logger.shared"}]}
+      ]
+    }
+    """
+}()
 
 private let citedHarvestJSON = """
 {
@@ -245,6 +351,29 @@ private struct HarvestMinerStub: MinerRunning {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? json.write(to: dir.appendingPathComponent("harvest.json"), atomically: true, encoding: .utf8)
         return MinerRunResult(containerName: "miner", failed: false)
+    }
+}
+
+private struct FailedHarvestMiner: MinerRunning {
+    func runMiner(
+        jobID: JobID,
+        workspace: Workspace,
+        model: String,
+        isCancelled: (@Sendable () async -> Bool)?
+    ) async -> MinerRunResult {
+        MinerRunResult(containerName: "miner", failed: true, errorMessage: "miner_failed")
+    }
+}
+
+private struct KeepingSuggestionJudge: SuggestionJudging {
+    func runSuggestionJudge(job: Job, workspace: Workspace) async -> SuggestionJudgeRunResult {
+        SuggestionJudgeRunResult(
+            outcome: .verdicts([
+                SuggestionVerdict(id: "sug_rule_0", verdict: .keep, rationale: "convention"),
+                SuggestionVerdict(id: "sug_note_0", verdict: .keep, rationale: "durable"),
+            ]),
+            containerName: "judge"
+        )
     }
 }
 

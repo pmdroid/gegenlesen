@@ -32,6 +32,7 @@ public enum LearningDedup: Sendable {
         let key = Normalize.titleKey(title)
         let items = try await store.listLearnings(status: nil, kind: kind)
         for item in items {
+            if item.status == .needsRejudge { continue }
             if Normalize.titleKey(item.title) == key {
                 return true
             }

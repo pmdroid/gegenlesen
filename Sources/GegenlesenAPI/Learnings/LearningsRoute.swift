@@ -59,7 +59,7 @@ enum LearningsRoute {
 
     static func dismiss(_ req: Request) async throws -> LearningDTO {
         var item = try await requireLearning(req)
-        if item.status != .pending {
+        if item.status != .pending && item.status != .needsRejudge {
             throw APIError.conflict("learning is already \(item.status.rawValue)")
         }
         let body = try decodeDismiss(req)
