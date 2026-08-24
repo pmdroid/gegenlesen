@@ -19,25 +19,6 @@ function loc(finding: Finding): string {
   return `${finding.file_path}:${finding.start_line}`;
 }
 
-function verdictClass(finding: Finding): string {
-  if (finding.judge_verdict === "drop") return "verdict dropped";
-  if (finding.judge_verdict === "unavailable") return "verdict unavailable";
-  if (finding.phase === "deterministic" && finding.judge_verdict !== "downgrade") {
-    return "verdict det";
-  }
-  if (finding.judge_verdict) return "verdict kept";
-  return "verdict det";
-}
-
-function verdictLabel(finding: Finding): string {
-  if (finding.judge_verdict === "drop") return "judge: dropped";
-  if (finding.judge_verdict === "unavailable") return "judge: unavailable";
-  if (finding.judge_verdict === "downgrade") return "judge: downgrade";
-  if (finding.phase === "deterministic") return "deterministic";
-  if (finding.judge_verdict === "keep") return "judge: kept";
-  return finding.phase;
-}
-
 export function FindingsTable({
   findings,
   feedback,
@@ -106,22 +87,34 @@ function FindingRow({
     setCommentOpen(false);
   }
 
+  const kept = finding.judge_verdict !== "drop";
+
   return (
     <div className="finding">
       <div className="fh">
-        <span className="id">{finding.id}</span>
         <span className="title">{finding.title}</span>
-        <span className={verdictClass(finding)}>{verdictLabel(finding)}</span>
+        <span className={kept ? "verdict kept" : "verdict dropped"}>
+          {finding.judge_verdict === "drop"
+            ? "dropped"
+            : finding.judge_verdict === "unavailable"
+              ? "unavailable"
+              : finding.judge_verdict === "downgrade"
+                ? "downgrade"
+                : "kept"}
+        </span>
         <span className={`st ${(finding.judge_severity ?? finding.severity) === "error" ? "fail" : (finding.judge_severity ?? finding.severity) === "warning" ? "run" : "ok"}`}>
           {finding.judge_severity ?? finding.severity}
         </span>
       </div>
-      {finding.snippet ? <pre>{finding.snippet}</pre> : null}
-      <div className="src">
-        {finding.reviewer_slot ?? "host"} · {loc(finding)}
-        {finding.rule_id ? ` · rule: ${finding.rule_id}` : ""}
-        {finding.message ? ` · ${finding.message}` : ""}
-      </div>
+      <div className="src">{loc(finding)}</div>
+      {finding.snippet ? (
+        <details>
+          <summary className="src">{finding.message ?? "snippet"}</summary>
+          <pre>{finding.snippet}</pre>
+        </details>
+      ) : finding.message ? (
+        <div className="src">{finding.message}</div>
+      ) : null}
       {comments.length > 0 ? (
         <div className="logline">
           {comments.map((row) => (

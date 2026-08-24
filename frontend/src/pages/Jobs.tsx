@@ -2,97 +2,42 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
-import { listContextNotes, listJobs, listLearnings, listRepositories, listRules } from "../client";
+import { listJobs, listLearnings, listRepositories } from "../client";
+import { PipelineRail } from "../components/PipelineRail";
+import { findingCounts, shortSHA, statusClass } from "../pipeline";
 import { repoLabel } from "../scope";
 
-function shortSHA(sha: string | null): string {
-  if (!sha) return "—";
-  if (sha.length <= 15) return sha;
-  return `${sha.slice(0, 7)}..${sha.slice(-7)}`;
-}
-
-function statusClass(status: JobStatus): string {
-  if (status === "succeeded") return "st ok";
-  if (status === "failed" || status === "cancelled") return "st fail";
-  return "st run";
-}
-
-function InboxRail() {
-  const inbox = useQuery({
-    queryKey: ["learnings", "pending"],
-    queryFn: () => listLearnings({ status: "pending" }),
-    refetchInterval: 4000,
-  });
-  const items = inbox.data?.learnings ?? [];
-  if (items.length === 0) {
-    return <div className="ctx">empty — accept / dismiss on /learnings</div>;
+function statusChip(job: JobListItem): { className: string; label: string } {
+  if (job.status === "failed" && job.error_message) {
+    return { className: "st fail", label: job.error_message };
   }
-  return (
-    <>
-      {items.slice(0, 8).map((item) => (
-        <div className="learn" key={item.id}>
-          <Link to={`/learnings`} className="rn">
-            {item.title}
-          </Link>
-          <div className="rk">{item.kind}</div>
-        </div>
-      ))}
-    </>
-  );
+  return { className: statusClass(job.status), label: job.status };
 }
 
-function ContextRail() {
-  const notes = useQuery({
-    queryKey: ["context"],
-    queryFn: () => listContextNotes(),
-    refetchInterval: 4000,
-  });
-  const items = notes.data?.notes ?? [];
-  if (items.length === 0) {
-    return <div className="ctx">User notes live on /context. Nothing auto-applies.</div>;
+function jobLine(job: JobListItem): string {
+  if (job.status === "failed") {
+    return job.error_message ? `failed · ${job.error_message}` : "failed";
   }
-  return (
-    <>
-      {items.slice(0, 8).map((note) => (
-        <div className="ctx" key={note.id}>
-          <Link to="/context" className="rn">
-            {note.title}
-          </Link>
-          <div className="rk">
-            {note.kind} · {repoLabel(note.repository)}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function summaryLine(job: JobListItem): string | null {
-  const summary = job.summary;
-  if (!summary) return null;
-  return `${summary.new} new · ${summary.still_open} still_open · ${summary.resolved} resolved · ${summary.relocated} relocated · ${summary.dropped} dropped`;
-}
-
-function pipelineLine(job: JobListItem): string {
+  if (job.status === "cancelled") return "cancelled";
+  const counts = findingCounts(job);
+  if (job.status === "succeeded") {
+    const unread =
+      job.risk?.safe_unread == null ? "merge-intent unanswered" : job.risk.safe_unread ? "would merge unread" : "would not merge unread";
+    return [counts, unread].filter(Boolean).join(" · ");
+  }
   switch (job.status) {
     case "queued":
-      return "queued · det → A ∥ B → judge";
+      return "queued";
     case "unpacking":
     case "identifying":
     case "selecting_rules":
-      return `${job.status.replace("_", " ")} · det → A ∥ B → judge`;
+      return job.status.replace("_", " ");
     case "deterministic":
-      return "det running → A ∥ B → judge";
+      return "det running";
     case "reviewing":
-      return "det ✓ → A running ∥ B running → judge pending";
+      return "A ∥ B running";
     case "judging":
-      return "det ✓ → A ∥ B → judge running";
-    case "succeeded":
-      return "det → A ∥ B → judge";
-    case "failed":
-      return job.error_message ? `failed · ${job.error_message}` : "failed";
-    case "cancelled":
-      return "cancelled";
+      return "judge running";
   }
 }
 
@@ -102,7 +47,6 @@ const STATUS_FILTERS = [
   { id: "queued", label: "queued" },
   { id: "succeeded", label: "succeeded" },
   { id: "failed", label: "failed" },
-  { id: "cancelled", label: "cancelled" },
 ] as const;
 
 export function JobsPage() {
@@ -115,11 +59,16 @@ export function JobsPage() {
     queryFn: listRepositories,
     refetchInterval: 8000,
   });
+  const inbox = useQuery({
+    queryKey: ["learnings", "pending"],
+    queryFn: () => listLearnings({ status: "pending" }),
+    refetchInterval: 4000,
+  });
 
   const jobsQuery = useMemo(() => {
     const query: Parameters<typeof listJobs>[0] = { limit: 200 };
     if (status === "active") query.active = true;
-    else if (status !== "all") query.status = status;
+    else if (status !== "all") query.status = status as JobStatus;
     if (repository === "global") query.unscoped = true;
     else if (repository !== "all") query.repository = repository;
     if (q.trim()) query.q = q.trim();
@@ -132,126 +81,77 @@ export function JobsPage() {
     refetchInterval: 2000,
   });
 
-  const rules = useQuery({
-    queryKey: ["rules", "rail"],
-    queryFn: () => listRules({ enabled: true }),
-    refetchInterval: 2000,
-  });
-
   const items = jobs.data?.jobs ?? [];
-  const railRules = rules.data?.rules ?? [];
   const queued = items.filter((job) => job.status === "queued").length;
   const running = items.filter((job) => !isTerminal(job.status) && job.status !== "queued").length;
-  const succeeded = items.filter((job) => job.status === "succeeded").length;
+  const pendingLearnings = inbox.data?.learnings?.length ?? 0;
   const repoNames = repos.data?.repositories ?? [];
 
   return (
-    <div className="layout">
-      <div className="stream">
-        <div className="logline">$ gegenlesen status</div>
-        <div className="logline">
-          <b>queue:</b> {queued} queued · {running} running · {succeeded} succeeded · this UI is a
-          read-only tail — start work with <b>gegenlesen review</b>
-        </div>
-        <div className="filters">
-          {STATUS_FILTERS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={status === item.id ? "chip on" : "chip"}
-              onClick={() => setStatus(item.id)}
-            >
-              {item.label}
-            </button>
+    <div className="page">
+      <div className="logline">
+        queue {queued} · running {running}
+        {pendingLearnings > 0 ? (
+          <>
+            {" · "}
+            <Link to="/learnings">{pendingLearnings} learnings</Link>
+          </>
+        ) : null}
+      </div>
+      <div className="filters">
+        {STATUS_FILTERS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={status === item.id ? "chip on" : "chip"}
+            onClick={() => setStatus(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+        <select value={repository} onChange={(event) => setRepository(event.target.value)}>
+          <option value="all">all repos</option>
+          <option value="global">unscoped</option>
+          {repoNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
           ))}
-          <select value={repository} onChange={(event) => setRepository(event.target.value)}>
-            <option value="all">all repos</option>
-            <option value="global">unscoped</option>
-            {repoNames.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <input
-            value={q}
-            onChange={(event) => setQ(event.target.value)}
-            placeholder="filter title"
-            aria-label="filter jobs"
-          />
+        </select>
+        <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="filter title" aria-label="filter jobs" />
+      </div>
+      {items.length === 0 ? (
+        <div className="empty">
+          {status !== "all" || repository !== "all" || q.trim()
+            ? "No jobs match this filter."
+            : "No jobs yet. In a repo run `gegenlesen review`."}
         </div>
-        {items.length === 0 ? (
-          <div className="empty">
-            {status !== "all" || repository !== "all" || q.trim()
-              ? "No jobs match this filter."
-              : "No jobs yet. In a repo run `gegenlesen review`."}
-            <br />
-            Jobs appear here only after the CLI POSTs them.
-          </div>
-        ) : (
-          items.map((job) => (
+      ) : (
+        items.map((job) => {
+          const chip = statusChip(job);
+          return (
             <div className="jobblock" key={job.id}>
               <div className="jobhead">
                 <Link className="t" to={`/jobs/${job.id}`}>
                   {job.title ?? job.id}
                 </Link>
-                <span className="sha">{repoLabel(job.repository)}</span>
-                <span className="sha">{shortSHA(job.head_sha ?? job.base_sha)}</span>
-                <span className={statusClass(job.status)}>{job.status}</span>
-                {job.risk ? (
+                <span className={chip.className}>{chip.label}</span>
+                {job.status === "succeeded" && job.risk ? (
                   <span className={job.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
-                    {job.risk.verdict} {job.risk.score}/{job.risk.appetite}
+                    {job.risk.verdict}
                   </span>
                 ) : null}
               </div>
-              <div className="pipe">{pipelineLine(job)}</div>
-              <div className="pipe" style={{ borderBottom: summaryLine(job) ? undefined : 0 }}>
-                posted by CLI · scope: {job.scope}
-                {job.parent_job_id ? (
-                  <>
-                    {" · "}
-                    <Link to={`/jobs/${job.parent_job_id}`}>parent {job.parent_job_id.slice(0, 8)}</Link>
-                  </>
-                ) : null}{" "}
-                · the browser cannot start, retry, or cancel this job
+              {job.status !== "failed" && job.status !== "cancelled" ? <PipelineRail status={job.status} /> : null}
+              <div className="pipe" style={{ borderBottom: 0 }}>
+                {jobLine(job)}
+                {job.repository ? ` · ${repoLabel(job.repository)}` : ""}
+                {job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
               </div>
-              {summaryLine(job) ? (
-                <div className="pipe" style={{ borderBottom: 0 }}>
-                  {summaryLine(job)}
-                </div>
-              ) : null}
             </div>
-          ))
-        )}
-      </div>
-      <aside className="rail">
-        <h3>Rules (edit in UI)</h3>
-        {railRules.length === 0 ? (
-          <div className="rule">
-            <span className="rn">—</span>
-            <br />
-            <span className="rk">no enabled rules</span>
-          </div>
-        ) : (
-          railRules.map((rule) => (
-            <div className="rule" key={rule.id}>
-              <span className="rn">{rule.id}</span>
-              <br />
-              <span className="rk">
-                {rule.kind}
-                {"instruction" in rule.payload ? " · semantic guidance" : ""} ·{" "}
-                {repoLabel(rule.repository)} · {rule.path_globs.join(", ")} ·{" "}
-                {rule.enabled ? "enabled" : "disabled"}
-              </span>
-            </div>
-          ))
-        )}
-        <h3>Context notes (/context)</h3>
-        <ContextRail />
-        <h3>Learnings inbox</h3>
-        <InboxRail />
-        <div className="neverapply">nothing auto-applies — accept writes, dismiss hides</div>
-      </aside>
+          );
+        })
+      )}
     </div>
   );
 }
