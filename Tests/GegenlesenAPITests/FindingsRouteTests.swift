@@ -49,6 +49,24 @@ struct FindingsRouteTests {
     }
 
     @Test
+    func switchingReactionReplacesPriorVote() async throws {
+        try await withGegenlesenApp { app in
+            let finding = try await seedFinding(app)
+            _ = try await postFeedback(app, finding.id.rawValue, json: #"{"reaction":"thumbs_up"}"#)
+            let down = try await postFeedback(app, finding.id.rawValue, json: #"{"reaction":"thumbs_down"}"#)
+            #expect(down.status == .created)
+            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)/feedback") {
+                res async throws in
+                let listed = try jsonObject(res)
+                let rows = try #require(listed["feedback"] as? [[String: Any]])
+                #expect(rows.count == 1)
+                #expect(rows[0]["verdict"] as? String == "disagree")
+                #expect(rows[0]["reaction"] as? String == "thumbs_down")
+            }
+        }
+    }
+
+    @Test
     func unknownEmojiIsBadRequest() async throws {
         try await withGegenlesenApp { app in
             let finding = try await seedFinding(app)
