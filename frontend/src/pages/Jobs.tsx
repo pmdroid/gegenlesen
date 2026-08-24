@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
 import { listJobs, listLearnings, listRepositories } from "../client";
 import { PipelineRail } from "../components/PipelineRail";
-import { findingCounts, shortSHA, statusClass } from "../pipeline";
+import { usePullNumbers } from "../github";
+import { displayJobTitle, findingCounts, isArchiveTitle, shortSHA, statusClass } from "../pipeline";
 import { repoLabel } from "../scope";
 
 function statusChip(job: JobListItem): { className: string; label: string } {
@@ -82,6 +83,7 @@ export function JobsPage() {
   });
 
   const items = jobs.data?.jobs ?? [];
+  const pulls = usePullNumbers(items);
   const queued = items.filter((job) => job.status === "queued").length;
   const running = items.filter((job) => !isTerminal(job.status) && job.status !== "queued").length;
   const pendingLearnings = inbox.data?.learnings?.length ?? 0;
@@ -133,7 +135,7 @@ export function JobsPage() {
             <div className="jobblock" key={job.id}>
               <div className="jobhead">
                 <Link className="t" to={`/jobs/${job.id}`}>
-                  {job.title ?? job.id}
+                  {displayJobTitle(job, job.head_sha ? pulls[job.head_sha] : null)}
                 </Link>
                 <span className={chip.className}>{chip.label}</span>
                 {job.status === "succeeded" && job.risk ? (
@@ -145,8 +147,8 @@ export function JobsPage() {
               {job.status !== "failed" && job.status !== "cancelled" ? <PipelineRail status={job.status} /> : null}
               <div className="pipe" style={{ borderBottom: 0 }}>
                 {jobLine(job)}
-                {job.repository ? ` · ${repoLabel(job.repository)}` : ""}
-                {job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
+                {!isArchiveTitle(job.title) && job.repository ? ` · ${repoLabel(job.repository)}` : ""}
+                {!isArchiveTitle(job.title) && job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
               </div>
             </div>
           );

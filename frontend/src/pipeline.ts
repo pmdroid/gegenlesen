@@ -48,6 +48,44 @@ export function statusClass(status: JobStatus): string {
   return "st run";
 }
 
+export function isArchiveTitle(title: string | null | undefined): boolean {
+  if (!title) return true;
+  return /\.(tar\.gz|tgz)$/i.test(title);
+}
+
+export function githubRepoParts(
+  repository: string | null | undefined,
+): { owner: string; repo: string } | null {
+  if (!repository) return null;
+  const cleaned = repository.replace(/\.git$/i, "");
+  const match = cleaned.match(/(?:github\.com[/:]|git@github\.com:)([^/]+)\/([^/]+)$/i);
+  if (!match) return null;
+  return { owner: match[1], repo: match[2] };
+}
+
+export function shortRepo(repository: string | null | undefined): string | null {
+  const github = githubRepoParts(repository);
+  if (github) return `${github.owner}/${github.repo}`;
+  if (!repository) return null;
+  const parts = repository.split("/").filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join("/") : repository;
+}
+
+export function abbrevSHA(sha: string | null | undefined): string | null {
+  if (!sha) return null;
+  return sha.slice(0, 7);
+}
+
+export function displayJobTitle(job: JobListItem, prNumber?: number | null): string {
+  if (!isArchiveTitle(job.title)) return job.title ?? job.id;
+  const hash = abbrevSHA(job.head_sha ?? job.base_sha);
+  if (prNumber != null && hash) return `#${prNumber} · ${hash}`;
+  if (prNumber != null) return `#${prNumber}`;
+  const repo = shortRepo(job.repository);
+  if (repo && hash) return `${repo} · ${hash}`;
+  return hash ?? repo ?? job.id;
+}
+
 export function findingCounts(job: JobListItem): string | null {
   const summary = job.summary;
   if (!summary) return null;

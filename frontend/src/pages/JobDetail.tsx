@@ -6,7 +6,8 @@ import { PipelineRail } from "../components/PipelineRail";
 import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest } from "../api";
 import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback, postRiskLabel } from "../client";
-import { jobDuration, shortSHA, statusClass } from "../pipeline";
+import { usePullNumbers } from "../github";
+import { displayJobTitle, jobDuration, shortSHA, statusClass } from "../pipeline";
 import { repoLabel } from "../scope";
 
 export function JobDetailPage() {
@@ -52,6 +53,7 @@ export function JobDetailPage() {
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
+  const pulls = usePullNumbers(job.data ? [job.data] : []);
 
   if (!id) {
     return (
@@ -95,7 +97,7 @@ export function JobDetailPage() {
   return (
     <div className="page">
       <div className="pagehead">
-        <h1>{detail.title ?? detail.id}</h1>
+        <h1>{displayJobTitle(detail, detail.head_sha ? pulls[detail.head_sha] : null)}</h1>
         <span className={statusClass(detail.status)}>{detail.status}</span>
         {detail.risk ? (
           <span className={detail.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
