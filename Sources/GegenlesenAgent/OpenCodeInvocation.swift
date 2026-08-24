@@ -595,10 +595,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             if result.exitCode != 0 || result.timedOut {
                 providerAuth = DockerRunner.providerAuthStatus(in: result) != nil
             }
-        } catch let error as OpenCodeHTTPError {
-            let body = SecretRedactor().redact(String(describing: error))
-            transcript.append(Data(body.utf8))
-            providerAuth = true
         } catch {
             let body = SecretRedactor().redact(String(describing: error))
             transcript.append(Data(body.utf8))

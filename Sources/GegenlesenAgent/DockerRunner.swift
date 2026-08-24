@@ -78,6 +78,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             }
             try? await Task.sleep(for: .milliseconds(50))
         }
+        process.waitUntilExit()
 
         stdout.fileHandleForReading.readabilityHandler = nil
         stderr.fileHandleForReading.readabilityHandler = nil

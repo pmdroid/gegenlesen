@@ -42,4 +42,24 @@ struct OpenCodeHTTPClientTests {
         #expect(OpenCodeHTTPError.classify(status: 200, body: Data(#"{"healthy":true}"#.utf8)) == nil)
         #expect(OpenCodeHTTPError.classify(status: 500, body: Data("reviewer_no_findings_file".utf8)) == nil)
     }
+
+    @Test
+    func failureThrowsNon2xxAsHttpStatus() {
+        #expect(OpenCodeHTTPError.failure(status: 200, body: Data()) == nil)
+        #expect(OpenCodeHTTPError.failure(status: 204, body: Data()) == nil)
+        let auth = OpenCodeHTTPError.failure(status: 401, body: Data("nope".utf8))
+        guard case .providerAuth(let status, _) = auth else {
+            Issue.record("expected providerAuth")
+            return
+        }
+        #expect(status == 401)
+        let failed = OpenCodeHTTPError.failure(status: 502, body: Data("bad gateway".utf8))
+        guard case .httpStatus(let code, let body) = failed else {
+            Issue.record("expected httpStatus")
+            return
+        }
+        #expect(code == 502)
+        #expect(body.contains("bad gateway"))
+        #expect(String(describing: failed).contains("opencode_http"))
+    }
 }
