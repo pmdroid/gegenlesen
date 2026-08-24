@@ -25,6 +25,9 @@ struct ReviewPipelineAgentTests {
                 payloadJSON: nil
             ) == .reviewerFailed
         )
+        #expect(ReviewFailureClass.providerAuthHTTPStatus(in: #"HTTP 403 {"code":403}"#) == 403)
+        #expect(ReviewFailureClass.providerAuthHTTPStatus(in: "User not found.") == 401)
+        #expect(ReviewFailureClass.providerAuthHTTPStatus(in: "docker not wired") == nil)
     }
 
 
