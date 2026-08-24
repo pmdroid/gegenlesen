@@ -53,7 +53,12 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
     /// 401/403 from OpenCode/OpenRouter HTTP or `opencode run` stdout/stderr. Not a host LLM call.
     public static func providerAuthHTTPStatus(in text: String?) -> Int? {
         guard let text, !text.isEmpty else { return nil }
-        if text.contains("User not found") { return 401 }
+        // OpenRouter 401 body. Bare "User not found" in a reviewer transcript
+        // that quoted the code under review is not provider auth.
+        if text.contains("User not found"),
+           text.contains("401") || text.contains("\"error\"") || text.contains("\"statusCode\"") {
+            return 401
+        }
         for code in [401, 403] {
             let markers = [
                 "\"status\":\(code)", "\"status\": \(code)",

@@ -26,7 +26,12 @@ struct ReviewPipelineAgentTests {
             ) == .reviewerFailed
         )
         #expect(ReviewFailureClass.providerAuthHTTPStatus(in: #"HTTP 403 {"code":403}"#) == 403)
-        #expect(ReviewFailureClass.providerAuthHTTPStatus(in: "User not found.") == 401)
+        #expect(
+            ReviewFailureClass.providerAuthHTTPStatus(
+                in: #"{"error":{"message":"User not found.","code":401}}"#
+            ) == 401
+        )
+        #expect(ReviewFailureClass.providerAuthHTTPStatus(in: "User not found.") == nil)
         #expect(ReviewFailureClass.providerAuthHTTPStatus(in: "docker not wired") == nil)
     }
 

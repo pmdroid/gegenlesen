@@ -6,11 +6,14 @@ import GegenlesenCore
 
 public enum OpenCodeHTTPError: Error, Sendable, Equatable, CustomStringConvertible {
     case providerAuth(status: Int, body: String)
+    case httpStatus(status: Int, body: String)
 
     public var description: String {
         switch self {
         case .providerAuth(let status, let body):
             return "provider_auth status=\(status) \(body)"
+        case .httpStatus(let status, let body):
+            return "opencode_http status=\(status) \(body)"
         }
     }
 
@@ -22,6 +25,13 @@ public enum OpenCodeHTTPError: Error, Sendable, Equatable, CustomStringConvertib
             return .providerAuth(status: status, body: snippet)
         }
         return nil
+    }
+
+    public static func failure(status: Int, body: Data) -> OpenCodeHTTPError? {
+        if (200 ..< 300).contains(status) { return nil }
+        if let auth = classify(status: status, body: body) { return auth }
+        let snippet = String(data: body, encoding: .utf8).map { String($0.prefix(500)) } ?? ""
+        return .httpStatus(status: status, body: snippet)
     }
 }
 
@@ -123,7 +133,7 @@ public struct OpenCodeHTTPClient: OpenCodeHTTPClienting {
             timeout: timeout.timeInterval
         )
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if let error = OpenCodeHTTPError.classify(status: status, body: data) {
+        if let error = OpenCodeHTTPError.failure(status: status, body: data) {
             throw error
         }
     }
