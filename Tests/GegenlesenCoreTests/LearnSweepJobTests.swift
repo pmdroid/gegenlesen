@@ -193,6 +193,88 @@ struct LearnSweepJobTests {
             #expect(await box.ids.isEmpty)
         }
     }
+
+    @Test
+    func intervalZeroDoesNotEnqueueOnFeedback() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let job = sampleJob(id: "job-thumb", status: .succeeded, finishedAt: now)
+            try await store.insertJob(job)
+            let inserted = try await store.insertFindings(
+                [
+                    FindingDraft(
+                        ruleID: nil,
+                        phase: .agent,
+                        severity: .warning,
+                        title: "t",
+                        message: "m",
+                        filePath: "A.swift",
+                        startLine: 1,
+                        endLine: 1,
+                        snippet: "x"
+                    ),
+                ],
+                jobID: job.id,
+                now: now
+            )
+            _ = try await store.applyFindingFeedback(
+                finding: inserted[0],
+                verdict: .agree,
+                reaction: .thumbsUp,
+                comment: nil,
+                now: now
+            )
+            let box = EnqueueBox()
+            try await LearnSweepJob(store: store, intervalMinutes: 0, now: now) { id in
+                await box.record(id)
+            }.run()
+            #expect(await box.ids.isEmpty)
+        }
+    }
+
+    @Test
+    func scheduleTickEnqueuesEveryEligibleJob() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let first = sampleJob(id: "job-a", status: .succeeded, finishedAt: now)
+            let second = sampleJob(id: "job-b", status: .succeeded, finishedAt: now)
+            try await store.insertJob(first)
+            try await store.insertJob(second)
+            for job in [first, second] {
+                let inserted = try await store.insertFindings(
+                    [
+                        FindingDraft(
+                            ruleID: nil,
+                            phase: .agent,
+                            severity: .warning,
+                            title: "t",
+                            message: "m",
+                            filePath: "A.swift",
+                            startLine: 1,
+                            endLine: 1,
+                            snippet: "x"
+                        ),
+                    ],
+                    jobID: job.id,
+                    now: now
+                )
+                _ = try await store.applyFindingFeedback(
+                    finding: inserted[0],
+                    verdict: .agree,
+                    reaction: .thumbsUp,
+                    comment: nil,
+                    now: now
+                )
+            }
+            let box = EnqueueBox()
+            try await LearnSweepJob(store: store, intervalMinutes: 15, now: now) { id in
+                await box.record(id)
+            }.run()
+            #expect(Set(await box.ids) == [first.id, second.id])
+        }
+    }
 }
 
 private actor EnqueueBox {

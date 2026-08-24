@@ -37,6 +37,7 @@ struct HealthTests {
                 #expect(settings.port == expected.port)
                 #expect(settings.models == expected.models)
                 #expect(settings.judgeModel == expected.judgeModel)
+                #expect(settings.minerModel == expected.minerModel)
                 #expect(settings.opencodeImage == expected.opencodeImage)
                 #expect(settings.limits == expected.limits)
                 #expect(!res.body.string.contains("API_KEY"))

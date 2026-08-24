@@ -12,7 +12,7 @@ Learn is not part of the review path. A review can write an architecture draft. 
 
 - Button on the job page (`POST /api/jobs/:id/learn`)
 - `gegenlesen` has no separate learn CLI yet. Use the API or the button.
-- `LearnSweepJob` on `limits.learn_interval_minutes` (default 15, `0` turns the sweep off)
+- `LearnSweepJob` on `limits.learn_interval_minutes` (default **0** / off). Set a positive interval (or `GEGENLESEN_LEARN_INTERVAL_MINUTES`) to run a tick that often. Thumbs and merge-intent are eligibility only; they do not start a miner by themselves.
 
 ## What becomes a candidate
 
@@ -22,7 +22,7 @@ A *rule* lands in the inbox only after ≥2 distinct jobs endorsed the same norm
 
 Dismissing a learning stores an optional reason (`duplicate`, `already_covered`, `too_specific`, `not_a_rule`, `other`) plus a comment. That title-hash stays out of the inbox until you restore the dismiss.
 
-A job-level merge-intent label (would you have merged unread?) also enqueues learn. Would-merge is a positive exemplar for that class of diff. Would-not treats kept errors as mine-worthy even without thumbs. Auto-approve then "no" is the strongest would-not. The label never auto-drops a finding and never enables a rule.
+A job-level merge-intent label (would you have merged unread?) is also learn **eligibility**, same as thumbs. It does not start a miner until a schedule tick or the Learn button. Would-merge is a positive exemplar for that class of diff. Would-not treats kept errors as mine-worthy even without thumbs. Auto-approve then "no" is the strongest would-not. The label never auto-drops a finding and never enables a rule.
 
 ## Pipeline
 

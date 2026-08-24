@@ -31,6 +31,13 @@ enum SettingsRoute {
             }
             next.judgeModel = trimmed
         }
+        if let miner = body.minerModel {
+            let trimmed = miner.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw APIError.unprocessable("miner model is required")
+            }
+            next.minerModel = trimmed
+        }
         if let risk = body.risk {
             if let mode = risk.mode {
                 next.risk.mode = mode
@@ -57,6 +64,17 @@ enum SettingsRoute {
                 throw APIError.unprocessable("scanner image must be a single line")
             }
             next.scannerImage = image
+        }
+        if let limits = body.limits {
+            if let mine = limits.mineTimeoutSec {
+                next.limits.mineTimeoutSec = Limits.clampMineTimeout(mine)
+            }
+            if let agent = limits.agentTimeoutSec {
+                next.limits.agentTimeoutSec = Limits.clampAgentTimeout(agent)
+            }
+            if let minutes = limits.learnIntervalMinutes {
+                next.limits.learnIntervalMinutes = max(0, minutes)
+            }
         }
         if !next.isOpenRouterConfigured() {
             throw APIError.unprocessable("OpenRouter API key is required")

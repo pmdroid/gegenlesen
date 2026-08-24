@@ -22,7 +22,9 @@ public struct LearnSweepJob: Sendable {
         guard intervalMinutes > 0 else { return }
         if try await store.hasActiveJobs() { return }
         if try await store.learnedWithin(minutes: intervalMinutes, now: now) { return }
-        guard let jobID = try await store.nextJobNeedingLearn() else { return }
-        try await enqueue(jobID)
+        let jobIDs = try await store.jobsNeedingLearn()
+        for jobID in jobIDs {
+            try await enqueue(jobID)
+        }
     }
 }
