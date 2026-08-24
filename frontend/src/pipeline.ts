@@ -86,6 +86,17 @@ export function displayJobTitle(job: JobListItem, prNumber?: number | null): str
   return hash ?? repo ?? job.id;
 }
 
+export function githubPullUrl(job: JobListItem, prNumber?: number | null): string | null {
+  const github = githubRepoParts(job.repository);
+  if (github && prNumber != null) {
+    return `https://github.com/${github.owner}/${github.repo}/pull/${prNumber}`;
+  }
+  if (github && job.head_sha) {
+    return `https://github.com/${github.owner}/${github.repo}/commit/${job.head_sha}`;
+  }
+  return null;
+}
+
 export function findingCounts(job: JobListItem): string | null {
   const summary = job.summary;
   if (!summary) return null;

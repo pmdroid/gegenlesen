@@ -118,7 +118,9 @@ nav a.on { color: var(--ok-fg); border-bottom: 1px solid var(--ok-fg); }
 .page h2 { font-size: 12px; color: var(--ok-fg); font-weight: 400; margin: 18px 0 8px; letter-spacing: 0.08em; text-transform: uppercase; }
 .pagehead { display: flex; align-items: baseline; justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .pagehead h1 { margin: 0; }
-.pagehead a { margin-left: auto; color: var(--fg-dim); }
+.pagehead h1 a { margin-left: 0; color: var(--fg-strong); border-bottom: 1px solid var(--border-strong); }
+.pagehead h1 a:hover { color: var(--ok-fg); border-color: var(--ok-fg); }
+.pagehead > a { margin-left: auto; color: var(--fg-dim); }
 .filters {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   margin: 10px 0 4px; color: var(--fg-dim);
