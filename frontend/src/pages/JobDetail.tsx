@@ -154,7 +154,6 @@ export function JobDetailPage() {
       {learn.isError ? <div className="formerr">could not start learn</div> : null}
       <FindingsTable
         findings={visibleFindings}
-        showDropped={showDropped}
         emptyLabel={
           detail.error_message === "provider_auth"
             ? "Review stopped before the second reviewer. Provider rejected the API key."
