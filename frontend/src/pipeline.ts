@@ -78,11 +78,11 @@ export function abbrevSHA(sha: string | null | undefined): string | null {
 
 export function displayJobTitle(job: JobListItem, prNumber?: number | null): string {
   if (!isArchiveTitle(job.title)) return job.title ?? job.id;
-  const hash = abbrevSHA(job.head_sha ?? job.base_sha);
-  if (prNumber != null && hash) return `#${prNumber} · ${hash}`;
-  if (prNumber != null) return `#${prNumber}`;
   const repo = shortRepo(job.repository);
-  if (repo && hash) return `${repo} · ${hash}`;
+  const hash = abbrevSHA(job.head_sha ?? job.base_sha);
+  if (repo && prNumber != null) return `${repo}/${prNumber}`;
+  if (repo && hash) return `${repo}/${hash}`;
+  if (prNumber != null) return `${prNumber}`;
   return hash ?? repo ?? job.id;
 }
 

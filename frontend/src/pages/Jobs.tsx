@@ -5,8 +5,7 @@ import { isTerminal, type JobListItem, type JobStatus } from "../api";
 import { listJobs, listLearnings, listRepositories } from "../client";
 import { PipelineRail } from "../components/PipelineRail";
 import { usePullNumbers } from "../github";
-import { displayJobTitle, findingCounts, isArchiveTitle, shortSHA, statusClass } from "../pipeline";
-import { repoLabel } from "../scope";
+import { displayJobTitle, findingCounts, shortSHA, statusClass } from "../pipeline";
 
 function statusChip(job: JobListItem): { className: string; label: string } {
   if (job.status === "failed" && job.error_message) {
@@ -147,8 +146,7 @@ export function JobsPage() {
               {job.status !== "failed" && job.status !== "cancelled" ? <PipelineRail status={job.status} /> : null}
               <div className="pipe" style={{ borderBottom: 0 }}>
                 {jobLine(job)}
-                {!isArchiveTitle(job.title) && job.repository ? ` · ${repoLabel(job.repository)}` : ""}
-                {!isArchiveTitle(job.title) && job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
+                {job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
               </div>
             </div>
           );
