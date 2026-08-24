@@ -306,6 +306,35 @@ struct StoreTests {
     }
 
     @Test
+    func nextJobNeedingLearnSkipsAfterFailedLearnChild() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let labeledAt = Date(timeIntervalSince1970: 1_000)
+            let learnedAt = Date(timeIntervalSince1970: 2_000)
+            var job = sampleJob(id: "job-failed-learn", status: .succeeded, finishedAt: labeledAt)
+            job.title = "ship the hop fix"
+            job.updatedAt = labeledAt
+            job.risk = RiskAssessment(
+                verdict: .needsHuman,
+                mode: .shadow,
+                score: 4,
+                appetite: 1,
+                reasons: [],
+                safeUnread: false
+            )
+            try await store.insertJob(job)
+            var learn = sampleJob(id: "learn-failed", status: .failed, finishedAt: learnedAt)
+            learn.parentJobID = job.id
+            learn.title = "learn hop"
+            learn.createdAt = learnedAt
+            learn.updatedAt = learnedAt
+            try await store.insertJob(learn)
+
+            #expect(try await store.nextJobNeedingLearn() == nil)
+        }
+    }
+
+    @Test
     func usesWAL() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)

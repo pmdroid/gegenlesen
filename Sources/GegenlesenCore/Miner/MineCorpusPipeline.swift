@@ -77,6 +77,7 @@ public struct MineCorpusPipeline: Sendable {
             let filtered = try await filterDrafts(drafts, spec: spec)
             let now = Date()
             let counts = try await fillInbox(
+                items: items,
                 spec: spec,
                 drafts: filtered,
                 workspace: workspaceURL,
@@ -182,16 +183,6 @@ public struct MineCorpusPipeline: Sendable {
         if spec.source == .job, let sourceID = spec.sourceJobID {
             let findings = try await store.findings(jobID: sourceID)
             if findings.isEmpty {
-                if let job = try await store.job(id: sourceID), let title = job.title, !title.isEmpty {
-                    return [
-                        MinedRuleDraft(
-                            title: title,
-                            payload: .semantic(instruction: title, fewShots: []),
-                            sourcePRRefs: [sourceID.rawValue],
-                            body: title
-                        ),
-                    ]
-                }
                 return []
             }
             return findings.map { finding in
@@ -247,6 +238,7 @@ public struct MineCorpusPipeline: Sendable {
     }
 
     private func fillInbox(
+        items: [CorpusItem],
         spec: MineJobSpec,
         drafts: [MinedRuleDraft],
         workspace: URL,
@@ -300,7 +292,7 @@ public struct MineCorpusPipeline: Sendable {
                         Self.rule(
                             from: draft,
                             provenance: provenance,
-                            fallbackRefs: fallbackRefs(items: [], spec: spec),
+                            fallbackRefs: fallbackRefs(items: items, spec: spec),
                             now: now
                         )
                     ) : draft.body
@@ -352,7 +344,7 @@ public struct MineCorpusPipeline: Sendable {
             var rule = Self.rule(
                 from: draft,
                 provenance: provenance,
-                fallbackRefs: fallbackRefs(items: [], spec: spec),
+                fallbackRefs: fallbackRefs(items: items, spec: spec),
                 now: now
             )
             rule.title = kept.title

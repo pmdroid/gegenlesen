@@ -691,7 +691,7 @@ extension Store {
                           FROM jobs c
                           WHERE c.parent_job_id = j.id
                             AND c.title LIKE 'learn %'
-                            AND c.status = 'succeeded'
+                            AND c.status IN ('succeeded', 'failed', 'cancelled')
                             AND c.finished_at IS NOT NULL
                         ),
                         '0000-01-01T00:00:00Z'
