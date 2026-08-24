@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { getHealth, getSettings } from "./client";
 import { ContextPage } from "./pages/Context";
 import { JobDetailPage } from "./pages/JobDetail";
@@ -49,6 +50,7 @@ export function App() {
           </NavLink>
         </nav>
         <span className="srv">{apiLabel}</span>
+        <ThemeToggle />
       </div>
       {needsSetup ? <Navigate to="/setup" replace /> : null}
       <Routes>

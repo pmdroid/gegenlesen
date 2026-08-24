@@ -19,25 +19,6 @@ function loc(finding: Finding): string {
   return `${finding.file_path}:${finding.start_line}`;
 }
 
-function verdictClass(finding: Finding): string {
-  if (finding.judge_verdict === "drop") return "verdict dropped";
-  if (finding.judge_verdict === "unavailable") return "verdict unavailable";
-  if (finding.phase === "deterministic" && finding.judge_verdict !== "downgrade") {
-    return "verdict det";
-  }
-  if (finding.judge_verdict) return "verdict kept";
-  return "verdict det";
-}
-
-function verdictLabel(finding: Finding): string {
-  if (finding.judge_verdict === "drop") return "judge: dropped";
-  if (finding.judge_verdict === "unavailable") return "judge: unavailable";
-  if (finding.judge_verdict === "downgrade") return "judge: downgrade";
-  if (finding.phase === "deterministic") return "deterministic";
-  if (finding.judge_verdict === "keep") return "judge: kept";
-  return finding.phase;
-}
-
 export function FindingsTable({
   findings,
   feedback,
@@ -113,64 +94,72 @@ function FindingRow({
     setCommentOpen(false);
   }
 
+  const severity = finding.judge_severity ?? finding.severity;
+  const verdictName =
+    finding.judge_verdict === "drop"
+      ? "dropped"
+      : finding.judge_verdict === "unavailable"
+        ? "unavailable"
+        : finding.judge_verdict === "downgrade"
+          ? "downgrade"
+          : "kept";
+
   return (
     <div className="finding">
       <div className="fh">
-        <span className="id">{finding.id}</span>
-        <span className="title">{finding.title}</span>
-        <span className={verdictClass(finding)}>{verdictLabel(finding)}</span>
-        <span className={`st ${(finding.judge_severity ?? finding.severity) === "error" ? "fail" : (finding.judge_severity ?? finding.severity) === "warning" ? "run" : "ok"}`}>
-          {finding.judge_severity ?? finding.severity}
+        <span className={`verdict ${verdictName === "downgrade" ? "kept" : verdictName}`}>{verdictName}</span>
+        <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
+          {severity}
         </span>
-      </div>
-      {finding.snippet ? <pre>{finding.snippet}</pre> : null}
-      <div className="src">
-        {finding.reviewer_slot ?? "host"} · {loc(finding)}
-        {finding.rule_id ? ` · rule: ${finding.rule_id}` : ""}
-        {finding.message ? ` · ${finding.message}` : ""}
-        {dropped && showDropped ? " · thumbs-up is learn-only" : ""}
-      </div>
-      {comments.length > 0 ? (
-        <div className="logline">
-          {comments.map((row) => (
-            <div key={row.id}>{row.comment}</div>
-          ))}
+        <span className="title">{finding.title}</span>
+        <div className="rxn">
+          <button
+            type="button"
+            className={reaction === "thumbs_up" ? "on" : undefined}
+            disabled={pending}
+            onClick={() => onFeedback(finding.id, { reaction: "👍" })}
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            className={reaction === "thumbs_down" ? "on" : undefined}
+            disabled={pending}
+            onClick={() => onFeedback(finding.id, { reaction: "👎" })}
+          >
+            👎
+          </button>
+          <button type="button" disabled={pending} onClick={() => setCommentOpen((open) => !open)}>
+            💬
+          </button>
+          <button
+            type="button"
+            className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
+            disabled={pending}
+            onClick={() =>
+              onFeedback(finding.id, {
+                verdict: "should_be_rule",
+                comment: commentOpen ? comment.trim() || undefined : undefined,
+              })
+            }
+          >
+            → rule
+          </button>
         </div>
-      ) : null}
-      <div className="rxn">
-        <button
-          type="button"
-          className={reaction === "thumbs_up" ? "on" : undefined}
-          disabled={pending || !canEndorse}
-          onClick={() => onFeedback(finding.id, { reaction: "👍" })}
-        >
-          👍
-        </button>
-        <button
-          type="button"
-          className={reaction === "thumbs_down" ? "on" : undefined}
-          disabled={pending}
-          onClick={() => onFeedback(finding.id, { reaction: "👎" })}
-        >
-          👎
-        </button>
-        <button type="button" disabled={pending} onClick={() => setCommentOpen((open) => !open)}>
-          💬 comment
-        </button>
-        <button
-          type="button"
-          className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
-          disabled={pending || !canEndorse}
-          onClick={() =>
-            onFeedback(finding.id, {
-              verdict: "should_be_rule",
-              comment: commentOpen ? comment.trim() || undefined : undefined,
-            })
-          }
-        >
-          → should be a rule
-        </button>
       </div>
+      <details className="finding-more">
+        <summary>description</summary>
+        <div className="src">{loc(finding)}</div>
+        {finding.message ? <div className="src">{finding.message}</div> : null}
+        {finding.snippet ? <pre>{finding.snippet}</pre> : null}
+        {comments.length > 0 ? (
+          <div className="logline">
+            {comments.map((row) => (
+              <div key={row.id}>{row.comment}</div>
+            ))}
+          </div>
+        ) : null}
+      </details>
       {commentOpen ? (
         <form className="form" onSubmit={submitComment}>
           <label>
