@@ -678,7 +678,7 @@ Multipart parser abort size = `archive_bytes + 1 MiB`. Do not buffer then reject
 }
 ```
 
-Preferred `pack-repo.sh` tarball with empty meta SHAs and no `patch` part is **202**. Missing change-set is a later job failure (`error_message=no_change_set`), not HTTP 422.
+Preferred `gegenlesen pack` tarball with empty meta SHAs and no `patch` part is **202**. Missing change-set is a later job failure (`error_message=no_change_set`), not HTTP 422.
 
 ### `GET /api/jobs/:id`
 

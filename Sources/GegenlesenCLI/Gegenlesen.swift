@@ -1,12 +1,13 @@
 import ArgumentParser
 import Foundation
+import GegenlesenCore
 
 @main
 struct Gegenlesen: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gegenlesen",
         abstract: "Pack a repo and start a gegenlesen review",
-        subcommands: [Review.self, Harvest.self, Status.self, Cancel.self, Serve.self, ScannerTest.self]
+        subcommands: [Review.self, Harvest.self, Pack.self, Status.self, Cancel.self, Serve.self, ScannerTest.self]
     )
 }
 
@@ -16,7 +17,7 @@ struct Review: AsyncParsableCommand {
         abstract: "Pack the current repo and POST a review job"
     )
 
-    @Argument(help: "Base ref for pack-repo.sh (optional).")
+    @Argument(help: "Base ref for the pack (optional).")
     var baseRef: String?
 
     @Option(name: .long, help: "Parent job id for an incremental review.")
@@ -25,9 +26,13 @@ struct Review: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit 1 unless the job succeeded with risk verdict auto_approve.")
     var requireAutoApprove = false
 
+    @Option(name: .long, help: "How long to wait for the job (seconds, or 45m / 2h). Default 30m.")
+    var timeout: String?
+
     func run() async throws {
         let client = GegenlesenClient()
-        let archive = try packCWD(baseRef: baseRef)
+        let packed = try packCWD(baseRef: baseRef)
+        let archive = packed.archive
         var meta: [String: Any] = [
             "scope": parent == nil ? "full" : "incremental",
         ]
@@ -42,7 +47,7 @@ struct Review: AsyncParsableCommand {
         }
         let accepted = try await client.createJob(archive: archive, meta: meta)
         print(accepted.id)
-        let terminal = try await client.poll(id: accepted.id)
+        let terminal = try await client.poll(id: accepted.id, timeout: try pollTimeout(timeout, defaultSeconds: 1800))
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
         } else {
@@ -64,18 +69,49 @@ struct Review: AsyncParsableCommand {
     }
 }
 
+struct Pack: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "pack",
+        abstract: "Write a review tarball of the current repo to stdout"
+    )
+
+    @Argument(help: "Base ref for the pack (optional).")
+    var baseRef: String?
+
+    @Option(name: .shortAndLong, help: "Write the tarball to a file instead of stdout.")
+    var output: String?
+
+    func run() throws {
+        let packed = try packCWD(baseRef: baseRef)
+        if packed.droppedBundle {
+            fputs("pack: dropped history.bundle (over size limit)\n", stderr)
+        }
+        if let output {
+            try packed.archive.write(to: URL(fileURLWithPath: output))
+        } else {
+            FileHandle.standardOutput.write(packed.archive)
+        }
+    }
+}
+
 struct Harvest: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "harvest",
         abstract: "Pack the current repo and mine disabled house-rule drafts"
     )
 
+    @Option(
+        name: .long,
+        help: "How long to wait for harvest (seconds, or 45m / 2h). Default 1h. Large repos also need limits.mine_timeout_sec (or GEGENLESEN_MINE_TIMEOUT_SEC) on the server."
+    )
+    var timeout: String?
+
     func run() async throws {
         let client = GegenlesenClient()
-        let archive = try packCWD(baseRef: nil)
-        let accepted = try await client.createHarvest(archive: archive, repository: detectRepository())
+        let packed = try packCWD(baseRef: nil)
+        let accepted = try await client.createHarvest(archive: packed.archive, repository: detectRepository())
         print(accepted.id)
-        let terminal = try await client.poll(id: accepted.id, timeout: 900)
+        let terminal = try await client.poll(id: accepted.id, timeout: try pollTimeout(timeout, defaultSeconds: 3600))
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
         } else {
@@ -297,68 +333,38 @@ func findScannerFixture() -> URL {
     return cwd.appendingPathComponent("docker/scanner/fixtures")
 }
 
-func packCWD(baseRef: String?) throws -> Data {
-    let script = findPackScript()
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
-    var arguments = [script.path]
-    if let baseRef {
-        arguments.append(baseRef)
+func pollTimeout(_ raw: String?, defaultSeconds: TimeInterval) throws -> TimeInterval {
+    let value = raw ?? ProcessInfo.processInfo.environment["GEGENLESEN_TIMEOUT"]
+    guard let value, !value.isEmpty else { return defaultSeconds }
+    guard let seconds = parseDurationSeconds(value), seconds > 0 else {
+        throw CLIError("invalid --timeout \(value) (use seconds, 45m, or 2h)")
     }
-    process.arguments = arguments
-    process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    let stdout = Pipe()
-    let stderr = Pipe()
-    process.standardOutput = stdout
-    process.standardError = stderr
-    process.standardInput = FileHandle.nullDevice
-    try process.run()
-    // Drain stdout before waitUntilExit. A multi-MB tarball fills the pipe
-    // (~64 KiB) and pack-repo.sh blocks forever if we wait first.
-    let data = stdout.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    if process.terminationStatus != 0 {
-        let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        throw CLIError("pack-repo.sh failed: \(err)")
-    }
-    return data
+    return seconds
 }
 
-func findPackScript() -> URL {
-    let fm = FileManager.default
-    var candidates: [URL] = []
-    if let root = ProcessInfo.processInfo.environment["GEGENLESEN_ROOT"], !root.isEmpty {
-        candidates.append(URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent("scripts/pack-repo.sh"))
+func parseDurationSeconds(_ raw: String) -> TimeInterval? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if trimmed.hasSuffix("h"), let hours = Double(trimmed.dropLast()) {
+        return hours * 3600
     }
-    if let exeDir = resolvedCLIDirectory() {
-        candidates.append(exeDir.appendingPathComponent("scripts/pack-repo.sh"))
+    if trimmed.hasSuffix("m"), let minutes = Double(trimmed.dropLast()) {
+        return minutes * 60
     }
-    var dir = URL(fileURLWithPath: fm.currentDirectoryPath)
-    for _ in 0..<8 {
-        candidates.append(dir.appendingPathComponent("scripts/pack-repo.sh"))
-        dir.deleteLastPathComponent()
+    if trimmed.hasSuffix("s"), let seconds = Double(trimmed.dropLast()) {
+        return seconds
     }
-    for candidate in candidates where fm.isReadableFile(atPath: candidate.path) {
-        return candidate
-    }
-    return URL(fileURLWithPath: "scripts/pack-repo.sh")
+    return Double(trimmed)
 }
 
-func resolvedCLIDirectory() -> URL? {
-    var path = CommandLine.arguments[0]
-    let fm = FileManager.default
-    if !path.contains("/") {
-        for dir in (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":") {
-            let candidate = URL(fileURLWithPath: String(dir), isDirectory: true).appendingPathComponent(path)
-            if fm.isExecutableFile(atPath: candidate.path) {
-                path = candidate.path
-                break
-            }
-        }
+func packCWD(baseRef: String?) throws -> RepoPackResult {
+    let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+    do {
+        let head = try RepoPacker.resolveHead(cwd: cwd)
+        let base = try RepoPacker.resolveBase(cwd: cwd, ref: baseRef)
+        return try RepoPacker.pack(cwd: cwd, base: base, head: head)
+    } catch let error as RepoPackError {
+        throw CLIError(error.description)
     }
-    let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
-    guard url.path != "/" else { return nil }
-    return url.deletingLastPathComponent()
 }
 
 struct CLIError: Error, CustomStringConvertible {

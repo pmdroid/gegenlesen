@@ -19,7 +19,7 @@ gegenlesen review
 
 | Scope | Upload | What gets read |
 | --- | --- | --- |
-| Full change | Tarball from `scripts/pack-repo.sh` | The whole identified diff |
+| Full change | Tarball from `gegenlesen pack` | The whole identified diff |
 | Incremental | New tarball + `parent_job_id` of a succeeded job | New hunks only |
 
 The pack embeds `.gegenlesen/diff.patch` and, when it fits, a thin git bundle.
