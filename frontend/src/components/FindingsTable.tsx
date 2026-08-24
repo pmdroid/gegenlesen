@@ -43,12 +43,14 @@ export function FindingsTable({
   feedback,
   onFeedback,
   pending,
+  showDropped = false,
   emptyLabel = "No findings yet.",
 }: {
   findings: Finding[];
   feedback: FindingFeedback[];
   onFeedback: (findingId: string, body: FindingFeedbackRequest) => void;
   pending: boolean;
+  showDropped?: boolean;
   emptyLabel?: string;
 }) {
   const byFinding = useMemo(() => {
@@ -74,6 +76,7 @@ export function FindingsTable({
           rows={byFinding.get(finding.id) ?? []}
           onFeedback={onFeedback}
           pending={pending}
+          showDropped={showDropped}
         />
       ))}
     </div>
@@ -85,17 +88,21 @@ function FindingRow({
   rows,
   onFeedback,
   pending,
+  showDropped,
 }: {
   finding: Finding;
   rows: FindingFeedback[];
   onFeedback: (findingId: string, body: FindingFeedbackRequest) => void;
   pending: boolean;
+  showDropped: boolean;
 }) {
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   const reaction = currentReaction(rows);
   const verdict = currentVerdict(rows);
   const comments = rows.filter((row) => row.verdict === "comment" && row.comment);
+  const dropped = finding.judge_verdict === "drop";
+  const canEndorse = !dropped || showDropped;
 
   function submitComment(event: FormEvent) {
     event.preventDefault();
@@ -121,6 +128,7 @@ function FindingRow({
         {finding.reviewer_slot ?? "host"} · {loc(finding)}
         {finding.rule_id ? ` · rule: ${finding.rule_id}` : ""}
         {finding.message ? ` · ${finding.message}` : ""}
+        {dropped && showDropped ? " · thumbs-up is learn-only" : ""}
       </div>
       {comments.length > 0 ? (
         <div className="logline">
@@ -133,7 +141,7 @@ function FindingRow({
         <button
           type="button"
           className={reaction === "thumbs_up" ? "on" : undefined}
-          disabled={pending}
+          disabled={pending || !canEndorse}
           onClick={() => onFeedback(finding.id, { reaction: "👍" })}
         >
           👍
@@ -152,7 +160,7 @@ function FindingRow({
         <button
           type="button"
           className={verdict?.verdict === "should_be_rule" ? "on" : undefined}
-          disabled={pending}
+          disabled={pending || !canEndorse}
           onClick={() =>
             onFeedback(finding.id, {
               verdict: "should_be_rule",

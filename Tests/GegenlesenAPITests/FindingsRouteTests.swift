@@ -152,6 +152,34 @@ struct FindingsRouteTests {
     }
 
     @Test
+    func thumbsUpOnDroppedFindingRecordsEndorse() async throws {
+        try await withGegenlesenApp { app in
+            let finding = try await seedFinding(app, judgeVerdict: .drop)
+            let res = try await postFeedback(app, finding.id.rawValue, json: #"{"reaction":"thumbs_up"}"#)
+            #expect(res.status == .created)
+            let body = try jsonObject(res)
+            #expect(body["verdict"] as? String == "agree")
+            #expect(body["reaction"] as? String == "thumbs_up")
+
+            try await app.testing().test(.GET, "/api/jobs/\(finding.jobID.rawValue)") { res async throws in
+                #expect(res.status == .ok)
+                let job = try jsonObject(res)
+                let findings = try #require(job["findings"] as? [[String: Any]])
+                #expect(findings.count == 1)
+                #expect(findings[0]["judge_verdict"] as? String == "drop")
+            }
+
+            let asRule = try await postFeedback(
+                app,
+                finding.id.rawValue,
+                json: #"{"verdict":"should_be_rule"}"#
+            )
+            #expect(asRule.status == .created)
+            #expect(try jsonObject(asRule)["verdict"] as? String == "should_be_rule")
+        }
+    }
+
+    @Test
     func unknownFindingIsNotFound() async throws {
         try await withGegenlesenApp { app in
             let res = try await postFeedback(app, "fnd_missing", json: #"{"verdict":"agree"}"#)
@@ -215,7 +243,11 @@ private let feedbackKeys: Set<String> = [
     "id", "finding_id", "job_id", "ts", "verdict", "reaction", "comment", "suggested_rule_id",
 ]
 
-private func seedFinding(_ app: Application, filePath: String? = "Sources/Auth/Session.swift") async throws -> Finding {
+private func seedFinding(
+    _ app: Application,
+    filePath: String? = "Sources/Auth/Session.swift",
+    judgeVerdict: JudgeVerdict? = nil
+) async throws -> Finding {
     let now = Date()
     let job = Job(
         id: JobID.generate(),
@@ -242,6 +274,7 @@ private func seedFinding(_ app: Application, filePath: String? = "Sources/Auth/S
         startLine: 41,
         endLine: 41,
         snippet: "print(\"token\")",
+        judgeVerdict: judgeVerdict,
         createdAt: now
     )
     try await app.gegenlesenStore.insertParsedFindings([finding])

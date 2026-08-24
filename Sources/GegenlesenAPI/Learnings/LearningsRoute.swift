@@ -56,6 +56,8 @@ enum LearningsRoute {
         if item.status != .pending {
             throw APIError.conflict("learning is already \(item.status.rawValue)")
         }
+        let body = try decodeDismiss(req)
+        item.applyDismiss(reason: body.reason, comment: body.comment)
         item.status = .dismissed
         item.resolvedAt = Date()
         try await req.application.gegenlesenStore.updateLearning(item)
@@ -95,8 +97,17 @@ enum LearningsRoute {
             createdAt: now,
             updatedAt: now
         )
-        _ = try await MinerDedup.upsert(rule, into: store, now: now)
-        if let stored = try await store.rule(id: rule.id) {
+        let outcome = try await MinerDedup.upsert(rule, into: store, now: now)
+        let storedID: RuleID
+        switch outcome {
+        case .inserted(let id), .attached(let id):
+            storedID = id
+        }
+        if var stored = try await store.rule(id: storedID) {
+            stored.enabled = true
+            stored.provenance = .handwritten
+            stored.updatedAt = now
+            try await store.updateRule(stored)
             await embedRule(stored, on: req)
         }
     }
@@ -156,6 +167,35 @@ enum LearningsRoute {
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return object[key] as? String
+    }
+
+    private static func decodeDismiss(_ req: Request) throws -> (reason: LearningDismissReason?, comment: String?) {
+        let collected = req.body.data?.readableBytes ?? 0
+        if collected == 0 && req.headers.contentType == nil {
+            return (nil, nil)
+        }
+        let body: LearningDismissRequest
+        do {
+            body = try req.content.decode(LearningDismissRequest.self)
+        } catch {
+            throw APIError.badRequest("invalid dismiss payload")
+        }
+        let reason: LearningDismissReason?
+        if let raw = nonempty(body.reason) {
+            guard let parsed = LearningDismissReason(rawValue: raw) else {
+                throw APIError.badRequest("invalid dismiss reason")
+            }
+            reason = parsed
+        } else {
+            reason = nil
+        }
+        return (reason, nonempty(body.comment))
+    }
+
+    private static func nonempty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func requireLearning(_ req: Request) async throws -> Learning {

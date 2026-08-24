@@ -29,12 +29,16 @@ struct SuggestionFilterTests {
     }
 
     @Test
-    func droppedFindingNeverBecomesARule() {
+    func endorsedDroppedFindingIsLearnEligible() {
         let finding = sampleFinding(title: "flaky test note", verdict: .drop)
         let draft = MinedRuleDraft(
             title: "flaky test note",
             payload: .semantic(instruction: "x", fewShots: []),
             body: "x"
+        )
+        #expect(SuggestionFilter.signal(for: finding, feedback: []) == .reject)
+        #expect(
+            SuggestionFilter.keepJobRule(draft: draft, findings: [finding], feedback: []) == false
         )
         let up = FindingFeedback(
             id: 1,
@@ -44,9 +48,35 @@ struct SuggestionFilterTests {
             verdict: .agree,
             reaction: .thumbsUp
         )
+        #expect(SuggestionFilter.signal(for: finding, feedback: [up]) == .endorse)
         #expect(
-            SuggestionFilter.keepJobRule(draft: draft, findings: [finding], feedback: [up]) == false
+            SuggestionFilter.keepJobRule(draft: draft, findings: [finding], feedback: [up]) == true
         )
+        #expect(SuggestionFilter.contextBody(findings: [finding], feedback: [up])?.contains("flaky") == true)
+        let wouldNot = RiskAssessment(
+            verdict: .needsHuman,
+            mode: .shadow,
+            score: 5,
+            appetite: 1,
+            reasons: [],
+            safeUnread: false
+        )
+        #expect(
+            SuggestionFilter.keepJobRule(
+                draft: draft,
+                findings: [finding],
+                feedback: [],
+                risk: wouldNot
+            ) == false
+        )
+        let asRule = FindingFeedback(
+            id: 2,
+            findingID: finding.id,
+            jobID: finding.jobID,
+            ts: Date(),
+            verdict: .shouldBeRule
+        )
+        #expect(SuggestionFilter.signal(for: finding, feedback: [asRule]) == .endorse)
     }
 
     @Test
@@ -271,6 +301,26 @@ struct SuggestionFilterTests {
         #expect(kept[0].id == "sug_rule_0")
         #expect(kept[0].title == "Log hop failures")
         #expect(kept[0].body.contains("credential-free"))
+    }
+
+    @Test
+    func suggestionJudgeDuplicateIdsKeepLast() {
+        let candidates = [
+            SuggestionCandidate(id: "sug_rule_0", kind: .rule, title: "t", body: "b"),
+        ]
+        let payload = """
+        {"verdicts":[
+          {"finding_id":"sug_rule_0","verdict":"drop","rationale":"first"},
+          {"finding_id":"sug_rule_0","verdict":"keep","rationale":"last"}
+        ]}
+        """
+        let kept = SuggestionJudge.apply(
+            outcome: SuggestionJudge.parse(Data(payload.utf8)),
+            candidates: candidates,
+            fallbackIDs: []
+        )
+        #expect(kept.count == 1)
+        #expect(kept[0].id == "sug_rule_0")
     }
 
     @Test

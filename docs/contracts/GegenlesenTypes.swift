@@ -165,6 +165,8 @@ enum TranscriptPhase: String, Codable, Sendable {
     case reviewA = "review_a"
     case reviewB = "review_b"
     case judge
+    case mine
+    case suggestionJudge = "suggestion_judge"
 }
 
 enum Language: String, Codable, Sendable {

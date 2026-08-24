@@ -233,7 +233,7 @@ public enum SuggestionJudge: Sendable {
         case .failed:
             return candidates.filter { fallbackIDs.contains($0.id) }
         case .verdicts(let rows):
-            let verdictByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+            let verdictByID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
             return candidates.compactMap { item in
                 guard verdictByID[item.id]?.verdict == .keep else { return nil }
                 return applying(verdictByID[item.id], to: item)
