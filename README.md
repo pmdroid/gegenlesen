@@ -66,7 +66,7 @@ Cheap checks run first. Both reviewers always run when there is new work. The ju
 
 | Scope | What you upload | What gets reviewed |
 | --- | --- | --- |
-| **Full change** | Tarball from `scripts/pack-repo.sh` | The whole identified diff |
+| **Full change** | Tarball from `gegenlesen pack` (or `gegenlesen review`) | The whole identified diff |
 | **Incremental** | New tarball + `parent_job_id` of a succeeded job | New hunks only |
 
 ## Rules

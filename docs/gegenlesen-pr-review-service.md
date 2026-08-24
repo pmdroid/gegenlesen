@@ -273,7 +273,6 @@ The host never writes a model API key into a review artifact. Keys are injected 
     gegenlesen.example.json
   scripts/
     dev.sh
-    pack-repo.sh
     build-runner.sh                  # pins tag gegenlesen/opencode-runner:0.1.0
   var/
   .gitignore
@@ -1094,7 +1093,7 @@ Fixtures in PR 3: Pax long name, absolute symlink, hardlink, fifo, 100 MiB gzi
 | Part | Required at HTTP | Content |
 | --- | --- | --- |
 | `archive` | **always** | `.tar` or `.tar.gz` / `.tgz`. **Zip rejected.** Working tree. May contain `.git`, `.gegenlesen/history.bundle`, and/or `.gegenlesen/diff.patch` — the handler does **not** look inside the tar at POST time. |
-| `patch` | **optional** | Unified diff (`diff --git`) **or** `git format-patch` mbox. Needed at HTTP **only** when `meta` also lacks both SHAs (see 422). Preferred `pack-repo.sh` uploads omit this part and embed `.gegenlesen/diff.patch` instead. |
+| `patch` | **optional** | Unified diff (`diff --git`) **or** `git format-patch` mbox. Needed at HTTP **only** when `meta` also lacks both SHAs (see 422). Preferred `gegenlesen pack` uploads omit this part and embed `.gegenlesen/diff.patch` instead. |
 | `meta` | **always** | UTF-8 JSON, see below. |
 
 There is **no** `tree` part. A “bare tree” is just `archive` without `.git`.
@@ -1109,7 +1108,7 @@ HTTP errors (before enqueue). The file-picker UI sends `archive` + `meta` radios
 | `422` | incremental parent missing / not `succeeded` / missing `base_sha`+`head_sha`+at least one `job_files` row; **`meta` lacks both `base_sha` and `head_sha` AND there is no `patch` part**. In-archive `.git` / bundle / `.gegenlesen/diff.patch` are **not** inspected here. `reviewer_model` in meta, if sent, is **ignored**. |
 | `507` | `SUM(archive_bytes) WHERE status IN ('queued','unpacking','identifying','selecting_rules','deterministic','reviewing','judging')` + this archive > `limits.queued_archive_bytes` (default **2 GiB**) |
 
-A `pack-repo.sh` tarball with empty `meta` SHAs and no `patch` part is therefore **202**, not 422. Identifying discovers `.gegenlesen/diff.patch` (and optional bundle / `.git`) after extract. If after extract there is still no history **and** no patch (multipart part or `.gegenlesen/diff.patch`), the **job** fails in `identifying` with `error_message=no_change_set`.
+A `gegenlesen pack` tarball with empty `meta` SHAs and no `patch` part is therefore **202**, not 422. Identifying discovers `.gegenlesen/diff.patch` (and optional bundle / `.git`) after extract. If after extract there is still no history **and** no patch (multipart part or `.gegenlesen/diff.patch`), the **job** fails in `identifying` with `error_message=no_change_set`.
 
 Parent rule: `parent_job_id` must reference a job with `status='succeeded'` **and** populated `base_sha`, `head_sha`, and `job_files`. “Identified but not succeeded” is **not** enough.
 
@@ -1136,7 +1135,7 @@ Parent rule: `parent_job_id` must reference a job with `status='succeeded'` **an
 | `base_ref` / `head_ref` | Git refs inside `.git` or the bundle. Ignored if SHAs are set. |
 | `base_sha` / `head_sha` | Full 40-char SHAs if the operator already knows them. |
 
-#### Preferred archive (`scripts/pack-repo.sh`)
+#### Preferred archive (`gegenlesen pack` / `RepoPacker`)
 
 A raw `.git` with packfiles usually **misses** the 100 MiB cap. The preferred pack is a **filtered working tree + an embedded unified diff**. A bundle is optional and must be **self-contained** (never `A..B`, which records `A` as a prerequisite and cannot be fetched into an empty repo).
 
@@ -1811,7 +1810,7 @@ Talks to `http://127.0.0.1:8080` (override `GEGENLESEN_URL`).
 | `gegenlesen status [id]` | Latest job or one job |
 | `gegenlesen cancel <id>` | `POST /api/jobs/:id/cancel` |
 
-Packing is `scripts/pack-repo.sh` (or the same logic in Swift). The CLI is the only supported review client.
+Packing is `RepoPacker` (`gegenlesen pack`). The CLI is the only supported review client.
 
 ---
 
@@ -2060,7 +2059,7 @@ No secrets in `var/`.
 
 ### A6. Zip uploads and standalone `git bundle` as the `archive` part
 
-Zip is rejected. `pack-repo.sh` embeds `.gegenlesen/diff.patch` as the change-set and **may** embed a self-contained `.gegenlesen/history.bundle` (`git bundle create … "$BASE" "$HEAD"`, fetched with `git fetch`, never `A..B` into `git init`). A **bare** git bundle as the `archive` part (no working tree) is deferred.
+Zip is rejected. `gegenlesen pack` embeds `.gegenlesen/diff.patch` as the change-set and **may** embed a self-contained `.gegenlesen/history.bundle` (`git bundle create … "$BASE" "$HEAD"`, fetched with `git fetch`, never `A..B` into `git init`). A **bare** git bundle as the `archive` part (no working tree) is deferred.
 
 ### A7. Agent prints the findings JSON on stdout instead of writing a file
 
@@ -2177,7 +2176,7 @@ None remaining. Operator declined to override the recommended defaults; they are
 - Frontend dev: `cd frontend && npm run dev` (proxy `/api` → `:8080`)
 - Runner: `scripts/build-runner.sh` → `gegenlesen/opencode-runner:0.1.0` (`--platform linux/arm64` on Apple Silicon)
 - `docker network create gegenlesen-egress`
-- `scripts/pack-repo.sh` is the documented upload producer
+- `gegenlesen pack` (`RepoPacker`) is the documented upload producer
 
 ```swift
 struct ReviewJobParameters: JobParameters {
@@ -2240,7 +2239,7 @@ Independently reviewable, mergeable increments. Each PR leaves `swift test` and 
 
 ### PR 3 — Safe tar extract + git change-set identification
 
-- **Files / components:** `Sources/CLibArchive/*`, `ArchiveUnpacker.swift` (Darwin `chown` ignores `EPERM`/`ENOTSUP`; Linux requires success), `ChangeSet.swift` (prefer `.gegenlesen/diff.patch`; `git fetch` bundle, never unbundle / never `A..B`), `LanguageMap.swift`, `scripts/pack-repo.sh` (required `git diff` → `.gegenlesen/diff.patch`; optional self-contained bundle; fail if neither), fixtures (tiny-repo, Pax, abs symlink, hardlink, fifo, bomb), CryptoKit content SHA-256 tests
+- **Files / components:** `Sources/CLibArchive/*`, `ArchiveUnpacker.swift` (Darwin `chown` ignores `EPERM`/`ENOTSUP`; Linux requires success), `ChangeSet.swift` (prefer `.gegenlesen/diff.patch`; `git fetch` bundle, never unbundle / never `A..B`), `LanguageMap.swift`, `RepoPacker.swift` (required `git diff` → `.gegenlesen/diff.patch`; optional self-contained bundle; fail if neither), fixtures (tiny-repo, Pax, abs symlink, hardlink, fifo, bomb), CryptoKit content SHA-256 tests
 - **Depends on:** PR 2
 - **Description:** Tarball → `{base, head, patch, job_files[]}`. Preferred pack is tree + embedded diff. Job fails `no_change_set` if identifying still has no history and no patch. HTTP does not list tar members.
 

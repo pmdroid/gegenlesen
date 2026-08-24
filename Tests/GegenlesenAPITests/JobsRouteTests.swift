@@ -548,11 +548,6 @@ private func tinyTarGz() throws -> Data {
 }
 
 private func packedTinyRepo() throws -> Data {
-    let root = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    let script = root.appendingPathComponent("scripts/pack-repo.sh")
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("gegenlesen-pack-\(UUID().uuidString)", isDirectory: true)
     let repo = dir.appendingPathComponent("tiny")
@@ -594,24 +589,7 @@ private func packedTinyRepo() throws -> Data {
     try git(["add", "README.md"])
     try git(["commit", "-m", "v2"])
 
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
-    process.arguments = [script.path, "HEAD^"]
-    process.currentDirectoryURL = repo
-    process.environment = [
-        "PATH": "/usr/bin:/bin",
-        "HOME": dir.appendingPathComponent("home").path,
-        "GIT_CONFIG_NOSYSTEM": "1",
-        "COPYFILE_DISABLE": "1",
-    ]
-    let stdout = Pipe()
-    process.standardOutput = stdout
-    process.standardError = FileHandle.nullDevice
-    process.standardInput = FileHandle.nullDevice
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-        throw APIError.badRequest("pack-repo failed")
-    }
-    return stdout.fileHandleForReading.readDataToEndOfFile()
+    let head = try RepoPacker.resolveHead(cwd: repo)
+    let base = try RepoPacker.resolveBase(cwd: repo, ref: "HEAD^")
+    return try RepoPacker.pack(cwd: repo, base: base, head: head).archive
 }

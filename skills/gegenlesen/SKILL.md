@@ -55,6 +55,10 @@ Do not start a second full review of the same SHA.
 
 `GEGENLESEN_URL` defaults to `http://127.0.0.1:8080`. One agent job at a time.
 
+`gegenlesen review --timeout 45m` (or `GEGENLESEN_TIMEOUT`) is how long the CLI waits. Default 30m.
+
+Harvest of a large repo: raise `limits.mine_timeout_sec` (or `GEGENLESEN_MINE_TIMEOUT_SEC`) on the server **and** pass `--timeout` on the CLI, e.g. `gegenlesen harvest --timeout 4h`. `--timeout` only polls; the miner is killed at `mine_timeout_sec` (default 1h, max 12h).
+
 If the CLI errors with timeout, the job is still running. Keep the printed id and poll:
 
 ```bash

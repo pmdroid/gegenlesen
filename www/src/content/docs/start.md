@@ -35,7 +35,7 @@ From the repo you want read, on the host:
 gegenlesen review
 ```
 
-That packs the working tree with `scripts/pack-repo.sh` and `POST`s `/api/jobs`. Incremental:
+That packs committed `HEAD` (`gegenlesen pack`) and `POST`s `/api/jobs`. Incremental:
 
 ```bash
 gegenlesen review --parent <job-id>

@@ -199,7 +199,7 @@ notarize_stage() {
 
 stage_shared() {
   local stage="$1"
-  mkdir -p "$stage/frontend" "$stage/scripts" "$stage/config" "$stage/docker"
+  mkdir -p "$stage/frontend" "$stage/config" "$stage/docker"
   cp -R "$ROOT/frontend/dist" "$stage/frontend/dist"
   cp -R "$ROOT/rules" "$stage/rules"
   cp -R "$ROOT/schemas" "$stage/schemas"
@@ -207,8 +207,6 @@ stage_shared() {
   if [[ -d "$ROOT/skills" ]]; then
     cp -R "$ROOT/skills" "$stage/skills"
   fi
-  cp "$ROOT/scripts/pack-repo.sh" "$stage/scripts/pack-repo.sh"
-  chmod +x "$stage/scripts/pack-repo.sh"
   cp "$ROOT/config/gegenlesen.example.json" "$stage/config/gegenlesen.example.json"
 }
 
