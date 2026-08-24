@@ -17,6 +17,7 @@ public struct ReviewPipeline: Sendable {
     public var miner: (any MinerRunning)?
     public var minerModel: String
     public var risk: RiskConfig
+    public var requireHarvest: Bool
 
     public init(
         store: Store,
@@ -34,7 +35,8 @@ public struct ReviewPipeline: Sendable {
         embedder: (any EmbeddingClient)? = nil,
         miner: (any MinerRunning)? = nil,
         minerModel: String = "openrouter/openai/gpt-5.6-terra",
-        risk: RiskConfig = .v1
+        risk: RiskConfig = .v1,
+        requireHarvest: Bool = false
     ) {
         self.store = store
         self.skipAgent = skipAgent
@@ -52,6 +54,7 @@ public struct ReviewPipeline: Sendable {
         self.miner = miner ?? (reviewer as? any MinerRunning)
         self.minerModel = minerModel
         self.risk = risk
+        self.requireHarvest = requireHarvest
     }
 
     public func run(jobID: JobID) async throws {
@@ -179,6 +182,11 @@ public struct ReviewPipeline: Sendable {
                 message: "no_change_set",
                 payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
             )
+            return
+        }
+        if try await stopped(jobID) { return }
+
+        if requireHarvest, try await failClosedWithoutHarvest(jobID: jobID) {
             return
         }
         if try await stopped(jobID) { return }
@@ -621,8 +629,32 @@ public struct ReviewPipeline: Sendable {
 
     private func fillRepositoryIfNeeded(jobID: JobID, workspace: URL) async throws {
         guard let job = try await store.job(id: jobID), job.repository == nil else { return }
-        guard let detected = RepositoryName.detect(in: workspace) else { return }
+        guard let detected = RepositoryName.detectPackedOrRemote(in: workspace) else { return }
         try await store.updateJobRepository(id: jobID, repository: detected)
+    }
+
+    /// Returns true when the job was failed closed.
+    private func failClosedWithoutHarvest(jobID: JobID) async throws -> Bool {
+        let repo = try await store.job(id: jobID)?.repository
+        let harvested: Bool
+        if let repo {
+            harvested = try await store.hasSucceededHarvest(repository: repo)
+        } else {
+            harvested = false
+        }
+        do {
+            try HarvestGate.check(repository: repo, hasSucceededHarvest: harvested)
+            return false
+        } catch let error as HarvestGateError {
+            let message = error.description
+            _ = try await store.apply(
+                jobID: jobID,
+                event: .rulesFailed(message),
+                errorMessage: message
+            )
+            try await store.appendEvent(jobID: jobID, level: .error, message: message)
+            return true
+        }
     }
 
     private func nonempty(_ value: String?) -> String? {

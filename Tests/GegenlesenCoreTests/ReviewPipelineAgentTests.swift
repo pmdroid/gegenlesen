@@ -301,6 +301,103 @@ struct ReviewPipelineAgentTests {
             }
         }
     }
+
+    @Test
+    func requireHarvestFailsUnknownRepo() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                var job = queuedJob()
+                job.repository = "github.com/acme/app"
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    reviewer: nil,
+                    requireHarvest: true
+                ).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "harvest_required")
+            }
+        }
+    }
+
+    @Test
+    func requireHarvestFailsUnresolvedRepository() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    reviewer: nil,
+                    requireHarvest: true
+                ).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "repository_unresolved")
+            }
+        }
+    }
+
+    @Test
+    func requireHarvestPassesAfterSucceededHarvest() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let now = Date()
+                var harvest = sampleJob(id: "harvest-ok", status: .succeeded, finishedAt: now)
+                harvest.title = "harvest tree.tar.gz"
+                harvest.repository = "github.com/acme/app"
+                try await store.insertJob(harvest)
+                var job = queuedJob()
+                job.repository = "github.com/acme/app"
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    reviewer: nil,
+                    requireHarvest: true
+                ).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+            }
+        }
+    }
+
+    @Test
+    func requireHarvestIgnoresFailedHarvest() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let now = Date()
+                var harvest = sampleJob(id: "harvest-bad", status: .failed, finishedAt: now)
+                harvest.title = "harvest tree.tar.gz"
+                harvest.repository = "github.com/acme/app"
+                harvest.errorMessage = "harvest_judge_failed"
+                try await store.insertJob(harvest)
+                var job = queuedJob()
+                job.repository = "github.com/acme/app"
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: true,
+                    reviewer: nil,
+                    requireHarvest: true
+                ).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "harvest_required")
+            }
+        }
+    }
 }
 
 struct ProviderAuthReviewer: ReviewerRunning {

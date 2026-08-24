@@ -23,7 +23,7 @@ docker run --rm --init --name gegenlesen \
   ghcr.io/pmdroid/gegenlesen:main
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Use **setup** to pick the two reviewers, the judge, and paste an OpenRouter key. That writes `gegenlesen.json` in the mounted config dir.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Use **setup** to pick the two reviewers, the judge, the miner, and paste an OpenRouter key. That writes `gegenlesen.json` in the mounted config dir.
 
 `--network host` and the matching data path are required. The API starts runner containers and talks to OpenCode on `127.0.0.1`. Details: [Docker](/docs/docker).
 
@@ -44,6 +44,8 @@ gegenlesen review --parent <job-id>
 The CLI talks to `http://127.0.0.1:8080` unless you set `GEGENLESEN_URL`.
 
 Harvest of a large tree needs two knobs: the server miner deadline (`limits.mine_timeout_sec` in `gegenlesen.json`, or `GEGENLESEN_MINE_TIMEOUT_SEC`; default 1h, max 12h) and how long the CLI waits (`gegenlesen harvest --timeout 4h` or `GEGENLESEN_TIMEOUT`). `--timeout` only polls. The miner still dies at `mine_timeout_sec`.
+
+A review of a repo with no **succeeded** harvest fails closed (`harvest_required`) before reviewers run. If the pack has no repository name, the error is `repository_unresolved`. Run `gegenlesen harvest` first, then review again. A harvest left in `needs_rejudge` does not count.
 
 ## From source
 
