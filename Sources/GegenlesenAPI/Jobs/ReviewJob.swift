@@ -156,7 +156,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         schemasDirectory: schemasDirectory
                     ),
                     minerModel: config.minerModel,
-                    risk: config.risk
+                    risk: config.risk,
+                    requireHarvest: true
                 ).run(jobID: params.jobID)
             } catch {
                 _ = await handles.remove(params.jobID)

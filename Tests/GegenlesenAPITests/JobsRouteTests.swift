@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import Vapor
 import VaporTesting
 @testable import GegenlesenAPI
 @testable import GegenlesenCore
@@ -362,6 +363,7 @@ struct JobsRouteTests {
     @Test
     func skipAgentPipelineReachesSucceeded() async throws {
         try await withGegenlesenApp(startQueue: true) { app in
+            try await seedSucceededHarvest(app.gegenlesenStore, repository: "github.com/gegenlesen/tiny")
             let archive = try packedTinyRepo()
             let created = try await postJob(
                 app,
@@ -469,6 +471,63 @@ struct JobsRouteTests {
             #expect(error == "no_change_set")
         }
     }
+
+    @Test
+    func reviewFailsHarvestRequiredWithoutSucceededHarvest() async throws {
+        try await withGegenlesenApp(startQueue: true) { app in
+            let archive = try packedTinyRepo()
+            let created = try await postJob(
+                app,
+                archive: archive,
+                filename: "change.tar.gz",
+                meta: #"{"scope":"full","title":"tiny"}"#
+            )
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: bodyData(created))
+            let (status, error) = try await waitForTerminal(app, id: accepted.id)
+            #expect(status == .failed)
+            #expect(error == "harvest_required")
+        }
+    }
+
+    @Test
+    func reviewFailsRepositoryUnresolvedWithoutOrigin() async throws {
+        try await withGegenlesenApp(startQueue: true) { app in
+            let archive = try packedTinyRepo(origin: nil)
+            let created = try await postJob(
+                app,
+                archive: archive,
+                filename: "change.tar.gz",
+                meta: #"{"scope":"full","title":"tiny"}"#
+            )
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: bodyData(created))
+            let (status, error) = try await waitForTerminal(app, id: accepted.id)
+            #expect(status == .failed)
+            #expect(error == "repository_unresolved")
+        }
+    }
+
+    @Test
+    func failedHarvestDoesNotUnlockReview() async throws {
+        try await withGegenlesenApp(startQueue: true) { app in
+            try await seedHarvest(
+                app.gegenlesenStore,
+                repository: "github.com/gegenlesen/tiny",
+                status: .failed,
+                errorMessage: "harvest_judge_failed"
+            )
+            let archive = try packedTinyRepo()
+            let created = try await postJob(
+                app,
+                archive: archive,
+                filename: "change.tar.gz",
+                meta: #"{"scope":"full","title":"tiny"}"#
+            )
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: bodyData(created))
+            let (status, error) = try await waitForTerminal(app, id: accepted.id)
+            #expect(status == .failed)
+            #expect(error == "harvest_required")
+        }
+    }
 }
 
 private let jobListKeys: Set<String> = [
@@ -547,7 +606,51 @@ private func tinyTarGz() throws -> Data {
     return try Data(contentsOf: archive)
 }
 
-private func packedTinyRepo() throws -> Data {
+private func waitForTerminal(_ app: Application, id: JobID, seconds: TimeInterval = 30) async throws -> (JobStatus, String?) {
+    let deadline = Date().addingTimeInterval(seconds)
+    var status = JobStatus.queued
+    var error: String?
+    while Date() < deadline {
+        try await app.testing().test(.GET, "/api/jobs/\(id.rawValue)") { res async throws in
+            let object = try jsonObject(res)
+            status = JobStatus(rawValue: object["status"] as? String ?? "") ?? .queued
+            error = object["error_message"] as? String
+        }
+        if status.isTerminal { break }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    return (status, error)
+}
+
+private func seedSucceededHarvest(_ store: Store, repository: String) async throws {
+    try await seedHarvest(store, repository: repository, status: .succeeded, errorMessage: nil)
+}
+
+private func seedHarvest(
+    _ store: Store,
+    repository: String,
+    status: JobStatus,
+    errorMessage: String?
+) async throws {
+    let now = Date()
+    let job = Job(
+        id: JobID.generate(),
+        createdAt: now,
+        updatedAt: now,
+        finishedAt: now,
+        status: status,
+        scope: .full,
+        title: "harvest tree.tar.gz",
+        repository: repository,
+        reviewerAModelID: "a",
+        reviewerBModelID: "b",
+        judgeModelID: "j",
+        errorMessage: errorMessage
+    )
+    try await store.insertJob(job)
+}
+
+private func packedTinyRepo(origin: String? = "git@github.com:gegenlesen/tiny.git") throws -> Data {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("gegenlesen-pack-\(UUID().uuidString)", isDirectory: true)
     let repo = dir.appendingPathComponent("tiny")
@@ -582,6 +685,9 @@ private func packedTinyRepo() throws -> Data {
     }
 
     try git(["init"])
+    if let origin {
+        try git(["remote", "add", "origin", origin])
+    }
     try "v1\n".write(to: repo.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
     try git(["add", "README.md"])
     try git(["commit", "-m", "v1"])

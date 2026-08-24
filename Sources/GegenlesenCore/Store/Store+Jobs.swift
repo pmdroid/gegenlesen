@@ -655,9 +655,26 @@ extension Store {
         }
     }
 
-    public func nextJobNeedingLearn() throws -> JobID? {
+    public func hasSucceededHarvest(repository: String) throws -> Bool {
+        guard let repo = RepositoryName.normalize(repository) else { return false }
+        return try read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                    SELECT COUNT(*) FROM jobs
+                    WHERE status = 'succeeded'
+                      AND repository = ?
+                      AND (title = 'harvest' OR title LIKE 'harvest %')
+                    """,
+                arguments: [repo]
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    public func jobsNeedingLearn() throws -> [JobID] {
         try read { db in
-            try String.fetchOne(
+            try String.fetchAll(
                 db,
                 sql: """
                     SELECT j.id
@@ -706,10 +723,13 @@ extension Store {
                         WHERE json_extract(j.risk_json, '$.safe_unread') IS NOT NULL
                       ) AS activity
                     ) ASC
-                    LIMIT 1
                     """
             ).map { JobID($0) }
         }
+    }
+
+    public func nextJobNeedingLearn() throws -> JobID? {
+        try jobsNeedingLearn().first
     }
 
     public func queuedUnstartedIDs() throws -> [JobID] {

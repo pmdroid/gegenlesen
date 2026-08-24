@@ -40,7 +40,7 @@ public struct HarvestPipeline: Sendable {
             try ArchiveUnpacker().unpack(archive: archive, into: workspaceURL)
             try await store.appendEvent(jobID: jobID, level: .info, message: "unpacked")
             if let job = try await store.job(id: jobID), job.repository == nil,
-               let detected = RepositoryName.detect(in: workspaceURL) {
+               let detected = RepositoryName.detectPackedOrRemote(in: workspaceURL) {
                 try await store.updateJobRepository(id: jobID, repository: detected)
             }
 

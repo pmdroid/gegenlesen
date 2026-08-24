@@ -33,10 +33,15 @@ public enum RepositoryName: Sendable {
     }
 
     public static func detect(in directory: URL) -> String? {
+        detectPackedOrRemote(in: directory) ?? fromDirectoryName(directory)
+    }
+
+    /// Pack metadata or `origin`. Not the workspace folder name.
+    public static func detectPackedOrRemote(in directory: URL) -> String? {
         if let written = readPacked(directory) {
             return written
         }
-        return fromGitRemote(in: directory) ?? fromDirectoryName(directory)
+        return fromGitRemote(in: directory)
     }
 
     public static func fromGitRemote(
