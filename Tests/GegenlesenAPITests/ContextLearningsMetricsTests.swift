@@ -171,6 +171,37 @@ struct ContextLearningsMetricsTests {
                 }
             )
             #expect(try await app.gegenlesenStore.learning(id: bogus.id)?.status == .pending)
+
+            try await app.testing().test(.GET, "/api/learnings?status=pending") { res async throws in
+                let body = try jsonObject(res)
+                let yield = try #require(body["yield"] as? [[String: Any]])
+                let rule = try #require(yield.first { $0["kind"] as? String == "rule" })
+                #expect((rule["accepted"] as? NSNumber)?.intValue == 0)
+                #expect((rule["dismissed"] as? NSNumber)?.intValue == 1)
+                #expect((rule["rate"] as? NSNumber)?.doubleValue == 0)
+                let context = try #require(yield.first { $0["kind"] as? String == "context" })
+                #expect((context["accepted"] as? NSNumber)?.intValue == 1)
+                #expect((context["dismissed"] as? NSNumber)?.intValue == 0)
+                #expect((context["rate"] as? NSNumber)?.doubleValue == 1)
+                let architecture = try #require(yield.first { $0["kind"] as? String == "architecture" })
+                #expect((architecture["dismissed"] as? NSNumber)?.intValue == 1)
+            }
+
+            try await app.testing().test(.POST, "/api/learnings/\(tagged.id)/restore") { res async throws in
+                #expect(res.status == .ok)
+                let body = try jsonObject(res)
+                #expect(body["status"] as? String == "pending")
+                #expect(body["dismiss_reason"] as? String == nil)
+            }
+            let restored = try #require(try await app.gegenlesenStore.learning(id: tagged.id))
+            #expect(restored.status == .pending)
+            #expect(restored.dismissReason == nil)
+            #expect(restored.resolvedAt == nil)
+            #expect(restored.payloadString("rule_id") == "use-project-logger")
+
+            try await app.testing().test(.POST, "/api/learnings/\(learning.id)/restore") { res async throws in
+                #expect(res.status == .conflict)
+            }
         }
     }
 

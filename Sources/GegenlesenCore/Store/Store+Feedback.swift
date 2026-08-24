@@ -29,6 +29,18 @@ extension Store {
         }
     }
 
+    public func findingsAndFeedback() throws -> (findings: [Finding], feedback: [FindingFeedback]) {
+        try read { db in
+            let findings = try Row.fetchAll(db, sql: "SELECT * FROM findings")
+                .map(Finding.init(row:))
+            let feedback = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM finding_feedback ORDER BY id"
+            ).map(FindingFeedback.init(row:))
+            return (findings, feedback)
+        }
+    }
+
     public func applyFindingFeedback(
         finding: Finding,
         verdict: FeedbackVerdict,
@@ -48,6 +60,12 @@ extension Store {
                current.reaction == reaction {
                 try db.execute(sql: "DELETE FROM finding_feedback WHERE id = ?", arguments: [current.id])
                 return .cleared
+            }
+
+            if verdict == .agree || verdict == .disagree {
+                for old in existing where old.verdict == .agree || old.verdict == .disagree {
+                    try db.execute(sql: "DELETE FROM finding_feedback WHERE id = ?", arguments: [old.id])
+                }
             }
 
             var suggestedRuleID: RuleID?
@@ -168,13 +186,15 @@ private func updateSuggestedRule(
 }
 
 private func allocateRuleID(_ base: RuleID, db: Database) throws -> RuleID {
-    var candidate = base.isValid ? base : RuleID("suggested-rule")
+    let root = base.isValid ? base : RuleID("suggested-rule")
+    var candidate = root
     var suffix = 2
     while try Row.fetchOne(db, sql: "SELECT id FROM rules WHERE id = ?", arguments: [candidate.rawValue]) != nil {
-        candidate = RuleID(String(base.rawValue.prefix(120)) + "-\(suffix)")
+        candidate = RuleID(String(root.rawValue.prefix(120)) + "-\(suffix)")
         suffix += 1
         if suffix > 10_000 {
-            throw StoreJobError.notFound
+            candidate = RuleID("suggested-\(UUID().uuidString.lowercased().prefix(8))")
+            break
         }
     }
     return candidate

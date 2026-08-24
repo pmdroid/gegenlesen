@@ -53,6 +53,13 @@ public struct Learning: Sendable, Equatable {
         mergePayload(updates)
     }
 
+    public mutating func clearDismiss() {
+        var object = payloadObject()
+        object.removeValue(forKey: "dismiss_reason")
+        object.removeValue(forKey: "dismiss_comment")
+        payloadJSON = Self.encodePayload(object)
+    }
+
     public func payloadString(_ key: String) -> String? {
         payloadObject()[key] as? String
     }

@@ -177,6 +177,67 @@ struct LearningDedupTests {
     }
 
     @Test
+    func pendingTitleBlocksRepeatAndRestoreClearsDismissedHash() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            var item = Learning(
+                kind: .context,
+                status: .pending,
+                title: "Notes from job-1",
+                body: "one"
+            )
+            try await store.insertLearning(item)
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .context,
+                    title: "notes from  job-1"
+                )
+            )
+            item.status = .dismissed
+            item.resolvedAt = Date()
+            item.applyDismiss(reason: .tooSpecific, comment: "n=1")
+            try await store.updateLearning(item)
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .context,
+                    title: "Notes from job-1"
+                )
+            )
+            item.clearDismiss()
+            item.status = .pending
+            item.resolvedAt = nil
+            try await store.updateLearning(item)
+            #expect(item.dismissReason == nil)
+            #expect(
+                try await LearningDedup.alreadySettled(
+                    store: store,
+                    kind: .context,
+                    title: "Notes from job-1"
+                )
+            )
+            let rows = LearningDedup.yield(from: [
+                Learning(kind: .rule, status: .accepted, title: "a", body: "a"),
+                Learning(kind: .rule, status: .dismissed, title: "b", body: "b"),
+                Learning(kind: .rule, status: .pending, title: "c", body: "c"),
+                Learning(kind: .context, status: .accepted, title: "d", body: "d"),
+            ])
+            let rule = try #require(rows.first { $0.kind == .rule })
+            #expect(rule.accepted == 1)
+            #expect(rule.dismissed == 1)
+            #expect(rule.rate == 0.5)
+            let context = try #require(rows.first { $0.kind == .context })
+            #expect(context.accepted == 1)
+            #expect(context.dismissed == 0)
+            #expect(context.rate == 1)
+            let architecture = try #require(rows.first { $0.kind == .architecture })
+            #expect(architecture.accepted == 0)
+            #expect(architecture.rate == 0)
+        }
+    }
+
+    @Test
     func acceptedContextNoteBlocksRepeat() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)

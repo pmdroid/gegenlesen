@@ -412,8 +412,16 @@ export interface LearningDismissRequest {
   comment?: string;
 }
 
+export interface LearningYield {
+  kind: LearningKind;
+  accepted: number;
+  dismissed: number;
+  rate: number;
+}
+
 export interface LearningListResponse {
   learnings: Learning[];
+  yield: LearningYield[];
 }
 
 /** Agent-written `.gegenlesen/findings.json` */

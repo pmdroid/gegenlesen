@@ -18,16 +18,18 @@ Learn is not part of the review path. A review can write an architecture draft. 
 
 From the job, findings you 👍 or marked `should_be_rule`, including judge-dropped ones. Endorsement is learn eligibility only — dropped findings stay out of the kept inbox. Suggestion judge still default-drops.
 
-Dismissing a learning can store an optional reason (`duplicate`, `already_covered`, `too_specific`, `not_a_rule`, `other`) plus a comment. Capture only; it does not change proposal gating.
+A *rule* lands in the inbox only after ≥2 distinct jobs endorsed the same normalized title. Context notes can land after one job (still after the suggestion judge). Nothing auto-enables.
+
+Dismissing a learning stores an optional reason (`duplicate`, `already_covered`, `too_specific`, `not_a_rule`, `other`) plus a comment. That title-hash stays out of the inbox until you restore the dismiss.
 
 A job-level merge-intent label (would you have merged unread?) also enqueues learn. Would-merge is a positive exemplar for that class of diff. Would-not treats kept errors as mine-worthy even without thumbs. Auto-approve then "no" is the strongest would-not. The label never auto-drops a finding and never enables a rule.
 
 ## Pipeline
 
-1. Host filter (endorsement only)
+1. Host filter (this-job endorsement, or would-not-merge kept errors)
 2. Miner uses reviewer A (DeepSeek Flash). Cheap pass.
 3. Suggestion judge (Terra) defaults to **drop**. A keep may include `rewrite.title` and `rewrite.body`.
-4. Kept rules upsert as **disabled**. Context notes land in the learnings inbox.
+4. Kept **rules** upsert as **disabled** only after two distinct-job endorsements. Context notes may inbox after one job.
 
 Nothing auto-enables.
 
