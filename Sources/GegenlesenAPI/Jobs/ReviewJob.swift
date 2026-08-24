@@ -151,11 +151,11 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         docker: docker,
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
-                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                        agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory
                     ),
-                    minerModel: config.judgeModel,
+                    minerModel: config.minerModel,
                     risk: config.risk
                 ).run(jobID: params.jobID)
             } catch {
@@ -178,7 +178,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             docker: docker,
                             image: config.opencodeImage,
                             runnerConfig: runnerConfig,
-                            agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                            agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                             providerEnv: providerEnv,
                             schemasDirectory: schemasDirectory,
                             transcriptWriter: writeJobTranscript(store: store)
@@ -192,7 +192,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             schemasDirectory: schemasDirectory,
                             transcriptWriter: writeJobTranscript(store: store)
                         ),
-                        model: config.models.modelA,
+                        model: config.minerModel,
                         embedder: embedder,
                         maxChunks: config.embeddings.maxChunks
                     ).run(jobID: params.corpusJobID)
@@ -204,7 +204,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         docker: docker,
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
-                        agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
+                        agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
                         transcriptWriter: writeJobTranscript(store: store)
@@ -218,7 +218,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         schemasDirectory: schemasDirectory,
                         transcriptWriter: writeJobTranscript(store: store)
                     ),
-                    model: config.models.modelA,
+                    model: config.minerModel,
                     embedder: embedder,
                     maxChunks: config.embeddings.maxChunks
                 ).run(jobID: params.corpusJobID, spec: params.spec)
@@ -249,9 +249,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                 _ = try await runtime.enqueueLearn(sourceJobID: sourceID)
             }.run()
         }
-        if config.limits.learnIntervalMinutes > 0 {
-            service.addScheduledJob(LearnSweepJobParameters(), schedule: .everyMinute())
-        }
+        service.addScheduledJob(LearnSweepJobParameters(), schedule: .everyMinute())
         self.memory = memory
         self.service = service
         self.handles = handles

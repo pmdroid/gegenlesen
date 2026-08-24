@@ -71,6 +71,8 @@ struct Limits: Content, Sendable, Equatable {
     /// 0 disables the sweeper. Otherwise learn jobs with new feedback at most this often.
     var learnIntervalMinutes: Int
     var scannerTimeoutSec: Int
+    /// Harvest and learn miner containers. Reviewer A/B still use `agentTimeoutSec`.
+    var mineTimeoutSec: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -82,6 +84,20 @@ struct Limits: Content, Sendable, Equatable {
         case ruleTokenBudget = "rule_token_budget"
         case learnIntervalMinutes = "learn_interval_minutes"
         case scannerTimeoutSec = "scanner_timeout_sec"
+        case mineTimeoutSec = "mine_timeout_sec"
+    }
+
+    static let minMineTimeoutSec = 60
+    static let maxMineTimeoutSec = 43_200
+    static let minAgentTimeoutSec = 60
+    static let maxAgentTimeoutSec = 14_400
+
+    static func clampMineTimeout(_ value: Int) -> Int {
+        max(minMineTimeoutSec, min(value, maxMineTimeoutSec))
+    }
+
+    static func clampAgentTimeout(_ value: Int) -> Int {
+        max(minAgentTimeoutSec, min(value, maxAgentTimeoutSec))
     }
 
     static let v1 = Limits(
@@ -92,8 +108,9 @@ struct Limits: Content, Sendable, Equatable {
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
         ruleTokenBudget: 6000,
-        learnIntervalMinutes: 15,
-        scannerTimeoutSec: 120
+        learnIntervalMinutes: 0,
+        scannerTimeoutSec: 120,
+        mineTimeoutSec: 3600
     )
 
     init(
@@ -104,18 +121,20 @@ struct Limits: Content, Sendable, Equatable {
         deterministicTimeoutSec: Int,
         identifyTimeoutSec: Int,
         ruleTokenBudget: Int,
-        learnIntervalMinutes: Int = 15,
-        scannerTimeoutSec: Int = 120
+        learnIntervalMinutes: Int = 0,
+        scannerTimeoutSec: Int = 120,
+        mineTimeoutSec: Int = 3600
     ) {
         self.archiveBytes = archiveBytes
         self.queuedArchiveBytes = queuedArchiveBytes
-        self.agentTimeoutSec = agentTimeoutSec
+        self.agentTimeoutSec = Self.clampAgentTimeout(agentTimeoutSec)
         self.judgeTimeoutSec = judgeTimeoutSec
         self.deterministicTimeoutSec = deterministicTimeoutSec
         self.identifyTimeoutSec = identifyTimeoutSec
         self.ruleTokenBudget = ruleTokenBudget
         self.learnIntervalMinutes = max(0, learnIntervalMinutes)
         self.scannerTimeoutSec = max(1, min(scannerTimeoutSec, 600))
+        self.mineTimeoutSec = Self.clampMineTimeout(mineTimeoutSec)
     }
 
     init(from decoder: Decoder) throws {
@@ -128,8 +147,9 @@ struct Limits: Content, Sendable, Equatable {
             deterministicTimeoutSec: try container.decode(Int.self, forKey: .deterministicTimeoutSec),
             identifyTimeoutSec: try container.decode(Int.self, forKey: .identifyTimeoutSec),
             ruleTokenBudget: try container.decode(Int.self, forKey: .ruleTokenBudget),
-            learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 15,
-            scannerTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .scannerTimeoutSec) ?? 120
+            learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 0,
+            scannerTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .scannerTimeoutSec) ?? 120,
+            mineTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .mineTimeoutSec) ?? 3600
         )
     }
 }
@@ -140,6 +160,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var dataDir: String
     var models: ModelSlots
     var judgeModel: String
+    /// Harvest, learn, and architecture-card mining. Independent of the findings judge.
+    var minerModel: String
     var opencodeImage: String
     var scannerImage: String
     var embeddings: EmbeddingsConfig
@@ -153,6 +175,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case dataDir = "data_dir"
         case models
         case judgeModel = "judge_model"
+        case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case embeddings
@@ -167,6 +190,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         dataDir: String,
         models: ModelSlots,
         judgeModel: String,
+        minerModel: String? = nil,
         opencodeImage: String,
         scannerImage: String = "gegenlesen/scanner:0.1.0",
         embeddings: EmbeddingsConfig = .v1,
@@ -179,12 +203,18 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.dataDir = dataDir
         self.models = models
         self.judgeModel = judgeModel
+        self.minerModel = Self.resolveMinerModel(minerModel, judgeModel: judgeModel)
         self.opencodeImage = opencodeImage
         self.scannerImage = scannerImage
         self.embeddings = embeddings
         self.limits = limits
         self.risk = risk
         self.openrouterApiKey = openrouterApiKey
+    }
+
+    static func resolveMinerModel(_ raw: String?, judgeModel: String) -> String {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? judgeModel : trimmed
     }
 
     init(from decoder: Decoder) throws {
@@ -194,6 +224,10 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         dataDir = try container.decode(String.self, forKey: .dataDir)
         models = try container.decode(ModelSlots.self, forKey: .models)
         judgeModel = try container.decode(String.self, forKey: .judgeModel)
+        minerModel = Self.resolveMinerModel(
+            try container.decodeIfPresent(String.self, forKey: .minerModel),
+            judgeModel: judgeModel
+        )
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
         scannerImage = try container.decodeIfPresent(String.self, forKey: .scannerImage) ?? "gegenlesen/scanner:0.1.0"
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
@@ -209,6 +243,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(dataDir, forKey: .dataDir)
         try container.encode(models, forKey: .models)
         try container.encode(judgeModel, forKey: .judgeModel)
+        try container.encode(minerModel, forKey: .minerModel)
         try container.encode(opencodeImage, forKey: .opencodeImage)
         try container.encode(scannerImage, forKey: .scannerImage)
         try container.encode(embeddings, forKey: .embeddings)
@@ -228,6 +263,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             modelB: "openrouter/google/gemini-3.7-flash"
         ),
         judgeModel: "openrouter/openai/gpt-5.6-terra",
+        minerModel: "openrouter/openai/gpt-5.6-terra",
         opencodeImage: "gegenlesen/opencode-runner:0.1.0",
         scannerImage: "gegenlesen/scanner:0.1.0",
         limits: .v1
@@ -340,6 +376,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_JUDGE_MODEL"], !value.isEmpty {
             next.judgeModel = value
         }
+        if let value = environment["GEGENLESEN_MINER_MODEL"], !value.isEmpty {
+            next.minerModel = value
+        }
         if let value = environment["GEGENLESEN_OPENCODE_IMAGE"], !value.isEmpty {
             next.opencodeImage = value
         }
@@ -354,6 +393,12 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         }
         if let value = environment["GEGENLESEN_LEARN_INTERVAL_MINUTES"], let minutes = Int(value) {
             next.limits.learnIntervalMinutes = max(0, minutes)
+        }
+        if let value = environment["GEGENLESEN_MINE_TIMEOUT_SEC"], let seconds = Int(value) {
+            next.limits.mineTimeoutSec = Limits.clampMineTimeout(seconds)
+        }
+        if let value = environment["GEGENLESEN_AGENT_TIMEOUT_SEC"], let seconds = Int(value) {
+            next.limits.agentTimeoutSec = Limits.clampAgentTimeout(seconds)
         }
         if let value = environment["GEGENLESEN_RISK_MODE"], let mode = RiskMode(rawValue: value) {
             next.risk.mode = mode
@@ -376,6 +421,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             port: port,
             models: models,
             judgeModel: judgeModel,
+            minerModel: minerModel,
             opencodeImage: opencodeImage,
             scannerImage: scannerImage,
             limits: limits,
@@ -395,6 +441,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var port: Int
     var models: ModelSlots
     var judgeModel: String
+    var minerModel: String
     var opencodeImage: String
     var scannerImage: String
     var limits: Limits
@@ -404,6 +451,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case bind, port, models
         case judgeModel = "judge_model"
+        case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case limits
@@ -421,19 +469,35 @@ struct RiskSettingsUpdate: Content, Sendable, Equatable {
     }
 }
 
+struct LimitsSettingsUpdate: Content, Sendable, Equatable {
+    var mineTimeoutSec: Int?
+    var agentTimeoutSec: Int?
+    var learnIntervalMinutes: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case mineTimeoutSec = "mine_timeout_sec"
+        case agentTimeoutSec = "agent_timeout_sec"
+        case learnIntervalMinutes = "learn_interval_minutes"
+    }
+}
+
 struct SettingsUpdate: Content, Sendable, Equatable {
     var models: ModelSlots?
     var judgeModel: String?
+    var minerModel: String? = nil
     var openrouterApiKey: String?
     var scannerImage: String? = nil
     var risk: RiskSettingsUpdate? = nil
+    var limits: LimitsSettingsUpdate? = nil
 
     enum CodingKeys: String, CodingKey {
         case models
         case judgeModel = "judge_model"
+        case minerModel = "miner_model"
         case openrouterApiKey = "openrouter_api_key"
         case scannerImage = "scanner_image"
         case risk
+        case limits
     }
 }
 

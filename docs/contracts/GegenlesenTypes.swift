@@ -456,6 +456,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
     var dataDir: String
     var models: ModelSlots
     var judgeModel: String
+    var minerModel: String
     var opencodeImage: String
     var scannerImage: String
     var limits: Limits
@@ -465,6 +466,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
         case dataDir = "data_dir"
         case models
         case judgeModel = "judge_model"
+        case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case limits
@@ -491,6 +493,7 @@ struct Limits: Codable, Sendable, Equatable {
     var ruleTokenBudget: Int
     var learnIntervalMinutes: Int
     var scannerTimeoutSec: Int
+    var mineTimeoutSec: Int
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -502,6 +505,7 @@ struct Limits: Codable, Sendable, Equatable {
         case ruleTokenBudget = "rule_token_budget"
         case learnIntervalMinutes = "learn_interval_minutes"
         case scannerTimeoutSec = "scanner_timeout_sec"
+        case mineTimeoutSec = "mine_timeout_sec"
     }
 
     static let v1 = Limits(
@@ -512,8 +516,9 @@ struct Limits: Codable, Sendable, Equatable {
         deterministicTimeoutSec: 30,
         identifyTimeoutSec: 60,
         ruleTokenBudget: 6000,
-        learnIntervalMinutes: 15,
-        scannerTimeoutSec: 120
+        learnIntervalMinutes: 0,
+        scannerTimeoutSec: 120,
+        mineTimeoutSec: 3600
     )
 }
 
@@ -539,6 +544,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     var port: Int
     var models: ModelSlots
     var judgeModel: String
+    var minerModel: String
     var opencodeImage: String
     var scannerImage: String
     var limits: Limits
@@ -548,6 +554,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case bind, port, models
         case judgeModel = "judge_model"
+        case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case limits

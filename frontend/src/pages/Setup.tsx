@@ -38,6 +38,7 @@ export function SetupPage() {
   const [modelA, setModelA] = useState("openrouter/deepseek/deepseek-v4-flash");
   const [modelB, setModelB] = useState("openrouter/google/gemini-3.7-flash");
   const [judge, setJudge] = useState("openrouter/openai/gpt-5.6-terra");
+  const [miner, setMiner] = useState("openrouter/openai/gpt-5.6-terra");
   const [scannerImage, setScannerImage] = useState("gegenlesen/scanner:0.1.0");
   const [apiKey, setApiKey] = useState("");
   const [debouncedKey, setDebouncedKey] = useState("");
@@ -47,6 +48,7 @@ export function SetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [appetite, setAppetite] = useState(1);
   const [riskMode, setRiskMode] = useState<RiskMode>("shadow");
+  const [learnMinutes, setLearnMinutes] = useState(0);
 
   useEffect(() => {
     const data = settings.data;
@@ -54,9 +56,11 @@ export function SetupPage() {
     setModelA(data.models.model_a);
     setModelB(data.models.model_b);
     setJudge(data.judge_model);
+    setMiner(data.miner_model || data.judge_model);
     setScannerImage(data.scanner_image ?? "");
     setAppetite(data.risk.appetite);
     setRiskMode(data.risk.mode);
+    setLearnMinutes(data.limits.learn_interval_minutes ?? 0);
   }, [settings.data]);
 
   useEffect(() => {
@@ -111,9 +115,11 @@ export function SetupPage() {
       putSettings({
         models: { model_a: modelA.trim(), model_b: modelB.trim() },
         judge_model: judge.trim(),
+        miner_model: miner.trim(),
         openrouter_api_key: apiKey.trim() || undefined,
         scanner_image: scannerImage.trim(),
         risk: { mode: riskMode, appetite },
+        limits: { learn_interval_minutes: learnMinutes },
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -129,8 +135,8 @@ export function SetupPage() {
       setError("OpenRouter API key is required");
       return;
     }
-    if (!modelA.trim() || !modelB.trim() || !judge.trim()) {
-      setError("pick both reviewers and a judge");
+    if (!modelA.trim() || !modelB.trim() || !judge.trim() || !miner.trim()) {
+      setError("pick both reviewers, a judge, and a miner");
       return;
     }
     save.mutate();
@@ -145,7 +151,7 @@ export function SetupPage() {
       <h1>{firstRun ? "set up gegenlesen" : "models and key"}</h1>
       <p className="neverapply">
         Paste an OpenRouter key and we load the live catalog. Search by name. Rankings come from
-        OpenRouter, programming first for reviewers, intelligence for the judge.
+        OpenRouter, programming first for reviewers and the miner, intelligence for the judge.
       </p>
       <form className="form" onSubmit={onSubmit}>
         <label>
@@ -228,6 +234,19 @@ export function SetupPage() {
           disabled={!canFetch}
           placeholder={canFetch ? "type to filter" : "add a key first"}
         />
+        <ModelPicker
+          label="Miner"
+          value={miner}
+          onChange={setMiner}
+          models={models}
+          suggestions={suggestions.data?.models ?? []}
+          disabled={!canFetch}
+          placeholder={canFetch ? "type to filter" : "add a key first"}
+        />
+        <p className="formhint">
+          Harvest, learn, and architecture cards. Independent of the findings judge. A stronger
+          model usually mines better rules, and costs more.
+        </p>
         <label>
           Scanner image
           <input
@@ -240,6 +259,23 @@ export function SetupPage() {
           />
           <span className="formhint">
             Docker image for Gitleaks and OSV. Leave blank to skip scanners.
+          </span>
+        </label>
+        <label>
+          Learn every (minutes)
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={learnMinutes}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              setLearnMinutes(Number.isFinite(next) ? Math.max(0, Math.floor(next)) : 0);
+            }}
+          />
+          <span className="formhint">
+            0 means off. Thumbs and merge-intent only mark what to learn. The Learn button always
+            works. When set, a tick runs at most this often while the agent slot is free.
           </span>
         </label>
         <h2>auto-approve</h2>

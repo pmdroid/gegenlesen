@@ -87,6 +87,7 @@ export interface Limits {
   rule_token_budget: number;
   learn_interval_minutes: number;
   scanner_timeout_sec?: number;
+  mine_timeout_sec?: number;
 }
 
 export interface ModelSlots {
@@ -126,6 +127,7 @@ export interface SettingsDTO {
   port: number;
   models: ModelSlots;
   judge_model: string;
+  miner_model: string;
   opencode_image: string;
   scanner_image?: string;
   limits: Limits;
@@ -136,11 +138,17 @@ export interface SettingsDTO {
 export interface SettingsUpdate {
   models?: ModelSlots;
   judge_model?: string;
+  miner_model?: string;
   openrouter_api_key?: string;
   scanner_image?: string;
   risk?: {
     mode?: RiskMode;
     appetite?: number;
+  };
+  limits?: {
+    mine_timeout_sec?: number;
+    agent_timeout_sec?: number;
+    learn_interval_minutes?: number;
   };
 }
 

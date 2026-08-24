@@ -33,6 +33,7 @@ Set `OPENROUTER_API_KEY`. There is no Anthropic path.
 | Reviewer A | `openrouter/deepseek/deepseek-v4-flash` |
 | Reviewer B | `openrouter/google/gemini-3.7-flash` |
 | Findings judge | `openrouter/openai/gpt-5.6-terra` |
+| Miner | `openrouter/openai/gpt-5.6-terra` (override `miner_model` / setup) |
 
 Both reviewers always run when there is new work. One valid findings file is enough to continue. Zero valid files fails the job.
 
