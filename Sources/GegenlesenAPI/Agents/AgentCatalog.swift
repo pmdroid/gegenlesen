@@ -1,15 +1,24 @@
 import Foundation
+import GegenlesenCore
 import Vapor
+
+enum AgentSource: String, Content, Sendable, Equatable {
+    case packaged
+    case global
+    case repository
+}
 
 struct AgentDTO: Content, Sendable, Equatable {
     var id: String
     var description: String
     var prompt: String
     var customized: Bool
+    var source: AgentSource
+    var repository: String?
     var requiredPaths: [String]
 
     enum CodingKeys: String, CodingKey {
-        case id, description, prompt, customized
+        case id, description, prompt, customized, source, repository
         case requiredPaths = "required_paths"
     }
 }
@@ -17,20 +26,27 @@ struct AgentDTO: Content, Sendable, Equatable {
 struct AgentListDTO: Content, Sendable, Equatable {
     var agents: [AgentDTO]
     var minerModel: String
+    var repository: String?
 
     enum CodingKeys: String, CodingKey {
-        case agents
+        case agents, repository
         case minerModel = "miner_model"
     }
 }
 
 struct AgentUpdate: Content, Sendable, Equatable {
     var prompt: String
+    var repository: String? = nil
+}
+
+struct AgentScope: Content, Sendable, Equatable {
+    var repository: String? = nil
 }
 
 struct AgentImproveRequest: Content, Sendable, Equatable {
     var instruction: String
-    var prompt: String?
+    var prompt: String? = nil
+    var repository: String? = nil
 }
 
 struct AgentImproveResponse: Content, Sendable, Equatable {
@@ -95,6 +111,12 @@ enum AgentCatalog {
         }
     }
 
+    static func repoKey(_ repository: String) -> String? {
+        guard let name = RepositoryName.normalize(repository) else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._"))
+        return name.addingPercentEncoding(withAllowedCharacters: allowed)
+    }
+
     static func description(from prompt: String) -> String {
         let lines = prompt.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         guard lines.first == "---" else { return "" }
@@ -114,33 +136,28 @@ struct AgentStore {
     var dataDir: String
     var fileManager: FileManager = .default
 
-    func list() throws -> [AgentDTO] {
-        try AgentCatalog.ids.map { try get($0) }
+    func list(repository: String? = nil) throws -> [AgentDTO] {
+        try AgentCatalog.ids.map { try get($0, repository: repository) }
     }
 
-    func get(_ id: String) throws -> AgentDTO {
+    func get(_ id: String, repository: String? = nil) throws -> AgentDTO {
         let id = try AgentCatalog.requireID(id)
-        if let custom = try? String(contentsOf: customURL(id), encoding: .utf8) {
-            return AgentDTO(
-                id: id,
-                description: AgentCatalog.description(from: custom),
-                prompt: custom,
-                customized: true,
-                requiredPaths: AgentCatalog.paths(for: id)
-            )
-        }
-        let packaged = try packagedPrompt(id)
+        let repo = RepositoryName.normalize(repository)
+        let resolved = try resolved(id: id, repository: repo)
         return AgentDTO(
             id: id,
-            description: AgentCatalog.description(from: packaged),
-            prompt: packaged,
-            customized: false,
+            description: AgentCatalog.description(from: resolved.prompt),
+            prompt: resolved.prompt,
+            customized: resolved.customized,
+            source: resolved.source,
+            repository: repo,
             requiredPaths: AgentCatalog.paths(for: id)
         )
     }
 
-    func put(_ id: String, prompt: String) throws -> AgentDTO {
+    func put(_ id: String, prompt: String, repository: String? = nil) throws -> AgentDTO {
         let id = try AgentCatalog.requireID(id)
+        let repo = RepositoryName.normalize(repository)
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw APIError.unprocessable("prompt is required")
@@ -149,21 +166,30 @@ struct AgentStore {
             throw APIError.payloadTooLarge("prompt is too long")
         }
         try AgentCatalog.requirePaths(id: id, prompt: trimmed)
-        let url = customURL(id)
+        let url = try overrideURL(id: id, repository: repo)
         try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try trimmed.write(to: url, atomically: true, encoding: .utf8)
-        try publish(id, prompt: trimmed)
-        return try get(id)
+        if repo == nil {
+            try publish(id, prompt: trimmed)
+        }
+        return try get(id, repository: repo)
     }
 
-    func reset(_ id: String) throws -> AgentDTO {
+    func reset(_ id: String, repository: String? = nil) throws -> AgentDTO {
         let id = try AgentCatalog.requireID(id)
-        let custom = customURL(id)
-        if fileManager.fileExists(atPath: custom.path) {
-            try fileManager.removeItem(at: custom)
+        let repo = RepositoryName.normalize(repository)
+        let url = try overrideURL(id: id, repository: repo)
+        if fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
         }
-        try restorePackaged(id)
-        return try get(id)
+        if repo == nil {
+            try restorePackaged(id)
+        }
+        return try get(id, repository: repo)
+    }
+
+    func resolvedPrompt(id: String, repository: String?) throws -> String {
+        try resolved(id: id, repository: RepositoryName.normalize(repository)).prompt
     }
 
     func packagedPrompt(_ id: String) throws -> String {
@@ -180,6 +206,47 @@ struct AgentStore {
 
     func customURL(_ id: String) -> URL {
         customDir().appendingPathComponent("\(id).md")
+    }
+
+    func repoURL(repository: String, id: String) throws -> URL {
+        guard let key = AgentCatalog.repoKey(repository) else {
+            throw APIError.unprocessable("repository is required")
+        }
+        return customDir()
+            .appendingPathComponent("repos", isDirectory: true)
+            .appendingPathComponent(key, isDirectory: true)
+            .appendingPathComponent("\(id).md")
+    }
+
+    func overrideURL(id: String, repository: String?) throws -> URL {
+        if let repository {
+            return try repoURL(repository: repository, id: id)
+        }
+        return customURL(id)
+    }
+
+    private struct Resolved {
+        var prompt: String
+        var source: AgentSource
+        var customized: Bool
+    }
+
+    private func resolved(id: String, repository: String?) throws -> Resolved {
+        if let repository {
+            let url = try repoURL(repository: repository, id: id)
+            if let text = read(url) {
+                return Resolved(prompt: text, source: .repository, customized: true)
+            }
+        }
+        if let text = read(customURL(id)) {
+            return Resolved(prompt: text, source: .global, customized: repository == nil)
+        }
+        return Resolved(prompt: try packagedPrompt(id), source: .packaged, customized: false)
+    }
+
+    private func read(_ url: URL) -> String? {
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
     }
 
     func packagedURL(_ id: String) -> URL {
@@ -219,25 +286,28 @@ struct AgentStore {
 func overlayCustomAgents(
     dataDir: String,
     dest: URL,
-    fileManager: FileManager = .default
+    fileManager: FileManager = .default,
+    workingDirectory: String = "",
+    repository: String? = nil
 ) throws {
     let dataPath = URL(fileURLWithPath: dataDir, isDirectory: true).standardizedFileURL.path
     let destPath = dest.standardizedFileURL.path
     let prefix = dataPath.hasSuffix("/") ? dataPath : dataPath + "/"
     guard destPath == dataPath || destPath.hasPrefix(prefix) else { return }
     guard fileManager.fileExists(atPath: dest.path) else { return }
-    let customDir = URL(fileURLWithPath: dataDir, isDirectory: true)
-        .appendingPathComponent("agents", isDirectory: true)
-    guard fileManager.fileExists(atPath: customDir.path) else { return }
     let destAgents = dest.appendingPathComponent("agents", isDirectory: true)
     try fileManager.createDirectory(at: destAgents, withIntermediateDirectories: true)
+    let store = AgentStore(
+        workingDirectory: workingDirectory,
+        dataDir: dataDir,
+        fileManager: fileManager
+    )
     for id in AgentCatalog.ids {
-        let src = customDir.appendingPathComponent("\(id).md")
-        guard fileManager.fileExists(atPath: src.path) else { continue }
+        guard let prompt = try? store.resolvedPrompt(id: id, repository: repository) else { continue }
         let dst = destAgents.appendingPathComponent("\(id).md")
         if fileManager.fileExists(atPath: dst.path) {
             try fileManager.removeItem(at: dst)
         }
-        try fileManager.copyItem(at: src, to: dst)
+        try prompt.write(to: dst, atomically: true, encoding: .utf8)
     }
 }

@@ -12,6 +12,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public var providerEnv: [String: String]
     public var schemasDirectory: URL?
     public var transcriptWriter: (@Sendable (JobID, String, Data) -> Void)?
+    public var prepareRunnerConfig: (@Sendable (JobID, String?) async throws -> Void)?
 
     public init(
         docker: any DockerExecuting,
@@ -23,7 +24,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         judgeTimeout: Duration = .seconds(300),
         providerEnv: [String: String] = [:],
         schemasDirectory: URL? = nil,
-        transcriptWriter: (@Sendable (JobID, String, Data) -> Void)? = nil
+        transcriptWriter: (@Sendable (JobID, String, Data) -> Void)? = nil,
+        prepareRunnerConfig: (@Sendable (JobID, String?) async throws -> Void)? = nil
     ) {
         self.docker = docker
         self.image = image
@@ -35,6 +37,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         self.providerEnv = providerEnv
         self.schemasDirectory = schemasDirectory
         self.transcriptWriter = transcriptWriter
+        self.prepareRunnerConfig = prepareRunnerConfig
     }
 
     /// Writable spots on a `--read-only` root. OpenCode writes `~/.cache/opencode/version`
@@ -54,6 +57,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let nameB = Self.containerName(jobID: jobID, slot: .modelB)
         let judgeName = "gegenlesen-judge-\(jobID.rawValue)"
         do {
+            try await prepareRunnerConfig?(request.job.id, request.job.repository)
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
@@ -315,6 +319,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
         let dockerRequest: DockerRequest
         do {
+            try await prepareRunnerConfig?(request.job.id, request.job.repository)
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
@@ -341,6 +346,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public func runSuggestionJudge(job: Job, workspace: Workspace) async -> SuggestionJudgeRunResult {
         let name = ReviewContainers.suggestionJudge(job.id)
         do {
+            try await prepareRunnerConfig?(job.id, job.repository)
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
@@ -428,6 +434,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     ) async -> MinerRunResult {
         let name = ReviewContainers.miner(jobID)
         do {
+            try await prepareRunnerConfig?(jobID, nil)
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }

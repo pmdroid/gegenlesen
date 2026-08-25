@@ -1,10 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { HTTPError, improveAgent, listAgents, putAgent, resetAgent } from "../client";
+import { HTTPError, improveAgent, listAgents, listRepositories, putAgent, resetAgent } from "../client";
+
+function draftKey(scope: string, id: string): string {
+  return `${scope}:${id}`;
+}
 
 export function AgentsPage() {
   const queryClient = useQueryClient();
-  const agents = useQuery({ queryKey: ["agents"], queryFn: listAgents });
+  const [scope, setScope] = useState("global");
+  const repository = scope === "global" ? null : scope;
+  const agents = useQuery({
+    queryKey: ["agents", scope],
+    queryFn: () => listAgents(repository),
+  });
+  const repos = useQuery({ queryKey: ["repositories"], queryFn: listRepositories });
   const [selected, setSelected] = useState("reviewer");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [instructions, setInstructions] = useState<Record<string, string>>({});
@@ -14,13 +24,15 @@ export function AgentsPage() {
   const items = agents.data?.agents ?? [];
   const current = items.find((agent) => agent.id === selected) ?? items[0];
   const currentId = current?.id ?? selected;
+  const key = draftKey(scope, currentId);
   const savedPrompt = current?.prompt ?? "";
-  const prompt = drafts[currentId] ?? savedPrompt;
-  const instruction = instructions[currentId] ?? "";
+  const prompt = drafts[key] ?? savedPrompt;
+  const instruction = instructions[key] ?? "";
   const dirty = current !== undefined && prompt !== savedPrompt;
   const miner = agents.data?.miner_model ?? "";
   const required = current?.required_paths ?? [];
   const missing = required.filter((path) => !prompt.includes(path));
+  const repoNames = repos.data?.repositories ?? [];
 
   useEffect(() => {
     if (!items.some((agent) => agent.id === selected) && items[0]) {
@@ -29,18 +41,18 @@ export function AgentsPage() {
   }, [items, selected]);
 
   function setPrompt(value: string) {
-    setDrafts((prev) => ({ ...prev, [currentId]: value }));
+    setDrafts((prev) => ({ ...prev, [key]: value }));
     setNotice(null);
   }
 
   const save = useMutation({
-    mutationFn: () => putAgent(currentId, prompt),
+    mutationFn: () => putAgent(currentId, prompt, repository),
     onSuccess: (agent) => {
       setError(null);
       setNotice("saved");
       setDrafts((prev) => {
         const next = { ...prev };
-        delete next[agent.id];
+        delete next[draftKey(scope, agent.id)];
         return next;
       });
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -52,13 +64,13 @@ export function AgentsPage() {
   });
 
   const reset = useMutation({
-    mutationFn: () => resetAgent(currentId),
+    mutationFn: () => resetAgent(currentId, repository),
     onSuccess: (agent) => {
       setError(null);
-      setNotice("restored default");
+      setNotice(repository ? "restored inherited" : "restored default");
       setDrafts((prev) => {
         const next = { ...prev };
-        delete next[agent.id];
+        delete next[draftKey(scope, agent.id)];
         return next;
       });
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -74,11 +86,12 @@ export function AgentsPage() {
       improveAgent(currentId, {
         instruction,
         prompt,
+        repository,
       }),
     onSuccess: (body) => {
       setError(null);
       setNotice("improved — save to keep");
-      setDrafts((prev) => ({ ...prev, [currentId]: body.prompt }));
+      setDrafts((prev) => ({ ...prev, [key]: body.prompt }));
     },
     onError: (err) => {
       setNotice(null);
@@ -95,6 +108,14 @@ export function AgentsPage() {
   }
 
   const minerLabel = useMemo(() => miner.replace(/^openrouter\//, ""), [miner]);
+  const badge =
+    current?.source === "repository"
+      ? "this repo"
+      : current?.source === "global" && repository
+        ? "inherited"
+        : current?.source === "global"
+          ? "global"
+          : "default";
 
   return (
     <div className="page">
@@ -102,9 +123,31 @@ export function AgentsPage() {
         <h1>agents</h1>
       </div>
       <p className="formhint">
-        OpenCode prompts. Defaults are prefilled. Changes apply to the next job. Improve talks to
-        the miner model over OpenRouter, one agent at a time, and does not save until you do.
+        Global prompts apply to every job. A repo override wins for that repository only. Improve
+        talks to the miner model over OpenRouter, one agent at a time, and does not save until you
+        do.
       </p>
+      <div className="filters">
+        <label>
+          scope
+          <select
+            aria-label="scope"
+            value={scope}
+            onChange={(event) => {
+              setScope(event.target.value);
+              setError(null);
+              setNotice(null);
+            }}
+          >
+            <option value="global">global</option>
+            {repoNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {agents.isError ? <div className="formerr">could not load agents</div> : null}
       <div className="agents-layout">
         <div className="agents-nav" role="tablist" aria-label="agents">
@@ -122,7 +165,10 @@ export function AgentsPage() {
               }}
             >
               {agent.id}
-              {drafts[agent.id] !== undefined && drafts[agent.id] !== agent.prompt ? " · edited" : ""}
+              {drafts[draftKey(scope, agent.id)] !== undefined &&
+              drafts[draftKey(scope, agent.id)] !== agent.prompt
+                ? " · edited"
+                : ""}
             </button>
           ))}
         </div>
@@ -130,7 +176,7 @@ export function AgentsPage() {
           <form className="form agents-form" onSubmit={onSave}>
             <div className="agents-meta">
               <span className="title">{current.id}</span>
-              {current.customized ? <span className="verdict kept">custom</span> : <span className="id">default</span>}
+              <span className={current.customized ? "verdict kept" : "id"}>{badge}</span>
               {dirty ? <span className="verdict det">unsaved</span> : null}
             </div>
             <p className="formhint">{current.description}</p>
@@ -166,7 +212,7 @@ export function AgentsPage() {
                 disabled={busy || !canReset}
                 onClick={() => reset.mutate()}
               >
-                reset to default
+                {repository ? "reset to inherited" : "reset to default"}
               </button>
             </div>
             <h2>improve with miner</h2>
@@ -180,7 +226,7 @@ export function AgentsPage() {
               value={instruction}
               onChange={(event) => {
                 const value = event.target.value;
-                setInstructions((prev) => ({ ...prev, [currentId]: value }));
+                setInstructions((prev) => ({ ...prev, [key]: value }));
                 setNotice(null);
               }}
               placeholder="e.g. insist on reading tests for every changed symbol"

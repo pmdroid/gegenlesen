@@ -21,6 +21,8 @@ struct AgentsRouteTests {
                 }
                 let reviewer = try #require(body.agents.first { $0.id == "reviewer" })
                 #expect(reviewer.prompt.contains(".gegenlesen/findings.json"))
+                #expect(reviewer.source == .packaged)
+                #expect(reviewer.repository == nil)
                 for agent in body.agents {
                     #expect(!agent.requiredPaths.isEmpty)
                     #expect(AgentCatalog.missingPaths(id: agent.id, prompt: agent.prompt).isEmpty)
@@ -52,6 +54,7 @@ struct AgentsRouteTests {
                 #expect(res.status == .ok)
                 let body = try res.content.decode(AgentDTO.self)
                 #expect(body.customized)
+                #expect(body.source == .global)
                 #expect(body.prompt.contains("custom body"))
                 #expect(AgentCatalog.missingPaths(id: "reviewer", prompt: body.prompt).isEmpty)
             }
@@ -184,6 +187,65 @@ struct AgentsRouteTests {
     }
 
     @Test
+    func repoOverrideDoesNotChangeGlobal() async throws {
+        try await withAgentsApp { app in
+            let original = try await getAgent(app, id: "reviewer")
+            try await app.testing().test(
+                .PUT,
+                "/api/agents/reviewer?repository=github.com/acme/app",
+                beforeRequest: { req async throws in
+                    try req.content.encode(AgentUpdate(
+                        prompt: original.prompt + "\nrepo body\n",
+                        repository: "github.com/acme/app"
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let body = try res.content.decode(AgentDTO.self)
+                #expect(body.source == .repository)
+                #expect(body.customized)
+                #expect(body.repository == "github.com/acme/app")
+                #expect(body.prompt.contains("repo body"))
+            }
+            let global = try await getAgent(app, id: "reviewer")
+            #expect(global.source == .packaged)
+            #expect(!global.prompt.contains("repo body"))
+            let scoped = try await getAgent(app, id: "reviewer", repository: "github.com/acme/app")
+            #expect(scoped.source == .repository)
+            #expect(scoped.prompt.contains("repo body"))
+            try await app.testing().test(
+                .POST,
+                "/api/agents/reviewer/reset?repository=github.com/acme/app"
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let body = try res.content.decode(AgentDTO.self)
+                #expect(body.source == .packaged)
+                #expect(!body.customized)
+            }
+        }
+    }
+
+    @Test
+    func repoInheritsGlobalOverride() async throws {
+        try await withAgentsApp { app in
+            let original = try await getAgent(app, id: "judge")
+            try await app.testing().test(
+                .PUT,
+                "/api/agents/judge",
+                beforeRequest: { req async throws in
+                    try req.content.encode(AgentUpdate(prompt: original.prompt + "\nglobal judge\n"))
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+            }
+            let scoped = try await getAgent(app, id: "judge", repository: "github.com/acme/app")
+            #expect(scoped.source == .global)
+            #expect(!scoped.customized)
+            #expect(scoped.prompt.contains("global judge"))
+        }
+    }
+
+    @Test
     func unwrapAndModelID() {
         #expect(OpenRouterChat.openRouterModelID("openrouter/openai/gpt-5.6-terra") == "openai/gpt-5.6-terra")
         #expect(OpenRouterChat.openRouterModelID("openai/gpt-5.6-terra") == "openai/gpt-5.6-terra")
@@ -221,9 +283,14 @@ private func withAgentsApp(
     )
 }
 
-private func getAgent(_ app: Application, id: String) async throws -> AgentDTO {
+private func getAgent(_ app: Application, id: String, repository: String? = nil) async throws -> AgentDTO {
     var decoded: AgentDTO?
-    try await app.testing().test(.GET, "/api/agents/\(id)") { res async throws in
+    var path = "/api/agents/\(id)"
+    if let repository {
+        let encoded = repository.addingPercentEncoding(withAllowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._"))) ?? repository
+        path += "?repository=\(encoded)"
+    }
+    try await app.testing().test(.GET, path) { res async throws in
         #expect(res.status == .ok)
         decoded = try res.content.decode(AgentDTO.self)
     }

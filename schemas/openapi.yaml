@@ -52,6 +52,11 @@ paths:
   /api/agents:
     get:
       operationId: listAgents
+      parameters:
+        - name: repository
+          in: query
+          schema: { type: string }
+          description: Resolve prompts for this repo. Omit or `global` for the global layer.
       responses:
         "200":
           description: Shipped OpenCode agents with current prompts.
@@ -69,6 +74,9 @@ paths:
           schema:
             type: string
             enum: [reviewer, judge, miner, harvester, suggestion-judge]
+        - name: repository
+          in: query
+          schema: { type: string }
       responses:
         "200":
           description: One agent prompt.
@@ -91,6 +99,9 @@ paths:
           schema:
             type: string
             enum: [reviewer, judge, miner, harvester, suggestion-judge]
+        - name: repository
+          in: query
+          schema: { type: string }
       requestBody:
         required: true
         content:
@@ -788,12 +799,16 @@ components:
     AgentDTO:
       type: object
       additionalProperties: false
-      required: [id, description, prompt, customized, required_paths]
+      required: [id, description, prompt, customized, source, required_paths]
       properties:
         id: { type: string }
         description: { type: string }
         prompt: { type: string }
         customized: { type: boolean }
+        source:
+          type: string
+          enum: [packaged, global, repository]
+        repository: { type: ["string", "null"] }
         required_paths:
           type: array
           items: { type: string }
@@ -806,12 +821,14 @@ components:
           type: array
           items: { $ref: "#/components/schemas/AgentDTO" }
         miner_model: { type: string }
+        repository: { type: ["string", "null"] }
     AgentUpdate:
       type: object
       additionalProperties: false
       required: [prompt]
       properties:
         prompt: { type: string }
+        repository: { type: ["string", "null"] }
     AgentImproveRequest:
       type: object
       additionalProperties: false

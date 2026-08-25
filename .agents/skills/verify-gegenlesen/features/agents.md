@@ -1,13 +1,14 @@
 # Agents
 
-Agents is Ledger for the five OpenCode prompts (reviewer, judge, miner, harvester, suggestion-judge). The page loads the shipped defaults. Save writes an override. Reset restores the packaged file. Improve sends the current prompt plus an instruction to the miner model over OpenRouter and puts the rewrite in the editor without saving.
+Agents is Ledger for the five OpenCode prompts (reviewer, judge, miner, harvester, suggestion-judge). The page loads the shipped defaults. Scope `global` writes a prompt for every job. A repository scope writes an override that wins for that repo only. Reset restores the packaged file globally, or the inherited prompt in a repo. Improve sends the current prompt plus an instruction to the miner model over OpenRouter and puts the rewrite in the editor without saving.
 
 ## Sub-features
 
 - `agents-list` shows nav `agents`, heading `agents`, and the five agent tabs with the reviewer prompt prefilled.
 - `agents-switch` opens judge and shows its packaged prompt, not the reviewer text.
-- `agents-save` persists a prompt override. Reload still shows it and `custom`.
-- `agents-reset` restores the packaged default and drops `custom`.
+- `agents-save` persists a global prompt override. Reload still shows it and `global`.
+- `agents-reset` restores the packaged default and drops `global`.
+- `agents-scope` switches `scope` between `global` and a known repository. A repo save does not change the global prompt.
 - `agents-improve-skip` on skip-agent shows `prompt improve is disabled in skip-agent` and does not save.
 - `agents-required-paths` lists the host `.gegenlesen/` files for the selected agent. Missing ones are marked.
 - `agents-save-missing` rejects a prompt that drops those files. The packaged prompt stays.

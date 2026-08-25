@@ -152,26 +152,33 @@ export interface SettingsUpdate {
   };
 }
 
+export type AgentSource = "packaged" | "global" | "repository";
+
 export interface AgentDTO {
   id: string;
   description: string;
   prompt: string;
   customized: boolean;
+  source: AgentSource;
+  repository: string | null;
   required_paths: string[];
 }
 
 export interface AgentList {
   agents: AgentDTO[];
   miner_model: string;
+  repository: string | null;
 }
 
 export interface AgentUpdate {
   prompt: string;
+  repository?: string | null;
 }
 
 export interface AgentImproveRequest {
   instruction: string;
   prompt?: string | null;
+  repository?: string | null;
 }
 
 export interface AgentImproveResponse {

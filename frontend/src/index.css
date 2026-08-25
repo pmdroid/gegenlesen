@@ -125,6 +125,7 @@ nav a.on { color: var(--ok-fg); border-bottom: 1px solid var(--ok-fg); }
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   margin: 10px 0 4px; color: var(--fg-dim);
 }
+.filters label { display: flex; align-items: center; gap: 6px; margin: 0; }
 .filters select, .filters input[type="text"], .filters input:not([type]) {
   background: var(--bg-input); color: var(--fg); border: 1px solid var(--border-strong);
   border-radius: 3px; padding: 4px 8px; font-family: inherit; font-size: 11.5px;
