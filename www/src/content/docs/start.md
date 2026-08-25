@@ -12,6 +12,7 @@ mkdir -p "$DATA" "$HOME/gegenlesen-config"
 
 docker pull ghcr.io/pmdroid/gegenlesen:main
 docker pull ghcr.io/pmdroid/gegenlesen:runner-main
+docker pull ghcr.io/pmdroid/gegenlesen:scanner-main
 
 docker run --rm --init --name gegenlesen \
   --network host \
@@ -20,6 +21,7 @@ docker run --rm --init --name gegenlesen \
   -v "$HOME/gegenlesen-config:/app/config" \
   -e GEGENLESEN_DATA_DIR="$DATA" \
   -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main \
+  -e GEGENLESEN_SCANNER_IMAGE=ghcr.io/pmdroid/gegenlesen:scanner-main \
   ghcr.io/pmdroid/gegenlesen:main
 ```
 
@@ -53,6 +55,7 @@ On a Mac, Docker Desktop does not share loopback the way a Linux box does. Build
 
 ```bash
 scripts/build-runner.sh
+scripts/build-scanner.sh
 make run
 ```
 

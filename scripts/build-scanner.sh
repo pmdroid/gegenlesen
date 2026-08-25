@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Local tag. CI publishes the same image as ghcr.io/pmdroid/gegenlesen:scanner-main.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE="${GEGENLESEN_SCANNER_IMAGE:-gegenlesen/scanner:0.1.0}"
 

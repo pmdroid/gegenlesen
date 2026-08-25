@@ -4,7 +4,7 @@ description: Host network, matching data path, compose, and a local image build.
 order: 2
 ---
 
-The published images live on one GHCR package: `ghcr.io/pmdroid/gegenlesen:main` (API) and `ghcr.io/pmdroid/gegenlesen:runner-main` (OpenCode). Version tags are `:0.1.0` and `:runner-0.1.0`. The first-run command is on [Start](/docs/start).
+The published images live on one GHCR package: `ghcr.io/pmdroid/gegenlesen:main` (API), `ghcr.io/pmdroid/gegenlesen:runner-main` (OpenCode), and `ghcr.io/pmdroid/gegenlesen:scanner-main` (Gitleaks + OSV). Version tags are `:0.1.0`, `:runner-0.1.0`, and `:scanner-0.1.0`. The first-run command is on [Start](/docs/start).
 
 ## Why host network and a matching data path
 
@@ -32,4 +32,4 @@ make image
 ./scripts/build-image.sh
 ```
 
-That tags `ghcr.io/pmdroid/gegenlesen:local`. The local runner is still `scripts/build-runner.sh` → `gegenlesen/opencode-runner:0.1.0`.
+That tags `ghcr.io/pmdroid/gegenlesen:local`. The local runner is still `scripts/build-runner.sh` → `gegenlesen/opencode-runner:0.1.0`. The local scanner is `scripts/build-scanner.sh` → `gegenlesen/scanner:0.1.0`.

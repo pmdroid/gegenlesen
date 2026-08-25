@@ -47,13 +47,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Runner image baked into the API
-        id: runner
+      - name: Sidecar images baked into the API
+        id: sidecars
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "image=${API_IMAGE}:runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "runner=${API_IMAGE}:runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "scanner=${API_IMAGE}:scanner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "image=${API_IMAGE}:runner-main" >> "$GITHUB_OUTPUT"
+            echo "runner=${API_IMAGE}:runner-main" >> "$GITHUB_OUTPUT"
+            echo "scanner=${API_IMAGE}:scanner-main" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: docker/metadata-action@v5
@@ -69,7 +71,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GEGENLESEN_OPENCODE_IMAGE=${{ steps.runner.outputs.image }}
+            GEGENLESEN_OPENCODE_IMAGE=${{ steps.sidecars.outputs.runner }}
+            GEGENLESEN_SCANNER_IMAGE=${{ steps.sidecars.outputs.scanner }}
           outputs: type=image,name=${{ env.API_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=api-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=api-${{ env.PLATFORM_PAIR }}
@@ -188,6 +191,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Same package as the API so anonymous pulls work (see runner job).
       - uses: docker/metadata-action@v5
         id: alias
         with:
