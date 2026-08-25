@@ -3,6 +3,9 @@ import Foundation
 public enum JudgeHandoff: Sendable {
     public static func stampMechanical(_ findings: [Finding], commandRuleIDs: Set<RuleID>) -> [Finding] {
         findings.map { finding in
+            if finding.judgeVerdict == .drop {
+                return finding
+            }
             guard !JudgeMerge.shouldJudge(finding, commandRuleIDs: commandRuleIDs) else {
                 return finding
             }
