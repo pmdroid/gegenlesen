@@ -19,6 +19,7 @@ DATA="$HOME/gegenlesen-data"
 mkdir -p "$DATA" "$HOME/gegenlesen-config"
 docker pull ghcr.io/pmdroid/gegenlesen:main
 docker pull ghcr.io/pmdroid/gegenlesen:runner-main
+docker pull ghcr.io/pmdroid/gegenlesen:scanner-main
 docker run --rm --init --name gegenlesen \
   --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -26,6 +27,7 @@ docker run --rm --init --name gegenlesen \
   -v "$HOME/gegenlesen-config:/app/config" \
   -e GEGENLESEN_DATA_DIR="$DATA" \
   -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main \
+  -e GEGENLESEN_SCANNER_IMAGE=ghcr.io/pmdroid/gegenlesen:scanner-main \
   ghcr.io/pmdroid/gegenlesen:main
 ```
 
@@ -35,7 +37,7 @@ Agents: symlink [`skills/gegenlesen`](skills/gegenlesen/SKILL.md) into `~/.agent
 
 On a Mac, Docker Desktop does not share loopback this way. From source: `scripts/build-runner.sh` then `make run` (Xcode’s Swift, not `/usr/bin/swift`).
 
-CI builds `ghcr.io/pmdroid/gegenlesen` (`:main`, semver) and the runner as `:runner-main` / `:runner-0.1.0` on the same package.
+CI builds `ghcr.io/pmdroid/gegenlesen` (`:main`, semver), the runner as `:runner-main` / `:runner-0.1.0`, and the scanner as `:scanner-main` / `:scanner-0.1.0` on the same package.
 
 macOS binaries are not built in CI. On a Mac with a Developer ID (and a notary profile):
 

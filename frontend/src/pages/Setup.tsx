@@ -255,10 +255,12 @@ export function SetupPage() {
             spellCheck={false}
             value={scannerImage}
             onChange={(event) => setScannerImage(event.target.value)}
-            placeholder="gegenlesen/scanner:0.1.0"
+            placeholder="ghcr.io/pmdroid/gegenlesen:scanner-main"
           />
           <span className="formhint">
-            Docker image for Gitleaks and OSV. Leave blank to skip scanners.
+            Docker image for Gitleaks and OSV. Published tag is
+            ghcr.io/pmdroid/gegenlesen:scanner-main. From source, build
+            gegenlesen/scanner:0.1.0. Leave blank to skip scanners.
           </span>
         </label>
         <label>
