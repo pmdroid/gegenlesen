@@ -166,6 +166,17 @@ nav a.on { color: var(--ok-fg); border-bottom: 1px solid var(--ok-fg); }
 .agents-form textarea { min-height: 8rem; }
 .agents-form textarea.agent-prompt { min-height: 24rem; }
 .agents-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.agent-paths {
+  list-style: none; margin: 4px 0 10px; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.agent-paths li {
+  font-size: 11px; border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 6px; color: var(--ok-fg); background: var(--ok-bg);
+}
+.agent-paths li.missing {
+  color: var(--fail-fg); background: var(--fail-bg); border-color: var(--fail-fg);
+}
 @media (max-width: 720px) {
   .agents-layout { grid-template-columns: 1fr; }
   .agents-nav { flex-direction: row; flex-wrap: wrap; }

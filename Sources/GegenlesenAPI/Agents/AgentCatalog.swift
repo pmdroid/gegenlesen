@@ -6,6 +6,12 @@ struct AgentDTO: Content, Sendable, Equatable {
     var description: String
     var prompt: String
     var customized: Bool
+    var requiredPaths: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, description, prompt, customized
+        case requiredPaths = "required_paths"
+    }
 }
 
 struct AgentListDTO: Content, Sendable, Equatable {
@@ -36,11 +42,57 @@ enum AgentCatalog {
     static let maxPromptChars = 100_000
     static let maxInstructionChars = 8_000
 
+    static let requiredPaths: [String: [String]] = [
+        "reviewer": [
+            ".gegenlesen/prompt.md",
+            ".gegenlesen/files.json",
+            ".gegenlesen/diff.patch",
+            ".gegenlesen/rules.json",
+            ".gegenlesen/findings-model_a.json",
+            ".gegenlesen/findings-model_b.json",
+            ".gegenlesen/findings.schema.json",
+        ],
+        "judge": [
+            ".gegenlesen/judge-input.json",
+            ".gegenlesen/judge.json",
+        ],
+        "miner": [
+            ".gegenlesen/mined-rules.json",
+        ],
+        "harvester": [
+            ".gegenlesen/harvest.json",
+            ".gegenlesen/harvest-scan.json",
+            ".gegenlesen/prompt.md",
+        ],
+        "suggestion-judge": [
+            ".gegenlesen/prompt-suggestion-judge.md",
+            ".gegenlesen/suggestion-judge-input.json",
+            ".gegenlesen/suggestion-judge.json",
+        ],
+    ]
+
     static func requireID(_ raw: String) throws -> String {
         guard ids.contains(raw) else {
             throw APIError.notFound("unknown agent")
         }
         return raw
+    }
+
+    static func paths(for id: String) -> [String] {
+        requiredPaths[id] ?? []
+    }
+
+    static func missingPaths(id: String, prompt: String) -> [String] {
+        paths(for: id).filter { !prompt.contains($0) }
+    }
+
+    static func requirePaths(id: String, prompt: String) throws {
+        let missing = missingPaths(id: id, prompt: prompt)
+        guard missing.isEmpty else {
+            throw APIError.unprocessable(
+                "prompt is missing required paths: \(missing.joined(separator: ", "))"
+            )
+        }
     }
 
     static func description(from prompt: String) -> String {
@@ -73,7 +125,8 @@ struct AgentStore {
                 id: id,
                 description: AgentCatalog.description(from: custom),
                 prompt: custom,
-                customized: true
+                customized: true,
+                requiredPaths: AgentCatalog.paths(for: id)
             )
         }
         let packaged = try packagedPrompt(id)
@@ -81,7 +134,8 @@ struct AgentStore {
             id: id,
             description: AgentCatalog.description(from: packaged),
             prompt: packaged,
-            customized: false
+            customized: false,
+            requiredPaths: AgentCatalog.paths(for: id)
         )
     }
 
@@ -94,6 +148,7 @@ struct AgentStore {
         guard trimmed.count <= AgentCatalog.maxPromptChars else {
             throw APIError.payloadTooLarge("prompt is too long")
         }
+        try AgentCatalog.requirePaths(id: id, prompt: trimmed)
         let url = customURL(id)
         try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try trimmed.write(to: url, atomically: true, encoding: .utf8)

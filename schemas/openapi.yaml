@@ -788,12 +788,15 @@ components:
     AgentDTO:
       type: object
       additionalProperties: false
-      required: [id, description, prompt, customized]
+      required: [id, description, prompt, customized, required_paths]
       properties:
         id: { type: string }
         description: { type: string }
         prompt: { type: string }
         customized: { type: boolean }
+        required_paths:
+          type: array
+          items: { type: string }
     AgentList:
       type: object
       additionalProperties: false

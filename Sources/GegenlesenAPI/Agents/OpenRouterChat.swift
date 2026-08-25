@@ -10,7 +10,8 @@ struct OpenRouterChat: PromptImproving {
 
     static let systemPrompt = """
     You rewrite one OpenCode agent prompt. Keep the YAML frontmatter.
-    Keep required output paths and the ban on the question tool, plan agent, and subagents.
+    Keep every required .gegenlesen path listed in the operator instruction.
+    Keep the ban on the question tool, plan agent, and subagents.
     Apply the operator instruction. Return only the full markdown. No fence. No preamble.
     """
 

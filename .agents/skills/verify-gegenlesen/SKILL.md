@@ -154,6 +154,7 @@ Undo Ledger mutations (delete the probe rule or note) through the UI or `drive.s
 .agents/skills/verify-gegenlesen/drive.sh agents-save --id ID --text TEXT
 .agents/skills/verify-gegenlesen/drive.sh agents-reset --id ID
 .agents/skills/verify-gegenlesen/drive.sh agents-improve --id ID --instruction TEXT
+.agents/skills/verify-gegenlesen/drive.sh agents-reject --id ID
 .agents/skills/verify-gegenlesen/drive.sh regex-rule-create --title T --pattern P
 .agents/skills/verify-gegenlesen/drive.sh harvest
 .agents/skills/verify-gegenlesen/drive.sh cli-review [--fresh] [--keep] [--advance-base] [--probe] [--label NAME]

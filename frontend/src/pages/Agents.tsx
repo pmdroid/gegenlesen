@@ -19,6 +19,8 @@ export function AgentsPage() {
   const instruction = instructions[currentId] ?? "";
   const dirty = current !== undefined && prompt !== savedPrompt;
   const miner = agents.data?.miner_model ?? "";
+  const required = current?.required_paths ?? [];
+  const missing = required.filter((path) => !prompt.includes(path));
 
   useEffect(() => {
     if (!items.some((agent) => agent.id === selected) && items[0]) {
@@ -132,6 +134,19 @@ export function AgentsPage() {
               {dirty ? <span className="verdict det">unsaved</span> : null}
             </div>
             <p className="formhint">{current.description}</p>
+            <p className="formhint">required paths</p>
+            <ul className="agent-paths" aria-label="required paths">
+              {required.map((path) => (
+                <li key={path} className={prompt.includes(path) ? "ok" : "missing"}>
+                  {path}
+                </li>
+              ))}
+            </ul>
+            {missing.length > 0 ? (
+              <div className="formerr">
+                prompt is missing required paths: {missing.join(", ")}
+              </div>
+            ) : null}
             <label htmlFor="agent-prompt">prompt</label>
             <textarea
               id="agent-prompt"

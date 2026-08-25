@@ -20,6 +20,7 @@ usage: drive.sh launch [--no-key] [--with-agent]
        drive.sh agents-save --id ID --text TEXT
        drive.sh agents-reset --id ID
        drive.sh agents-improve --id ID --instruction TEXT
+       drive.sh agents-reject --id ID
        drive.sh regex-rule-create --title T --pattern P [--message M] [--id ID]
        drive.sh harvest [--label NAME]
        drive.sh cli-review [--fresh] [--keep] [--advance-base] [--probe] [--file PATH] [--content TEXT] [--label NAME]
@@ -522,6 +523,20 @@ cmd_agents_reset() {
   (cd "$skill_dir" && node browser.mjs agents-reset "$id")
 }
 
+cmd_agents_reject() {
+  need_instance
+  ensure_playwright
+  local id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) id="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  if [[ -z "$id" ]]; then usage; fi
+  (cd "$skill_dir" && node browser.mjs agents-reject "$id")
+}
+
 cmd_agents_improve() {
   need_instance
   ensure_playwright
@@ -855,6 +870,7 @@ case "$cmd" in
   agents-save) cmd_agents_save "$@" ;;
   agents-reset) cmd_agents_reset "$@" ;;
   agents-improve) cmd_agents_improve "$@" ;;
+  agents-reject) cmd_agents_reject "$@" ;;
   regex-rule-create) cmd_regex_rule_create "$@" ;;
   harvest) cmd_harvest "$@" ;;
   cli-review) cmd_cli_review "$@" ;;

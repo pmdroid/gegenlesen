@@ -157,6 +157,7 @@ export interface AgentDTO {
   description: string;
   prompt: string;
   customized: boolean;
+  required_paths: string[];
 }
 
 export interface AgentList {

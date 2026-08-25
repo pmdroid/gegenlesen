@@ -132,6 +132,24 @@ async function agentsReset(id) {
   });
 }
 
+async function agentsReject(id) {
+  await withPage(async ({ page, instance, consoleErrors }) => {
+    await page.goto(`${instance.baseUrl}/agents`, { waitUntil: "networkidle" });
+    await waitReady(page);
+    await page.getByRole("heading", { name: "agents" }).waitFor();
+    await page.getByRole("tab", { name: new RegExp(`^${id}\\b`) }).click();
+    await capture(page, instance, "agents-reject-before", { consoleErrors: [...consoleErrors] });
+    const box = page.getByRole("textbox", { name: "prompt", exact: true });
+    await box.fill("---\ndescription: broken\nmode: primary\ntemperature: 0.2\n---\n\nno workspace files\n");
+    await page.getByText("prompt is missing required paths").waitFor();
+    await capture(page, instance, "agents-reject-edit", { consoleErrors: [...consoleErrors] });
+    await page.getByRole("button", { name: "save", exact: true }).click();
+    await page.locator(".formerr").filter({ hasText: "missing required paths" }).waitFor();
+    const files = await capture(page, instance, "agents-reject-after", { consoleErrors });
+    process.stdout.write(JSON.stringify({ ok: true, url: page.url(), id, ...files }, null, 2) + "\n");
+  });
+}
+
 async function agentsImprove(id, instruction) {
   await withPage(async ({ page, instance, consoleErrors }) => {
     await page.goto(`${instance.baseUrl}/agents`, { waitUntil: "networkidle" });
@@ -292,6 +310,8 @@ if (cmd === "shot") {
   await agentsReset(process.argv[3]);
 } else if (cmd === "agents-improve") {
   await agentsImprove(process.argv[3], process.argv[4]);
+} else if (cmd === "agents-reject") {
+  await agentsReject(process.argv[3]);
 } else if (cmd === "job-thumb") {
   await jobThumb(process.argv[3], process.argv[4]);
 } else if (cmd === "job-merge-intent") {

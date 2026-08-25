@@ -9,6 +9,8 @@ Agents is Ledger for the five OpenCode prompts (reviewer, judge, miner, harveste
 - `agents-save` persists a prompt override. Reload still shows it and `custom`.
 - `agents-reset` restores the packaged default and drops `custom`.
 - `agents-improve-skip` on skip-agent shows `prompt improve is disabled in skip-agent` and does not save.
+- `agents-required-paths` lists the host `.gegenlesen/` files for the selected agent. Missing ones are marked.
+- `agents-save-missing` rejects a prompt that drops those files. The packaged prompt stays.
 
 ## How to get to it (user POV)
 
@@ -29,7 +31,9 @@ Preconditions:
 - **Reload.** Run `.agents/skills/verify-gegenlesen/drive.sh shot /agents --label agents-reloaded`. Reviewer prompt still contains `verify agent override`. Badge `custom`.
 - **Reset.** Run `.agents/skills/verify-gegenlesen/drive.sh agents-reset --id reviewer`. Copy `restored default`. `GET /api/agents/reviewer` has `"customized": false` and no `verify agent override`.
 - **Improve on skip-agent.** Run `.agents/skills/verify-gegenlesen/drive.sh agents-improve --id miner --instruction "be shorter"`. Error copy is `prompt improve is disabled in skip-agent`. Prompt is unchanged. No `saved`.
-- **Proof.** `agents-list` plus `agents-after` plus GET after save and after reset. A screenshot of the empty default page is not a save proof.
+- **Required paths.** On `/agents` with reviewer selected, list `required paths` includes `.gegenlesen/findings-model_a.json` and `.gegenlesen/findings-model_b.json`. None marked missing on the packaged prompt.
+- **Reject missing.** Run `.agents/skills/verify-gegenlesen/drive.sh agents-reject --id reviewer`. Prompt is replaced with text that omits the required files. Save. Error copy contains `prompt is missing required paths`. `GET /api/agents/reviewer` still has `"customized": false`.
+- **Proof.** `agents-list` plus `agents-after` plus GET after save and after reset. A missing-path save that still shows `customized: true` failed.
 
 ## Gotchas
 

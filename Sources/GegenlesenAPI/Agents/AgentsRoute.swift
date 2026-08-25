@@ -49,11 +49,19 @@ enum AgentsRoute {
             current = try store.get(agentID).prompt
         }
         let model = req.application.gegenlesenConfig.minerModel
+        let required = AgentCatalog.paths(for: agentID)
+        let guarded = instruction + """
+
+
+        Keep every required path in the rewritten prompt:
+        \(required.map { "- \($0)" }.joined(separator: "\n"))
+        """
         let improved = try await req.application.gegenlesenPromptImprover.improve(
             model: model,
             currentPrompt: current,
-            instruction: instruction
+            instruction: guarded
         )
+        try AgentCatalog.requirePaths(id: agentID, prompt: improved)
         return AgentImproveResponse(prompt: improved)
     }
 
