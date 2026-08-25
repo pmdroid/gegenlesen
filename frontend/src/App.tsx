@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { getHealth, getSettings } from "./client";
+import { AgentsPage } from "./pages/Agents";
 import { ContextPage } from "./pages/Context";
 import { JobDetailPage } from "./pages/JobDetail";
 import { JobsPage } from "./pages/Jobs";
@@ -45,6 +46,9 @@ export function App() {
           <NavLink to="/learnings" className={({ isActive }) => (isActive ? "on" : undefined)}>
             learnings
           </NavLink>
+          <NavLink to="/agents" className={({ isActive }) => (isActive ? "on" : undefined)}>
+            agents
+          </NavLink>
           <NavLink to="/setup" className={({ isActive }) => (isActive ? "on" : undefined)}>
             setup
           </NavLink>
@@ -61,6 +65,7 @@ export function App() {
         <Route path="/rules/:id" element={<RuleEditorPage />} />
         <Route path="/context" element={<ContextPage />} />
         <Route path="/learnings" element={<LearningsPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
         <Route path="/setup" element={<SetupPage />} />
       </Routes>
     </>

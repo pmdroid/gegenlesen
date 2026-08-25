@@ -152,6 +152,31 @@ export interface SettingsUpdate {
   };
 }
 
+export interface AgentDTO {
+  id: string;
+  description: string;
+  prompt: string;
+  customized: boolean;
+}
+
+export interface AgentList {
+  agents: AgentDTO[];
+  miner_model: string;
+}
+
+export interface AgentUpdate {
+  prompt: string;
+}
+
+export interface AgentImproveRequest {
+  instruction: string;
+  prompt?: string | null;
+}
+
+export interface AgentImproveResponse {
+  prompt: string;
+}
+
 export interface OpenRouterModel {
   id: string;
   name: string;

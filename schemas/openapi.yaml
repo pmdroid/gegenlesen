@@ -49,6 +49,119 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/APIErrorBody"
+  /api/agents:
+    get:
+      operationId: listAgents
+      responses:
+        "200":
+          description: Shipped OpenCode agents with current prompts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+  /api/agents/{id}:
+    get:
+      operationId: getAgent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [reviewer, judge, miner, harvester, suggestion-judge]
+      responses:
+        "200":
+          description: One agent prompt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDTO"
+        "404":
+          description: Unknown agent id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
+    put:
+      operationId: putAgent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [reviewer, judge, miner, harvester, suggestion-judge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentUpdate"
+      responses:
+        "200":
+          description: Saved override. Next job uses this prompt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDTO"
+        "404":
+          description: Unknown agent id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
+        "422":
+          description: Empty prompt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
+  /api/agents/{id}/reset:
+    post:
+      operationId: resetAgent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [reviewer, judge, miner, harvester, suggestion-judge]
+      responses:
+        "200":
+          description: Override deleted. Packaged default restored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDTO"
+  /api/agents/{id}/improve:
+    post:
+      operationId: improveAgent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [reviewer, judge, miner, harvester, suggestion-judge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentImproveRequest"
+      responses:
+        "200":
+          description: Rewritten prompt from the miner model. Not persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentImproveResponse"
+        "422":
+          description: Missing instruction, skip-agent, or OpenRouter error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIErrorBody"
   /api/models:
     get:
       operationId: listOpenRouterModels
@@ -672,6 +785,43 @@ components:
           properties:
             mode: { $ref: "#/components/schemas/RiskMode" }
             appetite: { type: integer, minimum: 1, maximum: 5 }
+    AgentDTO:
+      type: object
+      additionalProperties: false
+      required: [id, description, prompt, customized]
+      properties:
+        id: { type: string }
+        description: { type: string }
+        prompt: { type: string }
+        customized: { type: boolean }
+    AgentList:
+      type: object
+      additionalProperties: false
+      required: [agents, miner_model]
+      properties:
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/AgentDTO" }
+        miner_model: { type: string }
+    AgentUpdate:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt: { type: string }
+    AgentImproveRequest:
+      type: object
+      additionalProperties: false
+      required: [instruction]
+      properties:
+        instruction: { type: string }
+        prompt: { type: ["string", "null"] }
+    AgentImproveResponse:
+      type: object
+      additionalProperties: false
+      required: [prompt]
+      properties:
+        prompt: { type: string }
     OpenRouterModel:
       type: object
       additionalProperties: false

@@ -17,6 +17,9 @@ usage: drive.sh launch [--no-key] [--with-agent]
        drive.sh shot PATH --label NAME
        drive.sh rules-create --title T --instruction I
        drive.sh context-create --title T --body B
+       drive.sh agents-save --id ID --text TEXT
+       drive.sh agents-reset --id ID
+       drive.sh agents-improve --id ID --instruction TEXT
        drive.sh regex-rule-create --title T --pattern P [--message M] [--id ID]
        drive.sh harvest [--label NAME]
        drive.sh cli-review [--fresh] [--keep] [--advance-base] [--probe] [--file PATH] [--content TEXT] [--label NAME]
@@ -490,6 +493,50 @@ cmd_context_create() {
   (cd "$skill_dir" && node browser.mjs context-create "$title" "$body")
 }
 
+cmd_agents_save() {
+  need_instance
+  ensure_playwright
+  local id="" text=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) id="$2"; shift 2 ;;
+      --text) text="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  if [[ -z "$id" || -z "$text" ]]; then usage; fi
+  (cd "$skill_dir" && node browser.mjs agents-save "$id" "$text")
+}
+
+cmd_agents_reset() {
+  need_instance
+  ensure_playwright
+  local id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) id="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  if [[ -z "$id" ]]; then usage; fi
+  (cd "$skill_dir" && node browser.mjs agents-reset "$id")
+}
+
+cmd_agents_improve() {
+  need_instance
+  ensure_playwright
+  local id="" instruction=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --id) id="$2"; shift 2 ;;
+      --instruction) instruction="$2"; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  if [[ -z "$id" || -z "$instruction" ]]; then usage; fi
+  (cd "$skill_dir" && node browser.mjs agents-improve "$id" "$instruction")
+}
+
 cmd_harvest() {
   need_instance
   ensure_fixture
@@ -805,6 +852,9 @@ case "$cmd" in
   shot) cmd_shot "$@" ;;
   rules-create) cmd_rules_create "$@" ;;
   context-create) cmd_context_create "$@" ;;
+  agents-save) cmd_agents_save "$@" ;;
+  agents-reset) cmd_agents_reset "$@" ;;
+  agents-improve) cmd_agents_improve "$@" ;;
   regex-rule-create) cmd_regex_rule_create "$@" ;;
   harvest) cmd_harvest "$@" ;;
   cli-review) cmd_cli_review "$@" ;;

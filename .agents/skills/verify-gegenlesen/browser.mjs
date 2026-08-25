@@ -100,6 +100,53 @@ async function rulesCreate(title, instruction) {
   });
 }
 
+async function agentsSave(id, extra) {
+  await withPage(async ({ page, instance, consoleErrors }) => {
+    await page.goto(`${instance.baseUrl}/agents`, { waitUntil: "networkidle" });
+    await waitReady(page);
+    await page.getByRole("heading", { name: "agents" }).waitFor();
+    await capture(page, instance, "agents-before", { consoleErrors: [...consoleErrors] });
+    await page.getByRole("tab", { name: new RegExp(`^${id}\\b`) }).click();
+    const box = page.getByRole("textbox", { name: "prompt", exact: true });
+    const current = await box.inputValue();
+    await box.fill(`${current.trimEnd()}\n\n${extra}\n`);
+    await capture(page, instance, "agents-edit", { consoleErrors: [...consoleErrors] });
+    await page.getByRole("button", { name: "save", exact: true }).click();
+    await page.getByText("saved", { exact: true }).waitFor();
+    const files = await capture(page, instance, "agents-after", { consoleErrors });
+    process.stdout.write(JSON.stringify({ ok: true, url: page.url(), id, ...files }, null, 2) + "\n");
+  });
+}
+
+async function agentsReset(id) {
+  await withPage(async ({ page, instance, consoleErrors }) => {
+    await page.goto(`${instance.baseUrl}/agents`, { waitUntil: "networkidle" });
+    await waitReady(page);
+    await page.getByRole("heading", { name: "agents" }).waitFor();
+    await page.getByRole("tab", { name: new RegExp(`^${id}\\b`) }).click();
+    await capture(page, instance, "agents-reset-before", { consoleErrors: [...consoleErrors] });
+    await page.getByRole("button", { name: "reset to default" }).click();
+    await page.getByText("restored default").waitFor();
+    const files = await capture(page, instance, "agents-reset-after", { consoleErrors });
+    process.stdout.write(JSON.stringify({ ok: true, url: page.url(), id, ...files }, null, 2) + "\n");
+  });
+}
+
+async function agentsImprove(id, instruction) {
+  await withPage(async ({ page, instance, consoleErrors }) => {
+    await page.goto(`${instance.baseUrl}/agents`, { waitUntil: "networkidle" });
+    await waitReady(page);
+    await page.getByRole("heading", { name: "agents" }).waitFor();
+    await page.getByRole("tab", { name: new RegExp(`^${id}\\b`) }).click();
+    await capture(page, instance, "agents-improve-before", { consoleErrors: [...consoleErrors] });
+    await page.getByLabel("how should this prompt change").fill(instruction);
+    await page.getByRole("button", { name: "improve", exact: true }).click();
+    await page.locator(".formerr, .formok").first().waitFor({ timeout: 30_000 });
+    const files = await capture(page, instance, "agents-improve-after", { consoleErrors });
+    process.stdout.write(JSON.stringify({ ok: true, url: page.url(), id, ...files }, null, 2) + "\n");
+  });
+}
+
 async function contextCreate(title, body) {
   await withPage(async ({ page, instance, consoleErrors }) => {
     await page.goto(`${instance.baseUrl}/context`, { waitUntil: "networkidle" });
@@ -239,6 +286,12 @@ if (cmd === "shot") {
   await rulesCreate(process.argv[3], process.argv[4]);
 } else if (cmd === "context-create") {
   await contextCreate(process.argv[3], process.argv[4]);
+} else if (cmd === "agents-save") {
+  await agentsSave(process.argv[3], process.argv[4]);
+} else if (cmd === "agents-reset") {
+  await agentsReset(process.argv[3]);
+} else if (cmd === "agents-improve") {
+  await agentsImprove(process.argv[3], process.argv[4]);
 } else if (cmd === "job-thumb") {
   await jobThumb(process.argv[3], process.argv[4]);
 } else if (cmd === "job-merge-intent") {
@@ -255,7 +308,7 @@ if (cmd === "shot") {
   await ruleDisable(process.argv[3]);
 } else {
   process.stderr.write(
-    "usage: browser.mjs shot|rules-create|context-create|job-thumb|job-merge-intent|job-learn|job-should-be-rule|learning-accept|rule-promote|rule-disable ...\n",
+    "usage: browser.mjs shot|rules-create|context-create|agents-save|agents-reset|agents-improve|job-thumb|job-merge-intent|job-learn|job-should-be-rule|learning-accept|rule-promote|rule-disable ...\n",
   );
   process.exit(2);
 }

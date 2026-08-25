@@ -93,6 +93,7 @@ func withGegenlesenApp(
     mutate: (inout GegenlesenConfig) -> Void = { _ in },
     startQueue: Bool = false,
     docker: any DockerExecuting = NoopDocker(),
+    promptImprover: (any PromptImproving)? = FakePromptImprover(),
     _ body: (Application) async throws -> Void
 ) async throws {
     let dataDir = FileManager.default.temporaryDirectory
@@ -114,8 +115,19 @@ func withGegenlesenApp(
             startQueue: startQueue,
             skipAgent: true,
             embedder: HashEmbeddingClient(),
-            configFileURL: configFileURL
+            configFileURL: configFileURL,
+            promptImprover: promptImprover
         )
         try await body(app)
+    }
+}
+
+struct FakePromptImprover: PromptImproving {
+    var result: String?
+
+    func improve(model: String, currentPrompt: String, instruction: String) async throws -> String {
+        if let result { return result }
+        return currentPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            + "\n\nIMPROVED:\n\(instruction)\n"
     }
 }
