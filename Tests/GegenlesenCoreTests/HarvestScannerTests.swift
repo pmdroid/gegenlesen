@@ -151,6 +151,45 @@ struct HarvestPipelineTests {
     }
 
     @Test
+    func successfulHarvestClearsLeftoverNeedsRejudge() async throws {
+        try await withPackedHarvest { store, firstID in
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: citedHarvestJSON),
+                suggestionJudge: FailedSuggestionJudge(),
+                model: "none"
+            ).run(jobID: firstID)
+            try await store.insertLearning(
+                Learning(
+                    kind: .context,
+                    status: .needsRejudge,
+                    title: "Stale quarantined draft",
+                    body: "from a timed out harvest",
+                    payloadJSON: #"{"judged":false,"source":"harvest"}"#
+                )
+            )
+            let secondID = JobID("ffffffff-ffff-4fff-8fff-ffffffffffff")
+            try await enqueueHarvestCopy(store: store, from: firstID, to: secondID)
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: citedHarvestJSON),
+                suggestionJudge: KeepingSuggestionJudge(),
+                model: "none"
+            ).run(jobID: secondID)
+            let leftover = try await store.listLearnings(status: .needsRejudge)
+            #expect(leftover.isEmpty)
+            let pending = try await store.listLearnings(status: .pending)
+            #expect(pending.contains { $0.title.contains("project logger") })
+            #expect(pending.contains { $0.title.contains("CI is optional") })
+            #expect(!pending.contains { $0.title == "Stale quarantined draft" })
+            let dismissed = try await store.listLearnings(status: .dismissed)
+            #expect(dismissed.contains { $0.title == "Stale quarantined draft" })
+        }
+    }
+
+    @Test
     func dismissedHarvestDoesNotReappear() async throws {
         try await withPackedHarvest { store, firstID in
             let pipeline = HarvestPipeline(

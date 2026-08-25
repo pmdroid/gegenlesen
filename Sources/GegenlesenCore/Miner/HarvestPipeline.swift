@@ -56,6 +56,7 @@ public struct HarvestPipeline: Sendable {
             if skipAgent || miner == nil {
                 bundle = hostOnly(scan: scan)
             } else {
+                try await store.appendEvent(jobID: jobID, level: .info, message: "harvest_mining")
                 let result = await miner!.runMiner(
                     jobID: jobID,
                     workspace: Workspace(root: workspaceURL),
@@ -79,7 +80,11 @@ public struct HarvestPipeline: Sendable {
             }
 
             bundle = HarvestFile.cap(HarvestFile.dropUncited(bundle))
+            try await store.appendEvent(jobID: jobID, level: .info, message: "harvest_judging")
             let judged = try await judge(bundle, workspace: workspaceURL, jobID: jobID)
+            if let job = try await store.job(id: jobID), job.status.isTerminal {
+                return
+            }
             let now = Date()
             if judged.failed {
                 let quarantined = try await quarantine(bundle, jobID: jobID, now: now)
@@ -95,18 +100,11 @@ public struct HarvestPipeline: Sendable {
                 try await failHarvest(jobID: jobID, message: "harvest_judge_failed")
                 return
             }
-            try await dismissUnvettedHarvest(now: now)
+            try await dismissHarvest(status: .pending, now: now)
             let counts = try await persist(judged.bundle, jobID: jobID, now: now, judged: judged.judged)
-
-            let indexer = ArchitectureIndexJob(
-                store: store,
-                embedder: embedder,
-                maxChunks: maxChunks,
-                skipAgent: skipAgent,
-                miner: miner,
-                model: model
-            )
-            _ = try? await indexer.run(workspace: Workspace(root: workspaceURL), jobID: jobID)
+            // A later judged harvest is the retry. Leftover timeout drafts
+            // must not keep filling Ledger after this pass succeeds.
+            try await dismissHarvest(status: .needsRejudge, now: now)
 
             try await store.appendEvent(
                 jobID: jobID,
@@ -120,6 +118,10 @@ public struct HarvestPipeline: Sendable {
                 ])
             )
             _ = try await store.finishJob(id: jobID, status: .succeeded)
+
+            // File-walk embeddings on a large harvest tree can occupy the only
+            // job worker for hours. Harvest already persisted learnings; the
+            // next review indexes the tree. Do not block harvest on it.
         } catch {
             _ = try await store.finishJob(
                 id: jobID,
@@ -466,9 +468,9 @@ public struct HarvestPipeline: Sendable {
         )
     }
 
-    private func dismissUnvettedHarvest(now: Date) async throws {
-        let pending = try await store.listLearnings(status: .pending)
-        for item in pending {
+    private func dismissHarvest(status: LearningStatus, now: Date) async throws {
+        let items = try await store.listLearnings(status: status)
+        for item in items {
             guard item.payloadJSON?.contains("\"source\":\"harvest\"") == true else { continue }
             var next = item
             next.status = .dismissed
