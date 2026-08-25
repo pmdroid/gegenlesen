@@ -206,6 +206,27 @@ struct ContextLearningsMetricsTests {
     }
 
     @Test
+    func restoreNeedsRejudgeSendsToInbox() async throws {
+        try await withGegenlesenApp { app in
+            let item = Learning(
+                kind: .rule,
+                status: .needsRejudge,
+                title: "Use the project logger",
+                body: "Do not print secrets.",
+                payloadJSON: #"{"source":"harvest","judged":false}"#
+            )
+            try await app.gegenlesenStore.insertLearning(item)
+            try await app.testing().test(.POST, "/api/learnings/\(item.id)/restore") { res async throws in
+                #expect(res.status == .ok)
+                let body = try jsonObject(res)
+                #expect(body["status"] as? String == "pending")
+            }
+            let restored = try #require(try await app.gegenlesenStore.learning(id: item.id))
+            #expect(restored.status == .pending)
+        }
+    }
+
+    @Test
     func acceptingRuleLearningEnablesHandwrittenRule() async throws {
         try await withGegenlesenApp { app in
             let item = Learning(

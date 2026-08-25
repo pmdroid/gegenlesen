@@ -84,7 +84,9 @@ export function LearningsPage() {
         <>
           <h2>needs rejudge</h2>
           <div className="neverapply">
-            miner or suggestion judge failed — not in the ordinary inbox, not accepted
+            Harvest suggestion judge failed or timed out, so these drafts never
+            entered the inbox. Send to inbox to accept them yourself, or dismiss.
+            Re-running harvest retries the judge.
           </div>
           {rejudgeItems.map((item) => (
             <div className="learn" key={item.id}>
@@ -96,6 +98,14 @@ export function LearningsPage() {
               </div>
               <div className="ctx">{item.body}</div>
               <div className="formrow">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={restore.isPending}
+                  onClick={() => restore.mutate(item.id)}
+                >
+                  send to inbox
+                </button>
                 <button
                   type="button"
                   className="btn"

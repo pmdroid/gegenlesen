@@ -72,6 +72,12 @@ enum LearningsRoute {
 
     static func restore(_ req: Request) async throws -> LearningDTO {
         var item = try await requireLearning(req)
+        if item.status == .needsRejudge {
+            item.status = .pending
+            item.resolvedAt = nil
+            try await req.application.gegenlesenStore.updateLearning(item)
+            return LearningDTO(learning: item)
+        }
         if item.status != .dismissed {
             throw APIError.conflict("learning is already \(item.status.rawValue)")
         }
