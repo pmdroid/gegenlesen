@@ -1,0 +1,8 @@
+{
+  "name": "verify-gegenlesen",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
