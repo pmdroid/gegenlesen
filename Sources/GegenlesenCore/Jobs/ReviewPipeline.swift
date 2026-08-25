@@ -355,7 +355,7 @@ public struct ReviewPipeline: Sendable {
             detFindings.append(finding)
         }
 
-        let persist = carried + detFindings
+        let persist = try await applyOperatorSuppressions(carried + detFindings, jobID: jobID)
         if !persist.isEmpty {
             try await store.insertParsedFindings(persist)
         }
@@ -439,8 +439,9 @@ public struct ReviewPipeline: Sendable {
             }
             return collapsed
         }
-        if !reviewFindings.isEmpty {
-            try await store.insertParsedFindings(reviewFindings)
+        let suppressedReview = try await applyOperatorSuppressions(reviewFindings, jobID: jobID)
+        if !suppressedReview.isEmpty {
+            try await store.insertParsedFindings(suppressedReview)
         }
         if review.failed {
             let detail = review.errorMessage ?? ReviewFailureClass.reviewerFailed.rawValue
@@ -533,8 +534,9 @@ public struct ReviewPipeline: Sendable {
         let persisted = mechanical.map { finding in
             byID[finding.id] ?? finding
         }
-        try await store.updateFindings(persisted)
-        JudgeHandoff.persistPostJudge(persisted, blobs: store.blobs, jobID: jobID)
+        let labeled = try await applyOperatorSuppressions(persisted, jobID: jobID)
+        try await store.updateFindings(labeled)
+        JudgeHandoff.persistPostJudge(labeled, blobs: store.blobs, jobID: jobID)
         _ = try await store.apply(jobID: jobID, event: .judgeFinished)
         try await store.appendEvent(jobID: jobID, level: .info, message: "succeeded")
         try await persistRisk(
@@ -601,6 +603,15 @@ public struct ReviewPipeline: Sendable {
             copy.jobID = jobID
             return copy
         }
+    }
+
+    private func applyOperatorSuppressions(_ findings: [Finding], jobID: JobID) async throws -> [Finding] {
+        guard !findings.isEmpty else { return findings }
+        let repository = try await store.job(id: jobID)?.repository
+        guard let repository, RepositoryName.normalize(repository) != nil else { return findings }
+        let suppressed = try await store.suppressedFingerprints(repository: repository)
+        guard !suppressed.isEmpty else { return findings }
+        return findings.map { OperatorSuppression.apply($0, suppressed: suppressed) }
     }
 
     private func finding(from draft: FindingDraft, jobID: JobID, now: Date) -> Finding {

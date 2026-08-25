@@ -95,17 +95,19 @@ struct FindingsRouteTests {
                 let rule = try jsonObject(res)
                 #expect(rule["enabled"] as? Bool == false)
                 #expect(rule["provenance"] as? String == "suggested")
-                #expect(rule["kind"] as? String == "semantic")
+                #expect(rule["kind"] as? String == "deterministic")
                 #expect(rule["title"] as? String == finding.title)
                 let globs = try #require(rule["path_globs"] as? [String])
                 #expect(globs == ["**/*.swift"])
                 let languages = try #require(rule["languages"] as? [String])
                 #expect(languages == ["swift"])
                 let payload = try #require(rule["payload"] as? [String: Any])
-                let instruction = try #require(payload["instruction"] as? String)
-                #expect(instruction.contains(finding.title))
-                #expect(instruction.contains(finding.message))
-                #expect(instruction.contains("ban print in Auth"))
+                #expect(payload["checker"] as? String == "regex")
+                #expect(
+                    payload["pattern"] as? String
+                        == NSRegularExpression.escapedPattern(for: "print(\"token\")")
+                )
+                #expect(payload["message"] as? String == finding.message)
             }
 
             let again = try await postFeedback(
@@ -120,10 +122,13 @@ struct FindingsRouteTests {
                 let rules = try #require(body["rules"] as? [[String: Any]])
                 #expect(rules.filter { $0["id"] as? String == ruleID }.count == 1)
                 #expect(rules.filter { ($0["provenance"] as? String) == "suggested" }.count == 1)
-                let instruction = try #require(
-                    (rules.first?["payload"] as? [String: Any])?["instruction"] as? String
+                let match = try #require(rules.first { $0["id"] as? String == ruleID })
+                let payload = try #require(match["payload"] as? [String: Any])
+                #expect(payload["checker"] as? String == "regex")
+                #expect(
+                    payload["pattern"] as? String
+                        == NSRegularExpression.escapedPattern(for: "print(\"token\")")
                 )
-                #expect(instruction.contains("still ban print"))
             }
         }
     }
@@ -141,8 +146,34 @@ struct FindingsRouteTests {
             let ruleID = try #require(try jsonObject(res)["suggested_rule_id"] as? String)
             try await app.testing().test(.GET, "/api/rules/\(ruleID)") { res async throws in
                 let rule = try jsonObject(res)
+                #expect(rule["kind"] as? String == "deterministic")
                 #expect(rule["languages"] as? [String] == ["*"])
                 #expect(rule["path_globs"] as? [String] == ["**/*"])
+            }
+        }
+    }
+
+    @Test
+    func shouldBeRuleMultilineSnippetStaysSemantic() async throws {
+        try await withGegenlesenApp { app in
+            let finding = try await seedFinding(
+                app,
+                snippet: "print(\"a\")\nprint(\"b\")"
+            )
+            let res = try await postFeedback(
+                app,
+                finding.id.rawValue,
+                json: #"{"verdict":"should_be_rule","comment":"ban print"}"#
+            )
+            #expect(res.status == .created)
+            let ruleID = try #require(try jsonObject(res)["suggested_rule_id"] as? String)
+            try await app.testing().test(.GET, "/api/rules/\(ruleID)") { res async throws in
+                let rule = try jsonObject(res)
+                #expect(rule["kind"] as? String == "semantic")
+                let payload = try #require(rule["payload"] as? [String: Any])
+                let instruction = try #require(payload["instruction"] as? String)
+                #expect(instruction.contains(finding.title))
+                #expect(instruction.contains("ban print"))
             }
         }
     }
@@ -264,6 +295,7 @@ private let feedbackKeys: Set<String> = [
 private func seedFinding(
     _ app: Application,
     filePath: String? = "Sources/Auth/Session.swift",
+    snippet: String? = "print(\"token\")",
     judgeVerdict: JudgeVerdict? = nil
 ) async throws -> Finding {
     let now = Date()
@@ -291,7 +323,7 @@ private func seedFinding(
         filePath: filePath,
         startLine: 41,
         endLine: 41,
-        snippet: "print(\"token\")",
+        snippet: snippet,
         judgeVerdict: judgeVerdict,
         createdAt: now
     )
