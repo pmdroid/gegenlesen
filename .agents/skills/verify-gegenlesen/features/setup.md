@@ -4,7 +4,7 @@ Setup is Ledger first-run. Without an OpenRouter key the app redirects every rou
 
 ## Sub-features
 
-- `setup-gate` redirects `/`, `/rules`, and `/jobs/:id` to `/setup` when no key is configured.
+- `setup-gate` redirects `/`, `/rules`, `/agents`, and `/jobs/:id` to `/setup` when no key is configured.
 - `setup-first-run` shows heading `set up gegenlesen` and requires a key.
 - `setup-save` persists models and a key, then lands on `/`.
 - `setup-revisit` shows heading `models and key` and lets the key field stay blank.

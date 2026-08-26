@@ -21,6 +21,12 @@ func materializeRunnerConfig(
         return packaged
     }
     if packaged.standardizedFileURL.path == dest.standardizedFileURL.path {
+        try overlayCustomAgents(
+            dataDir: dataDir,
+            dest: dest,
+            fileManager: fileManager,
+            workingDirectory: workingDirectory
+        )
         return dest
     }
     if fileManager.fileExists(atPath: dest.path) {
@@ -28,5 +34,11 @@ func materializeRunnerConfig(
     }
     try fileManager.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
     try fileManager.copyItem(at: packaged, to: dest)
+    try overlayCustomAgents(
+        dataDir: dataDir,
+        dest: dest,
+        fileManager: fileManager,
+        workingDirectory: workingDirectory
+    )
     return dest
 }

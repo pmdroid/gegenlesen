@@ -112,6 +112,21 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             config: config,
             providerEnv: config.providerEnv(from: ProcessInfo.processInfo.environment)
         )
+        let prepareRunner: @Sendable (JobID, String?) async throws -> Void = { jobID, known in
+            let (config, _) = live.snapshot()
+            let repo: String?
+            if let known {
+                repo = known
+            } else {
+                repo = try await store.job(id: jobID)?.repository
+            }
+            try overlayCustomAgents(
+                dataDir: config.dataDir,
+                dest: runnerConfig,
+                workingDirectory: workingDirectory,
+                repository: repo
+            )
+        }
         service.registerJob(
             parameters: ReviewJobParameters.self,
             retryStrategy: .dontRetry
@@ -126,7 +141,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                     providerEnv: providerEnv,
                     schemasDirectory: schemasDirectory,
-                    transcriptWriter: writeJobTranscript(store: store)
+                    transcriptWriter: writeJobTranscript(store: store),
+                    prepareRunnerConfig: prepareRunner
                 )
                 try await ReviewPipeline(
                     store: store,
@@ -153,7 +169,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
-                        schemasDirectory: schemasDirectory
+                        schemasDirectory: schemasDirectory,
+                        prepareRunnerConfig: prepareRunner
                     ),
                     minerModel: config.minerModel,
                     risk: config.risk,
@@ -182,7 +199,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                             providerEnv: providerEnv,
                             schemasDirectory: schemasDirectory,
-                            transcriptWriter: writeJobTranscript(store: store)
+                            transcriptWriter: writeJobTranscript(store: store),
+                            prepareRunnerConfig: prepareRunner
                         ),
                         suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
                             docker: docker,
@@ -191,7 +209,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                             providerEnv: providerEnv,
                             schemasDirectory: schemasDirectory,
-                            transcriptWriter: writeJobTranscript(store: store)
+                            transcriptWriter: writeJobTranscript(store: store),
+                            prepareRunnerConfig: prepareRunner
                         ),
                         model: config.minerModel,
                         embedder: embedder,
@@ -208,7 +227,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
-                        transcriptWriter: writeJobTranscript(store: store)
+                        transcriptWriter: writeJobTranscript(store: store),
+                        prepareRunnerConfig: prepareRunner
                     ),
                     suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
                         docker: docker,
@@ -217,7 +237,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
-                        transcriptWriter: writeJobTranscript(store: store)
+                        transcriptWriter: writeJobTranscript(store: store),
+                        prepareRunnerConfig: prepareRunner
                     ),
                     model: config.minerModel,
                     embedder: embedder,

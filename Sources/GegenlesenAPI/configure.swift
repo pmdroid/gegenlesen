@@ -16,7 +16,8 @@ func configure(
     startQueue: Bool = true,
     skipAgent: Bool? = nil,
     embedder: (any EmbeddingClient)? = nil,
-    configFileURL: URL? = nil
+    configFileURL: URL? = nil,
+    promptImprover: (any PromptImproving)? = nil
 ) async throws {
     try BindPolicy.requireLoopbackOrAllowRemote(
         bind: config.bind,
@@ -63,6 +64,17 @@ func configure(
         embedder: resolvedEmbedder
     )
     app.gegenlesenJobs = runtime
+    if let promptImprover {
+        app.gegenlesenPromptImprover = promptImprover
+    } else if skip {
+        app.gegenlesenPromptImprover = DisabledPromptImprover()
+    } else {
+        app.gegenlesenPromptImprover = OpenRouterChat(resolveKey: {
+            if let key = app.gegenlesenConfig.openrouterApiKey, !key.isEmpty { return key }
+            let env = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"] ?? ""
+            return env.isEmpty ? nil : env
+        })
+    }
     app.lifecycle.use(JobRuntimeLifecycle())
     if startQueue {
         runtime.start()
@@ -89,6 +101,7 @@ func configure(
 
     SettingsRoute.register(app)
     ModelsRoute.register(app)
+    AgentsRoute.register(app)
 
     let rulesDir = URL(fileURLWithPath: app.directory.workingDirectory, isDirectory: true)
         .appendingPathComponent("rules", isDirectory: true)
@@ -159,4 +172,22 @@ extension Application {
         get { storage[GegenlesenEmbedderKey.self]?.client }
         set { storage[GegenlesenEmbedderKey.self] = GegenlesenEmbedderBox(client: newValue) }
     }
+
+    var gegenlesenPromptImprover: any PromptImproving {
+        get {
+            guard let value = storage[GegenlesenPromptImproverKey.self] else {
+                fatalError("PromptImproving missing; call configure(_:config:) first")
+            }
+            return value.client
+        }
+        set { storage[GegenlesenPromptImproverKey.self] = GegenlesenPromptImproverBox(client: newValue) }
+    }
+}
+
+private struct GegenlesenPromptImproverBox: Sendable {
+    var client: any PromptImproving
+}
+
+private struct GegenlesenPromptImproverKey: StorageKey {
+    typealias Value = GegenlesenPromptImproverBox
 }

@@ -15,6 +15,10 @@ import type {
   Rule,
   RuleListResponse,
   RuleUpsert,
+  AgentDTO,
+  AgentImproveRequest,
+  AgentImproveResponse,
+  AgentList,
   OpenRouterModelList,
   SettingsDTO,
   SettingsUpdate,
@@ -88,6 +92,33 @@ export function getSettings(): Promise<SettingsDTO> {
 
 export function putSettings(body: SettingsUpdate): Promise<SettingsDTO> {
   return sendJSON("/api/settings", "PUT", body);
+}
+
+function agentQuery(repository?: string | null): string {
+  if (!repository) return "";
+  return `?repository=${encodeURIComponent(repository)}`;
+}
+
+export function listAgents(repository?: string | null): Promise<AgentList> {
+  return getJSON(`/api/agents${agentQuery(repository)}`);
+}
+
+export function putAgent(
+  id: string,
+  prompt: string,
+  repository?: string | null,
+): Promise<AgentDTO> {
+  return sendJSON(`/api/agents/${id}${agentQuery(repository)}`, "PUT", { prompt, repository: repository ?? null });
+}
+
+export function resetAgent(id: string, repository?: string | null): Promise<AgentDTO> {
+  return sendJSON(`/api/agents/${id}/reset${agentQuery(repository)}`, "POST", {
+    repository: repository ?? null,
+  });
+}
+
+export function improveAgent(id: string, body: AgentImproveRequest): Promise<AgentImproveResponse> {
+  return sendJSON(`/api/agents/${id}/improve${agentQuery(body.repository)}`, "POST", body);
 }
 
 export function listOpenRouterModels(opts: {

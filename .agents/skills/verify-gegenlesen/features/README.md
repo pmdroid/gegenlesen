@@ -15,7 +15,7 @@ This directory is the maintained source for verifying user-facing gegenlesen beh
 - Start every recipe from the baseline unless its preconditions say otherwise.
 - Prefer ARIA roles, accessible names, and wrapping labels over CSS or DOM position.
 - Treat every command as literal.
-- Browser actions go through `drive.sh shot`, `drive.sh rules-create`, `drive.sh context-create`, or the job/learning helpers.
+- Browser actions go through `drive.sh shot`, `drive.sh rules-create`, `drive.sh context-create`, `drive.sh agents-save`, or the job/learning helpers.
 - CLI actions go through `drive.sh cli-review`, `drive.sh harvest`, or `.build/debug/gegenlesen` with `GEGENLESEN_URL` set to the instance `baseUrl`.
 - Restore seeded data after a mutation. Do not remove proof artifacts during cleanup.
 
@@ -49,3 +49,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Setup](./setup.md) covers the first-run key gate and saving models.
 - [CLI review](./cli-review.md) covers `gegenlesen review` and the job it creates in Ledger.
 - [Learnings loop](./learnings.md) covers harvest, thumbs, merge-intent, Learn, suppress on job 2, and `→ rule` promote.
+- [Agents](./agents.md) covers the OpenCode prompt page, save, reset, and skip-agent improve.

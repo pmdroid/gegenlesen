@@ -54,7 +54,7 @@ Ledger has almost no `data-testid`. Prefer role + accessible name, then a wrappi
 | What | Handle |
 | --- | --- |
 | Brand | text `gegenlesen` in the topbar |
-| Nav | links `jobs`, `rules`, `context`, `learnings`, `setup` |
+| Nav | links `jobs`, `rules`, `context`, `learnings`, `agents`, `setup` |
 | API status | text matching `api 127.0.0.1:<port> · <version>` |
 | Jobs filter | buttons `all`, `running`, `queued`, `succeeded`, `failed`; textbox `filter jobs` |
 | Jobs empty | `No jobs yet. In a repo run \`gegenlesen review\`.` |
@@ -78,6 +78,14 @@ Wait for `api 127.0.0.1:` in the topbar before asserting page content. A screens
   --title "verify skill probe" \
   --instruction "Flag print() in production Swift."
 .agents/skills/verify-gegenlesen/drive.sh api GET /api/rules --label rules-persisted
+
+**Edit an agent prompt**
+
+```bash
+.agents/skills/verify-gegenlesen/drive.sh agents-save --id reviewer --text "verify agent override"
+.agents/skills/verify-gegenlesen/drive.sh api GET /api/agents/reviewer --label agent-saved
+.agents/skills/verify-gegenlesen/drive.sh agents-reset --id reviewer
+```
 ```
 
 Landed path is `/rules/<id>` (kebab title, suffix if that id was used even after delete). Then delete that rule through Ledger (`delete` on the editor) or `api DELETE /api/rules/<id>`. Keep the screenshots.
@@ -143,6 +151,10 @@ Undo Ledger mutations (delete the probe rule or note) through the UI or `drive.s
 .agents/skills/verify-gegenlesen/drive.sh shot PATH --label NAME
 .agents/skills/verify-gegenlesen/drive.sh rules-create --title T --instruction I
 .agents/skills/verify-gegenlesen/drive.sh context-create --title T --body B
+.agents/skills/verify-gegenlesen/drive.sh agents-save --id ID --text TEXT
+.agents/skills/verify-gegenlesen/drive.sh agents-reset --id ID
+.agents/skills/verify-gegenlesen/drive.sh agents-improve --id ID --instruction TEXT
+.agents/skills/verify-gegenlesen/drive.sh agents-reject --id ID
 .agents/skills/verify-gegenlesen/drive.sh regex-rule-create --title T --pattern P
 .agents/skills/verify-gegenlesen/drive.sh harvest
 .agents/skills/verify-gegenlesen/drive.sh cli-review [--fresh] [--keep] [--advance-base] [--probe] [--label NAME]
