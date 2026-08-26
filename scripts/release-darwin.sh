@@ -20,7 +20,7 @@
 # Env:
 #   CODESIGN_IDENTITY          Override identity
 #   GEGENLESEN_SIGN_ADHOC=1    Same as --adhoc
-#   NOTARY_KEYCHAIN_PROFILE    Default gegenlesen-notarize
+#   NOTARY_KEYCHAIN_PROFILE    Default barkvisor-notarize
 #   APPLE_ID APPLE_TEAM_ID NOTARY_PASSWORD
 #   NOTARY_KEY NOTARY_KEY_ID NOTARY_ISSUER   App Store Connect API key
 #
@@ -158,7 +158,7 @@ notary_auth() {
   elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${NOTARY_PASSWORD:-}" ]]; then
     echo --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$NOTARY_PASSWORD"
   else
-    echo --keychain-profile "${NOTARY_KEYCHAIN_PROFILE:-gegenlesen-notarize}"
+    echo --keychain-profile "${NOTARY_KEYCHAIN_PROFILE:-barkvisor-notarize}"
   fi
 }
 
@@ -171,7 +171,7 @@ ensure_notary() {
 error: notary credentials missing. Gatekeeper will keep blocking downloads.
 
 One-time:
-  xcrun notarytool store-credentials ${NOTARY_KEYCHAIN_PROFILE:-gegenlesen-notarize} \\
+  xcrun notarytool store-credentials ${NOTARY_KEYCHAIN_PROFILE:-barkvisor-notarize} \\
     --apple-id <apple-id> --team-id W363QN58YY
 
 Create an app-specific password at https://appleid.apple.com (Sign-In and Security).
