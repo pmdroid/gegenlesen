@@ -1,0 +1,9 @@
+{
+  "verdicts": [
+    {
+      "finding_id": "f1",
+      "verdict": "keep",
+      "rationale": "Real issue with evidence."
+    }
+  ]
+}

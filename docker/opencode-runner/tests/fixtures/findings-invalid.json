@@ -1,0 +1,13 @@
+{
+  "findings": [
+    {
+      "title": "Bad severity",
+      "message": "oops",
+      "severity": "critical",
+      "file_path": "src/http.py",
+      "start_line": 0,
+      "end_line": 1,
+      "snippet": "x"
+    }
+  ]
+}

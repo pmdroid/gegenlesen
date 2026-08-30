@@ -59,6 +59,12 @@ RUN set -eux; \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
+COPY acp-runner.mjs lib/ tests/ /opt/gegenlesen/acp-runner/
+RUN chmod 0755 /opt/gegenlesen/acp-runner/acp-runner.mjs \
+    && ln -sf /opt/gegenlesen/acp-runner/acp-runner.mjs /usr/local/bin/acp-runner \
+    && node /opt/gegenlesen/acp-runner/tests/validate.test.mjs \
+    && node /opt/gegenlesen/acp-runner/tests/transcript.test.mjs
+
 COPY opencode.json /home/gegenlesen/.config/opencode/opencode.json
 COPY agents/ /home/gegenlesen/.config/opencode/agents/
 
