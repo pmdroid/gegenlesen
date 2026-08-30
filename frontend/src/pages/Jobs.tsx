@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { isTerminal, type JobListItem, type JobStatus } from "../api";
 import { listJobs, listLearnings, listRepositories } from "../client";
 import { PipelineRail } from "../components/PipelineRail";
+import { reviewSlots, SlotBadges } from "../components/SlotBadges";
 import { usePullNumbers } from "../github";
 import { displayJobTitle, findingCounts, pullMapKey, shortSHA, statusClass } from "../pipeline";
 
@@ -151,6 +152,7 @@ export function JobsPage() {
                 ) : null}
               </div>
               {job.status !== "failed" && job.status !== "cancelled" ? <PipelineRail status={job.status} /> : null}
+              <SlotBadges slots={reviewSlots(job)} compact />
               <div className="pipe" style={{ borderBottom: 0 }}>
                 {jobLine(job)}
                 {job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}

@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 import type { OpenRouterModel } from "../api";
+import { ENGINE_LABELS, modelPlaceholder, type EngineId } from "../engines";
 
 type Props = {
   label: string;
+  engine: EngineId;
   value: string;
   onChange: (id: string) => void;
   models: OpenRouterModel[];
   suggestions: OpenRouterModel[];
   disabled: boolean;
   placeholder: string;
+  error?: string | null;
 };
 
 function matches(model: OpenRouterModel, q: string): boolean {
@@ -19,12 +22,14 @@ function matches(model: OpenRouterModel, q: string): boolean {
 
 export function ModelPicker({
   label,
+  engine,
   value,
   onChange,
   models,
   suggestions,
   disabled,
   placeholder,
+  error,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -34,6 +39,24 @@ export function ModelPicker({
     const pool = query ? models : suggestions.length ? suggestions : models;
     return pool.filter((model) => matches(model, query)).slice(0, 40);
   }, [models, suggestions, q]);
+
+  if (engine !== "opencode") {
+    return (
+      <label className="picker">
+        {label}
+        <input
+          disabled={disabled}
+          value={value}
+          placeholder={placeholder || modelPlaceholder(engine)}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {value ? <div className="picker-id">{ENGINE_LABELS[engine]} · {value.trim()}</div> : null}
+        {error ? <div className="formerr">{error}</div> : null}
+      </label>
+    );
+  }
 
   return (
     <label className="picker">
@@ -55,6 +78,7 @@ export function ModelPicker({
         }}
       />
       {value ? <div className="picker-id">{value}</div> : null}
+      {error ? <div className="formerr">{error}</div> : null}
       {open && !disabled ? (
         <div className="picker-menu">
           {!q.trim() && suggestions.length > 0 ? <div className="picker-hint">ranked by OpenRouter</div> : null}
