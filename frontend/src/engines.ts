@@ -26,8 +26,9 @@ export function normalizeEngine(raw: string | null | undefined): EngineId {
 }
 
 export function formatSlotBadge(engine: string | null | undefined, model: string | null | undefined): string {
-  const e = normalizeEngine(engine);
-  const label = ENGINE_LABELS[e];
+  const raw = (engine ?? "").trim();
+  const known = (ENGINE_IDS as readonly string[]).includes(raw);
+  const label = known ? ENGINE_LABELS[raw as EngineId] : raw || "unknown";
   const m = (model ?? "").trim();
   return m ? `${label} · ${m}` : label;
 }
@@ -40,8 +41,18 @@ export function modelPlaceholder(engine: EngineId): string {
 export function validateModelForEngine(engine: EngineId, model: string): string | null {
   const trimmed = model.trim();
   if (!trimmed) return "model is required";
-  if (engine === "opencode" && !trimmed.includes("/")) {
-    return "OpenCode models use provider/model form, e.g. openrouter/…";
+  if (engine === "opencode") {
+    if (!trimmed.includes("/")) {
+      return "OpenCode models use provider/model form, e.g. openrouter/…";
+    }
+    return null;
+  }
+  if (trimmed.startsWith("openrouter/") || trimmed.includes("/")) {
+    return "OpenRouter-style models belong on the OpenCode engine";
   }
   return null;
+}
+
+export function reconcileModelForEngine(engine: EngineId, model: string): string {
+  return validateModelForEngine(engine, model) ? "" : model;
 }

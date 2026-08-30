@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { OpenRouterModel } from "../api";
-import { modelPlaceholder, type EngineId } from "../engines";
+import { ENGINE_LABELS, modelPlaceholder, type EngineId } from "../engines";
 
 type Props = {
   label: string;
@@ -52,7 +52,7 @@ export function ModelPicker({
           autoComplete="off"
           onChange={(event) => onChange(event.target.value)}
         />
-        {value ? <div className="picker-id">{engine} · {value.trim()}</div> : null}
+        {value ? <div className="picker-id">{ENGINE_LABELS[engine]} · {value.trim()}</div> : null}
         {error ? <div className="formerr">{error}</div> : null}
       </label>
     );

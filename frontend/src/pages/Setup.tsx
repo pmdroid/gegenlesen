@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import type { RiskMode } from "../api";
 import { getSettings, listOpenRouterModels, putSettings } from "../client";
 import { EnginePicker } from "../components/EnginePicker";
-import { ENGINE_IDS, modelPlaceholder, normalizeEngine, validateModelForEngine, type EngineId } from "../engines";
+import { ENGINE_IDS, modelPlaceholder, normalizeEngine, reconcileModelForEngine, validateModelForEngine, type EngineId } from "../engines";
 import { ModelPicker } from "./ModelPicker";
 
 const APPETITE = [
@@ -239,7 +239,15 @@ export function SetupPage() {
         {catalog.isFetching ? <div className="picker-hint">loading OpenRouter models…</div> : null}
         {catalogError ? <div className="formerr">{catalogError}</div> : null}
         <div className="slot-setup">
-          <EnginePicker label="Reviewer A engine" value={engineA} onChange={setEngineA} disabled={!canFetch} />
+          <EnginePicker
+            label="Reviewer A engine"
+            value={engineA}
+            onChange={(next) => {
+              setEngineA(next);
+              setModelA((prev) => reconcileModelForEngine(next, prev));
+            }}
+            disabled={!canFetch}
+          />
           <ModelPicker
             label="Reviewer A model"
             engine={engineA}
@@ -253,7 +261,15 @@ export function SetupPage() {
           />
         </div>
         <div className="slot-setup">
-          <EnginePicker label="Reviewer B engine" value={engineB} onChange={setEngineB} disabled={!canFetch} />
+          <EnginePicker
+            label="Reviewer B engine"
+            value={engineB}
+            onChange={(next) => {
+              setEngineB(next);
+              setModelB((prev) => reconcileModelForEngine(next, prev));
+            }}
+            disabled={!canFetch}
+          />
           <ModelPicker
             label="Reviewer B model"
             engine={engineB}
@@ -267,7 +283,15 @@ export function SetupPage() {
           />
         </div>
         <div className="slot-setup">
-          <EnginePicker label="Judge engine" value={judgeEngine} onChange={setJudgeEngine} disabled={!canFetch} />
+          <EnginePicker
+            label="Judge engine"
+            value={judgeEngine}
+            onChange={(next) => {
+              setJudgeEngine(next);
+              setJudge((prev) => reconcileModelForEngine(next, prev));
+            }}
+            disabled={!canFetch}
+          />
           <ModelPicker
             label="Judge model"
             engine={judgeEngine}
