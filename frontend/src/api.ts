@@ -91,8 +91,17 @@ export interface Limits {
 }
 
 export interface ModelSlots {
+  engine_a: string;
   model_a: string;
+  engine_b: string;
   model_b: string;
+}
+
+export interface ModelSlotsUpdate {
+  engine_a?: string;
+  model_a?: string;
+  engine_b?: string;
+  model_b?: string;
 }
 
 export type RiskMode = "off" | "shadow" | "enforce";
@@ -126,6 +135,7 @@ export interface SettingsDTO {
   bind: string;
   port: number;
   models: ModelSlots;
+  judge_engine: string;
   judge_model: string;
   miner_model: string;
   opencode_image: string;
@@ -136,7 +146,8 @@ export interface SettingsDTO {
 }
 
 export interface SettingsUpdate {
-  models?: ModelSlots;
+  models?: ModelSlotsUpdate;
+  judge_engine?: string;
   judge_model?: string;
   miner_model?: string;
   openrouter_api_key?: string;
@@ -235,8 +246,11 @@ export interface JobListItem {
   scope: JobScope;
   parent_job_id: JobId | null;
   repository: string | null;
+  reviewer_a_engine: string;
   reviewer_a_model_id: string;
+  reviewer_b_engine: string;
   reviewer_b_model_id: string;
+  judge_engine: string;
   judge_model_id: string;
   base_sha: string | null;
   head_sha: string | null;

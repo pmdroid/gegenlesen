@@ -726,7 +726,17 @@ components:
       additionalProperties: false
       required: [model_a, model_b]
       properties:
+        engine_a: { type: string, default: opencode }
         model_a: { type: string }
+        engine_b: { type: string, default: opencode }
+        model_b: { type: string }
+    ModelSlotsUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        engine_a: { type: string }
+        model_a: { type: string }
+        engine_b: { type: string }
         model_b: { type: string }
     RiskMode:
       type: string
@@ -771,11 +781,12 @@ components:
     SettingsDTO:
       type: object
       additionalProperties: false
-      required: [bind, port, models, judge_model, opencode_image, limits, openrouter_configured, risk]
+      required: [bind, port, models, judge_engine, judge_model, opencode_image, limits, openrouter_configured, risk]
       properties:
         bind: { type: string }
         port: { type: integer }
         models: { $ref: "#/components/schemas/ModelSlots" }
+        judge_engine: { type: string }
         judge_model: { type: string }
         opencode_image: { type: string }
         scanner_image: { type: string }
@@ -786,7 +797,8 @@ components:
       type: object
       additionalProperties: false
       properties:
-        models: { $ref: "#/components/schemas/ModelSlots" }
+        models: { $ref: "#/components/schemas/ModelSlotsUpdate" }
+        judge_engine: { type: string }
         judge_model: { type: string }
         openrouter_api_key: { type: string }
         scanner_image: { type: string, description: "Empty string skips the scanner container." }
@@ -909,8 +921,11 @@ components:
         - scope
         - parent_job_id
         - repository
+        - reviewer_a_engine
         - reviewer_a_model_id
+        - reviewer_b_engine
         - reviewer_b_model_id
+        - judge_engine
         - judge_model_id
         - base_sha
         - head_sha
@@ -928,8 +943,11 @@ components:
         scope: { $ref: "#/components/schemas/JobScope" }
         parent_job_id: { type: ["string", "null"], format: uuid }
         repository: { type: ["string", "null"] }
+        reviewer_a_engine: { type: string }
         reviewer_a_model_id: { type: string }
+        reviewer_b_engine: { type: string }
         reviewer_b_model_id: { type: string }
+        judge_engine: { type: string }
         judge_model_id: { type: string }
         base_sha: { type: ["string", "null"] }
         head_sha: { type: ["string", "null"] }

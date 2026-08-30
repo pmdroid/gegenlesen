@@ -27,8 +27,11 @@ enum HarvestRoute {
             scope: .full,
             title: parsed.filename.isEmpty ? "harvest" : "harvest \(parsed.filename)",
             repository: parsed.repository,
+            reviewerAEngine: config.models.engineA,
             reviewerAModelID: config.models.modelA,
+            reviewerBEngine: config.models.engineB,
             reviewerBModelID: config.models.modelB,
+            judgeEngine: config.judgeEngine,
             judgeModelID: config.judgeModel,
             archiveSHA256: ContentHash.sha256(parsed.archive),
             archiveBytes: parsed.archive.count

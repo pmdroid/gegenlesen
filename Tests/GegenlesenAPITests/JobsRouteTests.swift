@@ -361,6 +361,36 @@ struct JobsRouteTests {
     }
 
     @Test
+    func createSnapshotsSlotEnginesAndModels() async throws {
+        try await withGegenlesenApp(mutate: { config in
+            config.models.engineA = "claude"
+            config.models.engineB = "codex"
+            config.judgeEngine = "claude"
+        }) { app in
+            let res = try await postJob(
+                app,
+                archive: try tinyTarGz(),
+                filename: "change.tar.gz",
+                meta: #"{"scope":"full"}"#
+            )
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: bodyData(res))
+            try await app.testing().test(.GET, "/api/jobs/\(accepted.id.rawValue)") { res async throws in
+                #expect(res.status == .ok)
+                let object = try jsonObject(res)
+                #expect(object["reviewer_a_engine"] as? String == "claude")
+                #expect(object["reviewer_b_engine"] as? String == "codex")
+                #expect(object["judge_engine"] as? String == "claude")
+                #expect(object["reviewer_a_model_id"] as? String == GegenlesenConfig.example.models.modelA)
+            }
+            let stored = try #require(try await app.gegenlesenStore.job(id: accepted.id))
+            #expect(stored.reviewerAEngine == "claude")
+            #expect(stored.reviewerBEngine == "codex")
+            #expect(stored.judgeEngine == "claude")
+        }
+    }
+
+    @Test
     func skipAgentPipelineReachesSucceeded() async throws {
         try await withGegenlesenApp(startQueue: true) { app in
             try await seedSucceededHarvest(app.gegenlesenStore, repository: "github.com/gegenlesen/tiny")
@@ -532,7 +562,9 @@ struct JobsRouteTests {
 
 private let jobListKeys: Set<String> = [
     "id", "title", "status", "scope", "parent_job_id", "repository",
-    "reviewer_a_model_id", "reviewer_b_model_id", "judge_model_id",
+    "reviewer_a_engine", "reviewer_a_model_id",
+    "reviewer_b_engine", "reviewer_b_model_id",
+    "judge_engine", "judge_model_id",
     "base_sha", "head_sha", "queue_position", "summary",
     "created_at", "started_at", "finished_at", "error_message", "risk",
 ]

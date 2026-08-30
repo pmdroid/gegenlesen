@@ -1,5 +1,9 @@
 import Foundation
 
+public enum AgentEngineID {
+    public static let opencode = "opencode"
+}
+
 public struct JobTimings: Codable, Sendable, Equatable {
     public var unpackMS: Int?
     public var identifyMS: Int?
@@ -65,8 +69,11 @@ public struct Job: Sendable, Equatable {
     public var parentJobID: JobID?
     public var title: String?
     public var repository: String?
+    public var reviewerAEngine: String
     public var reviewerAModelID: String
+    public var reviewerBEngine: String
     public var reviewerBModelID: String
+    public var judgeEngine: String
     public var judgeModelID: String
     public var baseSHA: String?
     public var headSHA: String?
@@ -92,8 +99,11 @@ public struct Job: Sendable, Equatable {
         parentJobID: JobID? = nil,
         title: String? = nil,
         repository: String? = nil,
+        reviewerAEngine: String = AgentEngineID.opencode,
         reviewerAModelID: String,
+        reviewerBEngine: String = AgentEngineID.opencode,
         reviewerBModelID: String,
+        judgeEngine: String = AgentEngineID.opencode,
         judgeModelID: String,
         baseSHA: String? = nil,
         headSHA: String? = nil,
@@ -118,8 +128,11 @@ public struct Job: Sendable, Equatable {
         self.parentJobID = parentJobID
         self.title = title
         self.repository = repository
+        self.reviewerAEngine = reviewerAEngine
         self.reviewerAModelID = reviewerAModelID
+        self.reviewerBEngine = reviewerBEngine
         self.reviewerBModelID = reviewerBModelID
+        self.judgeEngine = judgeEngine
         self.judgeModelID = judgeModelID
         self.baseSHA = baseSHA
         self.headSHA = headSHA

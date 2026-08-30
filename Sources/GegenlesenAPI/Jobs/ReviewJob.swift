@@ -345,8 +345,11 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             parentJobID: source.id,
             title: "learn \(source.title ?? source.id.rawValue)",
             repository: source.repository,
+            reviewerAEngine: config.models.engineA,
             reviewerAModelID: config.models.modelA,
+            reviewerBEngine: config.models.engineB,
             reviewerBModelID: config.models.modelB,
+            judgeEngine: config.judgeEngine,
             judgeModelID: config.judgeModel
         )
         let spec = MineJobSpec(source: .job, sourceJobID: source.id)

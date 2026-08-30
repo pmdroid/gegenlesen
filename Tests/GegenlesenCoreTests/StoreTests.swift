@@ -10,11 +10,11 @@ struct StoreTests {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
             let first = try await store.appliedMigrationIdentifiers()
-            #expect(first == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk])
+            #expect(first == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines])
 
             let reopened = try Store.open(dataDir: dir)
             let second = try await reopened.appliedMigrationIdentifiers()
-            #expect(second == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk])
+            #expect(second == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines])
         }
     }
 
@@ -177,6 +177,50 @@ struct StoreTests {
                 )
             }
             #expect(slot == "model_a")
+        }
+    }
+
+    @Test
+    func jobSlotEnginesRoundTripAndDefaultToOpencode() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let now = Date()
+            let job = Job(
+                id: JobID("job-engines"),
+                createdAt: now,
+                updatedAt: now,
+                status: .queued,
+                scope: .full,
+                reviewerAEngine: "claude",
+                reviewerAModelID: "a",
+                reviewerBEngine: "codex",
+                reviewerBModelID: "b",
+                judgeEngine: "claude",
+                judgeModelID: "j"
+            )
+            try await store.insertJob(job)
+            let fetched = try #require(try await store.job(id: job.id))
+            #expect(fetched.reviewerAEngine == "claude")
+            #expect(fetched.reviewerBEngine == "codex")
+            #expect(fetched.judgeEngine == "claude")
+
+            try await store.write { db in
+                try db.execute(
+                    sql: """
+                        INSERT INTO jobs (
+                          id, created_at, updated_at, status, scope,
+                          reviewer_a_model_id, reviewer_b_model_id, judge_model_id
+                        ) VALUES (
+                          'job-legacy', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z',
+                          'queued', 'full', 'a', 'b', 'j'
+                        )
+                        """
+                )
+            }
+            let legacy = try #require(try await store.job(id: JobID("job-legacy")))
+            #expect(legacy.reviewerAEngine == AgentEngineID.opencode)
+            #expect(legacy.reviewerBEngine == AgentEngineID.opencode)
+            #expect(legacy.judgeEngine == AgentEngineID.opencode)
         }
     }
 

@@ -3,9 +3,12 @@
   "port": 8080,
   "data_dir": "var",
   "models": {
+    "engine_a": "opencode",
     "model_a": "openrouter/deepseek/deepseek-v4-flash",
+    "engine_b": "opencode",
     "model_b": "openrouter/google/gemini-3.7-flash"
   },
+  "judge_engine": "opencode",
   "judge_model": "openrouter/openai/gpt-5.6-terra",
   "miner_model": "openrouter/openai/gpt-5.6-terra",
   "embeddings": {
