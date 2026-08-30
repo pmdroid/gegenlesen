@@ -1,0 +1,6 @@
+{"ts":"2026-08-29T12:00:00.000Z","dir":"job_log","event":"initialized","protocolVersion":1}
+{"ts":"2026-08-29T12:00:01.000Z","dir":"job_log","event":"session_created","sessionId":"sess-abc"}
+{"ts":"2026-08-29T12:00:02.000Z","dir":"job_log","event":"permission_auto_approved","toolCallId":"tc-1","title":"read_file","optionId":"allow_once"}
+{"ts":"2026-08-29T12:00:03.000Z","dir":"job_log","event":"session_update","kind":"tool_call","toolCallId":"tc-1","title":"read_file","status":"running"}
+{"ts":"2026-08-29T12:00:04.000Z","dir":"job_log","event":"session_update","kind":"agent_text","text":"Reviewing diff..."}
+{"ts":"2026-08-29T12:00:05.000Z","dir":"job_log","event":"prompt_finished","stopReason":"end_turn"}

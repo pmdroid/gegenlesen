@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "id": "f1",
+      "title": "Missing timeout",
+      "message": "HTTP client has no timeout configured.",
+      "severity": "warning",
+      "file_path": "src/http.py",
+      "start_line": 12,
+      "end_line": 14,
+      "snippet": "requests.get(url)"
+    }
+  ]
+}
