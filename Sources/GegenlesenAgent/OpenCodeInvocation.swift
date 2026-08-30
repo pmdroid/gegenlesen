@@ -85,6 +85,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
 
         let known = Set(request.rules.map(\.id))
+        // TODO(#38): dispatch by job.reviewerAEngine once acp-runner lands
         let resultA = await runSlot(
             request,
             slot: .modelA,
@@ -110,6 +111,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             )
         }
 
+        // TODO(#38): dispatch by job.reviewerBEngine once acp-runner lands
         let resultB = await runSlot(
             request,
             slot: .modelB,
@@ -320,6 +322,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
+            // TODO(#38): dispatch by job.judgeEngine once acp-runner lands
             dockerRequest = try judgeDockerRequest(
                 jobID: request.job.id,
                 workspace: request.workspace.root,

@@ -113,8 +113,11 @@ enum CorpusRoute {
             scope: .full,
             parentJobID: parentJobID,
             title: title,
+            reviewerAEngine: config.models.engineA,
             reviewerAModelID: config.models.modelA,
+            reviewerBEngine: config.models.engineB,
             reviewerBModelID: config.models.modelB,
+            judgeEngine: config.judgeEngine,
             judgeModelID: config.judgeModel
         )
         let specURL = req.application.gegenlesenStore.blobs.mineSpecURL(jobID: id.rawValue)

@@ -111,8 +111,11 @@ struct JobListItem: Content {
     var scope: JobScope
     var parentJobID: JobID?
     var repository: String?
+    var reviewerAEngine: String
     var reviewerAModelID: String
+    var reviewerBEngine: String
     var reviewerBModelID: String
+    var judgeEngine: String
     var judgeModelID: String
     var baseSHA: String?
     var headSHA: String?
@@ -128,8 +131,11 @@ struct JobListItem: Content {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
         case repository
+        case reviewerAEngine = "reviewer_a_engine"
         case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
         case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
         case judgeModelID = "judge_model_id"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
@@ -150,8 +156,11 @@ struct JobListItem: Content {
         try container.encode(scope, forKey: .scope)
         try container.encodeNilIfNeeded(parentJobID, forKey: .parentJobID)
         try container.encodeNilIfNeeded(repository, forKey: .repository)
+        try container.encode(reviewerAEngine, forKey: .reviewerAEngine)
         try container.encode(reviewerAModelID, forKey: .reviewerAModelID)
+        try container.encode(reviewerBEngine, forKey: .reviewerBEngine)
         try container.encode(reviewerBModelID, forKey: .reviewerBModelID)
+        try container.encode(judgeEngine, forKey: .judgeEngine)
         try container.encode(judgeModelID, forKey: .judgeModelID)
         try container.encodeNilIfNeeded(baseSHA, forKey: .baseSHA)
         try container.encodeNilIfNeeded(headSHA, forKey: .headSHA)
@@ -172,8 +181,11 @@ struct JobListItem: Content {
             scope: job.scope,
             parentJobID: job.parentJobID,
             repository: job.repository,
+            reviewerAEngine: job.reviewerAEngine,
             reviewerAModelID: job.reviewerAModelID,
+            reviewerBEngine: job.reviewerBEngine,
             reviewerBModelID: job.reviewerBModelID,
+            judgeEngine: job.judgeEngine,
             judgeModelID: job.judgeModelID,
             baseSHA: job.baseSHA,
             headSHA: job.headSHA,
@@ -195,8 +207,11 @@ struct JobDetail: Content {
     var scope: JobScope
     var parentJobID: JobID?
     var repository: String?
+    var reviewerAEngine: String
     var reviewerAModelID: String
+    var reviewerBEngine: String
     var reviewerBModelID: String
+    var judgeEngine: String
     var judgeModelID: String
     var baseSHA: String?
     var headSHA: String?
@@ -214,8 +229,11 @@ struct JobDetail: Content {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
         case repository
+        case reviewerAEngine = "reviewer_a_engine"
         case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
         case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
         case judgeModelID = "judge_model_id"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
@@ -237,8 +255,11 @@ struct JobDetail: Content {
         try container.encode(scope, forKey: .scope)
         try container.encodeNilIfNeeded(parentJobID, forKey: .parentJobID)
         try container.encodeNilIfNeeded(repository, forKey: .repository)
+        try container.encode(reviewerAEngine, forKey: .reviewerAEngine)
         try container.encode(reviewerAModelID, forKey: .reviewerAModelID)
+        try container.encode(reviewerBEngine, forKey: .reviewerBEngine)
         try container.encode(reviewerBModelID, forKey: .reviewerBModelID)
+        try container.encode(judgeEngine, forKey: .judgeEngine)
         try container.encode(judgeModelID, forKey: .judgeModelID)
         try container.encodeNilIfNeeded(baseSHA, forKey: .baseSHA)
         try container.encodeNilIfNeeded(headSHA, forKey: .headSHA)
@@ -267,8 +288,11 @@ struct JobDetail: Content {
             scope: job.scope,
             parentJobID: job.parentJobID,
             repository: job.repository,
+            reviewerAEngine: job.reviewerAEngine,
             reviewerAModelID: job.reviewerAModelID,
+            reviewerBEngine: job.reviewerBEngine,
             reviewerBModelID: job.reviewerBModelID,
+            judgeEngine: job.judgeEngine,
             judgeModelID: job.judgeModelID,
             baseSHA: job.baseSHA,
             headSHA: job.headSHA,

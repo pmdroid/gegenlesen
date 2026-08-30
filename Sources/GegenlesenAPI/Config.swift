@@ -3,12 +3,44 @@ import GegenlesenCore
 import Vapor
 
 struct ModelSlots: Content, Sendable, Equatable {
+    var engineA: String
     var modelA: String
+    var engineB: String
     var modelB: String
 
     enum CodingKeys: String, CodingKey {
+        case engineA = "engine_a"
         case modelA = "model_a"
+        case engineB = "engine_b"
         case modelB = "model_b"
+    }
+
+    init(
+        engineA: String = AgentEngineID.opencode,
+        modelA: String,
+        engineB: String = AgentEngineID.opencode,
+        modelB: String
+    ) {
+        self.engineA = engineA
+        self.modelA = modelA
+        self.engineB = engineB
+        self.modelB = modelB
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engineA = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineA))
+        modelA = try container.decode(String.self, forKey: .modelA)
+        engineB = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineB))
+        modelB = try container.decode(String.self, forKey: .modelB)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(engineA, forKey: .engineA)
+        try container.encode(modelA, forKey: .modelA)
+        try container.encode(engineB, forKey: .engineB)
+        try container.encode(modelB, forKey: .modelB)
     }
 }
 
@@ -159,6 +191,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var port: Int
     var dataDir: String
     var models: ModelSlots
+    var judgeEngine: String
     var judgeModel: String
     /// Harvest, learn, and architecture-card mining. Independent of the findings judge.
     var minerModel: String
@@ -174,6 +207,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case bind, port
         case dataDir = "data_dir"
         case models
+        case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
@@ -189,6 +223,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         port: Int,
         dataDir: String,
         models: ModelSlots,
+        judgeEngine: String = AgentEngineID.opencode,
         judgeModel: String,
         minerModel: String? = nil,
         opencodeImage: String,
@@ -202,6 +237,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.port = port
         self.dataDir = dataDir
         self.models = models
+        self.judgeEngine = judgeEngine
         self.judgeModel = judgeModel
         self.minerModel = Self.resolveMinerModel(minerModel, judgeModel: judgeModel)
         self.opencodeImage = opencodeImage
@@ -223,6 +259,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         port = try container.decode(Int.self, forKey: .port)
         dataDir = try container.decode(String.self, forKey: .dataDir)
         models = try container.decode(ModelSlots.self, forKey: .models)
+        judgeEngine = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .judgeEngine))
         judgeModel = try container.decode(String.self, forKey: .judgeModel)
         minerModel = Self.resolveMinerModel(
             try container.decodeIfPresent(String.self, forKey: .minerModel),
@@ -242,6 +279,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(port, forKey: .port)
         try container.encode(dataDir, forKey: .dataDir)
         try container.encode(models, forKey: .models)
+        try container.encode(judgeEngine, forKey: .judgeEngine)
         try container.encode(judgeModel, forKey: .judgeModel)
         try container.encode(minerModel, forKey: .minerModel)
         try container.encode(opencodeImage, forKey: .opencodeImage)
@@ -373,8 +411,17 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_MODEL_B"], !value.isEmpty {
             next.models.modelB = value
         }
+        if let value = environment["GEGENLESEN_ENGINE_A"], !value.isEmpty {
+            next.models.engineA = value
+        }
+        if let value = environment["GEGENLESEN_ENGINE_B"], !value.isEmpty {
+            next.models.engineB = value
+        }
         if let value = environment["GEGENLESEN_JUDGE_MODEL"], !value.isEmpty {
             next.judgeModel = value
+        }
+        if let value = environment["GEGENLESEN_JUDGE_ENGINE"], !value.isEmpty {
+            next.judgeEngine = value
         }
         if let value = environment["GEGENLESEN_MINER_MODEL"], !value.isEmpty {
             next.minerModel = value
@@ -420,6 +467,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             bind: bind,
             port: port,
             models: models,
+            judgeEngine: judgeEngine,
             judgeModel: judgeModel,
             minerModel: minerModel,
             opencodeImage: opencodeImage,
@@ -440,6 +488,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var bind: String
     var port: Int
     var models: ModelSlots
+    var judgeEngine: String
     var judgeModel: String
     var minerModel: String
     var opencodeImage: String
@@ -450,6 +499,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
+        case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
@@ -481,8 +531,23 @@ struct LimitsSettingsUpdate: Content, Sendable, Equatable {
     }
 }
 
+struct ModelSlotsUpdate: Content, Sendable, Equatable {
+    var engineA: String? = nil
+    var modelA: String? = nil
+    var engineB: String? = nil
+    var modelB: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case engineA = "engine_a"
+        case modelA = "model_a"
+        case engineB = "engine_b"
+        case modelB = "model_b"
+    }
+}
+
 struct SettingsUpdate: Content, Sendable, Equatable {
-    var models: ModelSlots?
+    var models: ModelSlotsUpdate?
+    var judgeEngine: String? = nil
     var judgeModel: String?
     var minerModel: String? = nil
     var openrouterApiKey: String?
@@ -492,6 +557,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case models
+        case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case openrouterApiKey = "openrouter_api_key"
@@ -503,6 +569,11 @@ struct SettingsUpdate: Content, Sendable, Equatable {
 
 private struct GegenlesenConfigKey: StorageKey {
     typealias Value = GegenlesenConfig
+}
+
+private func normalizedEngine(_ raw: String?) -> String {
+    let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return trimmed.isEmpty ? AgentEngineID.opencode : trimmed
 }
 
 private struct GegenlesenConfigFileKey: StorageKey {

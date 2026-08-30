@@ -198,8 +198,11 @@ struct Job: Codable, Sendable, Equatable {
     var scope: JobScope
     var parentJobID: JobID?
     var title: String?
+    var reviewerAEngine: String
     var reviewerAModelID: String
+    var reviewerBEngine: String
     var reviewerBModelID: String
+    var judgeEngine: String
     var judgeModelID: String
     var baseSHA: String?
     var headSHA: String?
@@ -220,8 +223,11 @@ struct Job: Codable, Sendable, Equatable {
         case status, scope
         case parentJobID = "parent_job_id"
         case title
+        case reviewerAEngine = "reviewer_a_engine"
         case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
         case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
         case judgeModelID = "judge_model_id"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
@@ -455,6 +461,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
     var port: Int
     var dataDir: String
     var models: ModelSlots
+    var judgeEngine: String
     var judgeModel: String
     var minerModel: String
     var opencodeImage: String
@@ -465,6 +472,7 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
         case bind, port
         case dataDir = "data_dir"
         case models
+        case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
@@ -474,12 +482,29 @@ struct GegenlesenConfig: Codable, Sendable, Equatable {
 }
 
 struct ModelSlots: Codable, Sendable, Equatable {
+    var engineA: String
     var modelA: String
+    var engineB: String
     var modelB: String
 
     enum CodingKeys: String, CodingKey {
+        case engineA = "engine_a"
         case modelA = "model_a"
+        case engineB = "engine_b"
         case modelB = "model_b"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engineA = Self.normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineA))
+        modelA = try container.decode(String.self, forKey: .modelA)
+        engineB = Self.normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineB))
+        modelB = try container.decode(String.self, forKey: .modelB)
+    }
+
+    private static func normalizedEngine(_ raw: String?) -> String {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "opencode" : trimmed
     }
 }
 
@@ -543,6 +568,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
     var bind: String
     var port: Int
     var models: ModelSlots
+    var judgeEngine: String
     var judgeModel: String
     var minerModel: String
     var opencodeImage: String
@@ -553,6 +579,7 @@ struct SettingsDTO: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case bind, port, models
+        case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
@@ -619,8 +646,11 @@ struct JobListItem: Codable, Sendable, Equatable {
     var scope: JobScope
     var parentJobID: JobID?
     var repository: String?
+    var reviewerAEngine: String
     var reviewerAModelID: String
+    var reviewerBEngine: String
     var reviewerBModelID: String
+    var judgeEngine: String
     var judgeModelID: String
     var baseSHA: String?
     var headSHA: String?
@@ -636,8 +666,11 @@ struct JobListItem: Codable, Sendable, Equatable {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
         case repository
+        case reviewerAEngine = "reviewer_a_engine"
         case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
         case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
         case judgeModelID = "judge_model_id"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"
@@ -684,8 +717,11 @@ struct JobDetail: Codable, Sendable, Equatable {
     var scope: JobScope
     var parentJobID: JobID?
     var repository: String?
+    var reviewerAEngine: String
     var reviewerAModelID: String
+    var reviewerBEngine: String
     var reviewerBModelID: String
+    var judgeEngine: String
     var judgeModelID: String
     var baseSHA: String?
     var headSHA: String?
@@ -703,8 +739,11 @@ struct JobDetail: Codable, Sendable, Equatable {
         case id, title, status, scope
         case parentJobID = "parent_job_id"
         case repository
+        case reviewerAEngine = "reviewer_a_engine"
         case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
         case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
         case judgeModelID = "judge_model_id"
         case baseSHA = "base_sha"
         case headSHA = "head_sha"

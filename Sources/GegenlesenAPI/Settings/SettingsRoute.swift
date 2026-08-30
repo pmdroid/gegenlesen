@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import GegenlesenCore
 import Vapor
 
 enum SettingsRoute {
@@ -17,12 +18,50 @@ enum SettingsRoute {
         let body = try req.content.decode(SettingsUpdate.self)
         var next = req.application.gegenlesenConfig
         if let models = body.models {
-            let a = models.modelA.trimmingCharacters(in: .whitespacesAndNewlines)
-            let b = models.modelB.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !a.isEmpty, !b.isEmpty else {
-                throw APIError.unprocessable("both reviewer models are required")
+            if let rawModelA = models.modelA {
+                let a = rawModelA.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !a.isEmpty else {
+                    throw APIError.unprocessable("reviewer A model is required")
+                }
+                next.models.modelA = a
             }
-            next.models = ModelSlots(modelA: a, modelB: b)
+            if let rawModelB = models.modelB {
+                let b = rawModelB.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !b.isEmpty else {
+                    throw APIError.unprocessable("reviewer B model is required")
+                }
+                next.models.modelB = b
+            }
+            if let rawEngineA = models.engineA {
+                let engine = rawEngineA.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !engine.isEmpty else {
+                    throw APIError.unprocessable("reviewer A engine is required")
+                }
+                guard AgentEngineID.isKnown(engine) else {
+                    throw APIError.unprocessable("unknown engine: \(engine)")
+                }
+                next.models.engineA = engine
+            }
+            if let rawEngineB = models.engineB {
+                let engine = rawEngineB.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !engine.isEmpty else {
+                    throw APIError.unprocessable("reviewer B engine is required")
+                }
+                guard AgentEngineID.isKnown(engine) else {
+                    throw APIError.unprocessable("unknown engine: \(engine)")
+                }
+                next.models.engineB = engine
+            }
+        }
+        if let engine = body.judgeEngine {
+            let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw APIError.unprocessable("judge engine is required")
+            }
+            guard AgentEngineID.isKnown(trimmed) else {
+                throw APIError.unprocessable("unknown engine: \(trimmed)")
+            }
+            next.judgeEngine = trimmed
         }
         if let judge = body.judgeModel {
             let trimmed = judge.trimmingCharacters(in: .whitespacesAndNewlines)

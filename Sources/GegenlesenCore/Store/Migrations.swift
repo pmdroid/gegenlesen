@@ -4,12 +4,14 @@ public enum Migrations {
     public static let v1Initial = "v1_initial"
     public static let v2Repositories = "v2_repositories"
     public static let v3Risk = "v3_risk"
+    public static let v4SlotEngines = "v4_slot_engines"
 
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration(v1Initial, migrate: migrateV1Initial)
         migrator.registerMigration(v2Repositories, migrate: migrateV2Repositories)
         migrator.registerMigration(v3Risk, migrate: migrateV3Risk)
+        migrator.registerMigration(v4SlotEngines, migrate: migrateV4SlotEngines)
         return migrator
     }
 
@@ -190,5 +192,11 @@ public enum Migrations {
     private static func migrateV3Risk(_ db: Database) throws {
         try db.execute(sql: "ALTER TABLE jobs ADD COLUMN risk_verdict TEXT")
         try db.execute(sql: "ALTER TABLE jobs ADD COLUMN risk_json TEXT")
+    }
+
+    private static func migrateV4SlotEngines(_ db: Database) throws {
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN reviewer_a_engine TEXT NOT NULL DEFAULT 'opencode'")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN reviewer_b_engine TEXT NOT NULL DEFAULT 'opencode'")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN judge_engine TEXT NOT NULL DEFAULT 'opencode'")
     }
 }
