@@ -9,6 +9,7 @@ services:
     environment:
       GEGENLESEN_DATA_DIR: ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}
       GEGENLESEN_OPENCODE_IMAGE: ${GEGENLESEN_OPENCODE_IMAGE:-ghcr.io/pmdroid/gegenlesen:runner-main}
+      GEGENLESEN_CLAUDE_RUNNER_IMAGE: ${GEGENLESEN_CLAUDE_RUNNER_IMAGE:-ghcr.io/pmdroid/gegenlesen:claude-runner-main}
       GEGENLESEN_SCANNER_IMAGE: ${GEGENLESEN_SCANNER_IMAGE:-ghcr.io/pmdroid/gegenlesen:scanner-main}
       GEGENLESEN_MINE_TIMEOUT_SEC: ${GEGENLESEN_MINE_TIMEOUT_SEC:-}
       GEGENLESEN_MINER_MODEL: ${GEGENLESEN_MINER_MODEL:-}

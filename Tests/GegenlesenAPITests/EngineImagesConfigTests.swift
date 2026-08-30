@@ -52,4 +52,12 @@ struct EngineImagesConfigTests {
         ])
         #expect(config.runnerImage(for: AgentEngineID.claude) == "local/claude:dev")
     }
+
+    @Test
+    func dockerDefaultsResolveClaudeRunnerFromEnv() {
+        let config = GegenlesenConfig.example.applyingEnvironmentOverrides([
+            "GEGENLESEN_CLAUDE_RUNNER_IMAGE": "ghcr.io/pmdroid/gegenlesen:claude-runner-main",
+        ])
+        #expect(config.resolvedEngineImages()[AgentEngineID.claude] == "ghcr.io/pmdroid/gegenlesen:claude-runner-main")
+    }
 }
