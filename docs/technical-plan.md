@@ -10,6 +10,7 @@ Implementation contract. Other agents and PRs **must** match these types, names,
 | [`../schemas/findings.agent.json`](../schemas/findings.agent.json) | Agent output file |
 | [`../schemas/judge.json`](../schemas/judge.json) | Judge output file |
 | [`../schemas/judge-input.json`](../schemas/judge-input.json) | Host → judge file |
+| [`spike-acp-one-shot.md`](spike-acp-one-shot.md) | Issue #33 ACP spike notes (hardened container one-shot) |
 
 Cross-check: `openapi.yaml` + JSON Schema files are the machine source of truth for JSON. Swift/TS files must decode them 1:1 (`snake_case` on the wire).
 

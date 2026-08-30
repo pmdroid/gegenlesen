@@ -16,7 +16,12 @@ for key in OPENROUTER_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY OPENCODE_API_KEY;
   fi
 done
 if [[ ${#PROVIDER_KEYS[@]} -eq 0 ]]; then
-  echo "set at least one provider API key (agent auth is env-only): OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENCODE_API_KEY" >&2
+  echo "set at least one provider API key (agent auth is env-only): OPENCODE_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY" >&2
+  exit 1
+fi
+
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "runner image not found: $IMAGE (run ./scripts/build-runner.sh first)" >&2
   exit 1
 fi
 
@@ -178,6 +183,7 @@ node "$ROOT/scripts/spike-acp-client.mjs" \
   -e OPENCODE_AUTO_SHARE=false \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
   -e OPENCODE_DISABLE_CLAUDE_CODE=true \
+  -e OPENCODE_EXPERIMENTAL_LSP_TOOL=true \
   -e OPENCODE_CONFIG=/home/gegenlesen/.config/opencode/opencode.json \
   -e OPENCODE_CONFIG_CONTENT="$CONFIG_CONTENT" \
   -e OPENCODE_PERMISSION="$PERMISSION" \
@@ -197,6 +203,27 @@ const parsed = JSON.parse(fs.readFileSync(path, "utf8"));
 if (!Array.isArray(parsed.findings)) {
   console.error("FAIL: findings.json has no findings array");
   process.exit(1);
+}
+if (parsed.findings.length < 2) {
+  console.error("FAIL: expected at least 2 findings, got " + parsed.findings.length);
+  process.exit(1);
+}
+const ruleIds = new Set(parsed.findings.map((finding) => finding.rule_id).filter(Boolean));
+for (const expected of ["no-swallowed-exceptions", "no-mutable-default-args"]) {
+  if (!ruleIds.has(expected)) {
+    console.error("FAIL: missing expected rule_id " + expected);
+    process.exit(1);
+  }
+}
+for (const finding of parsed.findings) {
+  if (!finding.snippet || typeof finding.start_line !== "number" || typeof finding.end_line !== "number") {
+    console.error("FAIL: finding missing snippet or line evidence: " + JSON.stringify(finding));
+    process.exit(1);
+  }
+  if (!finding.file_path || !finding.file_path.includes("token_cache.py")) {
+    console.error("FAIL: finding missing token_cache.py evidence: " + JSON.stringify(finding));
+    process.exit(1);
+  }
 }
 console.error("OK: " + parsed.findings.length + " finding(s) at " + path);
 console.log(JSON.stringify(parsed, null, 2));

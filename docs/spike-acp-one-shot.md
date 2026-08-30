@@ -1,32 +1,41 @@
 # Spike: one-shot ACP run inside the hardened container
 
-Issue #33. Verified 2026-08-29 on macOS (Docker 29.4.0), image built from
+Issue #33. Exercised 2026-08-29 on macOS (Docker 29.4.0), image built from
 `docker/opencode-runner/` (opencode 1.1.25, anomalyco build; bundled bun 1.3.5).
 
 ## Result
 
-opencode's native ACP server (`opencode acp`) completed one review prompt
-end-to-end inside the existing hardened sandbox and wrote a valid
-`/workspace/.gegenlesen/findings.json` itself (2/2 planted defects found,
-verbatim snippets, correct line ranges). `claude-code-acp` was not exercised;
-one working adapter satisfies the spike and opencode is what the runner image
-already ships.
+opencode's native ACP server (`opencode acp`) can complete one review prompt
+end-to-end inside the existing hardened sandbox and write a valid
+`/workspace/.gegenlesen/findings.json` itself. `claude-code-acp` was not
+exercised; one working adapter satisfies the spike and opencode is what the
+runner image already ships.
+
+Verification requires a live run with a valid provider API key (~8 min).
+The post-run gate in `scripts/spike-acp.sh` asserts at least two findings with
+the planted rule IDs, snippets, and line evidence for `src/token_cache.py`.
 
 Reproduce:
 
 ```bash
-OPENROUTER_API_KEY=... ./scripts/spike-acp.sh
+OPENCODE_API_KEY=... ./scripts/spike-acp.sh
 ```
+
+`OPENROUTER_API_KEY` (and other provider keys) follow the same env pass-through
+wiring as production; only `OPENCODE_API_KEY` was proven end-to-end for a full
+successful review during the spike.
 
 `scripts/spike-acp.sh` stages a demo workspace (planted Python defects, rules,
 diff, prompt) and starts the container; `scripts/spike-acp-client.mjs` is a
 dependency-free Node ACP client that talks newline-delimited JSON-RPC to the
-agent through `docker run -i` stdio.
+agent through `docker run -i` stdio. Delete `transcript.jsonl` after the run;
+it may contain redacted-but-sensitive protocol frames.
 
 ## Working invocation
 
-The container flags are byte-for-byte the production set from
-`OpenCodeInvocation.isolatedDockerRequest` — nothing had to be loosened:
+The container flags match the production set from
+`OpenCodeInvocation.isolatedDockerRequest`, plus `-i` for ACP stdio and
+`OPENCODE_EXPERIMENTAL_LSP_TOOL=true` (same as production):
 
 ```bash
 docker run --rm -i --name gegenlesen-acp-spike-$$ \
@@ -44,13 +53,14 @@ docker run --rm -i --name gegenlesen-acp-spike-$$ \
   --cpus 2 --memory 4g --pids-limit 256 \
   --cap-drop ALL --security-opt no-new-privileges \
   --ulimit nproc=256:256 --ulimit nofile=1024:1024 \
-  -e OPENROUTER_API_KEY \
+  -e OPENCODE_API_KEY \
   -e HOME=/home/gegenlesen \
   -e XDG_CACHE_HOME=/home/gegenlesen/.cache \
   -e OPENCODE_DISABLE_AUTOUPDATE=true \
   -e OPENCODE_AUTO_SHARE=false \
   -e OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
   -e OPENCODE_DISABLE_CLAUDE_CODE=true \
+  -e OPENCODE_EXPERIMENTAL_LSP_TOOL=true \
   -e OPENCODE_CONFIG=/home/gegenlesen/.config/opencode/opencode.json \
   -e OPENCODE_CONFIG_CONTENT="$POLICY_JSON" \
   -e OPENCODE_PERMISSION="$PERMISSION_JSON" \
@@ -62,6 +72,13 @@ docker run --rm -i --name gegenlesen-acp-spike-$$ \
 The only deltas versus the `opencode run` path: `-i` (the ACP client owns the
 container's stdin/stdout for JSON-RPC) and `opencode acp` instead of
 `opencode run`.
+
+## Linux workspace ownership
+
+Production runs `DockerRunner.chownWorkspace` before agent containers start.
+The spike skips that step. On Linux hosts where the bind-mounted workspace is
+owned by the invoking user (not uid 1000), run
+`chown -R 1000:1000 "$WORKSPACE"` on the temp workspace before `docker run`.
 
 ## ACP handshake observed
 
@@ -106,7 +123,8 @@ With the production permission policy (config `permission` block seeded via
 server-side: zero `session/request_permission` round-trips across 12 tool calls
 (read x6, execute x2, edit x1, other x3). The spike client still implements the
 handler (answers `allow_always`/`allow_once`) as a fallback for stricter
-policies.
+policies. Any `session/request_permission` frame is logged loudly because
+production needs zero round-trips.
 
 ## Output files and transcript capture
 
@@ -115,7 +133,8 @@ policies.
   file proxying is involved.
 - Full transcript (every JSON-RPC frame both directions + agent stderr) lands
   in `transcript.jsonl`; `agent_message_chunk` updates give live progress that
-  `opencode run --format json` never exposed mid-run.
+  `opencode run --format json` never exposed mid-run. Delete the transcript
+  after the run.
 
 ## Nested-sandbox gotchas / decision notes
 

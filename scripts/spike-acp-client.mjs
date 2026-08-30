@@ -25,8 +25,15 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv);
 if (args.transcript) writeFileSync(args.transcript, "");
 
+function redact(text) {
+  return text
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-REDACTED")
+    .replace(/("api_key"\s*:\s*")[^"]*(")/gi, "$1REDACTED$2")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer REDACTED");
+}
+
 function record(entry) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+  const line = redact(JSON.stringify({ ts: new Date().toISOString(), ...entry }));
   if (args.transcript) appendFileSync(args.transcript, line + "\n");
 }
 
@@ -94,6 +101,7 @@ function handleIncoming(message) {
   if (message.method === "session/request_permission") {
     const option = pickPermissionOption(message.params?.options);
     const title = message.params?.toolCall?.title ?? message.params?.toolCall?.toolCallId ?? "unknown tool";
+    process.stderr.write(`\n*** ACP PERMISSION ROUND-TRIP *** tool=${title} (production needs zero of these)\n`);
     status(`permission requested for ${title}; answering ${option?.optionId ?? "none"}`);
     if (option) {
       send({ jsonrpc: "2.0", id: message.id, result: { outcome: { outcome: "selected", optionId: option.optionId } } });
