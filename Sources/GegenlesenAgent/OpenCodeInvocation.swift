@@ -43,10 +43,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     /// Writable spots on a `--read-only` root. OpenCode writes `~/.cache/opencode/version`
     /// and `~/.config/opencode/package.json` (`opencode run`).
     static let configSeed = "/opt/gegenlesen/opencode"
-    static let homeTmpfs = [
-        "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m",
-        "/home/gegenlesen/.local:rw,nosuid,nodev,uid=1000,gid=1000,size=256m",
-        "/home/gegenlesen/.cache:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
+    static let configTmpfs = [
         "/home/gegenlesen/.config/opencode:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
         "/home/gegenlesen/.config/opencode-state:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
     ]
@@ -491,9 +488,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     ) throws -> DockerRequest {
         let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: defaultAgent)
         let permission = try OpenCodeConfig.permissionJSON()
-        var env: [String: String] = [
-            "HOME": "/home/gegenlesen",
-            "XDG_CACHE_HOME": "/home/gegenlesen/.cache",
+        let env: [String: String] = [
             "OPENCODE_DISABLE_AUTOUPDATE": "true",
             "OPENCODE_AUTO_SHARE": "false",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
@@ -503,11 +498,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             "OPENCODE_CONFIG_CONTENT": policy,
             "OPENCODE_PERMISSION": permission,
         ]
-        for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
-            if let value = providerEnv[key], !value.isEmpty {
-                env[key] = value
-            }
-        }
         // Seed the tmpfs config dir from the sealed bind, then exec. `opencode run`
         // writes package.json next to opencode.json; a RO bind there is EROFS.
         // Message first: `-f` is a yargs array and would swallow a trailing message.
@@ -526,36 +516,22 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         for path in extraFiles where seen.insert(path).inserted {
             argv.append(contentsOf: ["-f", path])
         }
-        var request = DockerRequest(
+        var request = AgentSandbox.dockerRequest(
             name: name,
-            image: image,
-            argv: argv,
-            env: env,
-            network: "gegenlesen-egress",
-            workdir: "/workspace",
-            publishLoopback: nil,
-            user: "1000:1000",
-            readOnly: true,
-            tmpfs: Self.homeTmpfs,
-            binds: [
-                .init(source: workspace.path, dest: "/workspace", readOnly: false),
-                .init(source: runnerConfig.path, dest: Self.configSeed, readOnly: true),
-            ],
+            payload: AgentContainerPayload(
+                image: image,
+                argv: argv,
+                env: env,
+                tmpfs: Self.configTmpfs,
+                binds: [
+                    .init(source: runnerConfig.path, dest: Self.configSeed, readOnly: true),
+                ]
+            ),
+            workspace: workspace,
+            providerEnv: providerEnv,
             cpus: cpus,
             memory: memory,
-            pidsLimit: 256,
-            capDropAll: true,
-            noNewPrivileges: true,
-            ulimitNproc: "256:256",
-            ulimitNofile: "1024:1024",
-            timeout: timeout,
-            injectProviderKeys: true,
-            remove: true,
-            passThroughEnv: [
-                "ANTHROPIC_API_KEY",
-                "OPENAI_API_KEY",
-                "OPENROUTER_API_KEY",
-            ]
+            timeout: timeout
         )
         if let jobID, let livePhase, let writer = transcriptWriter {
             let redactor = SecretRedactor()

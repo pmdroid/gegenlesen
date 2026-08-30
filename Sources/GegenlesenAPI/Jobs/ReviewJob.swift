@@ -133,7 +133,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         ) { params, _ in
             do {
                 let (config, providerEnv) = live.snapshot()
-                let invocation = OpenCodeInvocation(
+                let engine = try AgentEngineRegistry.default.engine(id: AgentEngineRegistry.defaultEngineID)
+                let invocation = engine.makeInvocation(AgentEngineConfiguration(
                     docker: docker,
                     image: config.opencodeImage,
                     runnerConfig: runnerConfig,
@@ -143,7 +144,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     schemasDirectory: schemasDirectory,
                     transcriptWriter: writeJobTranscript(store: store),
                     prepareRunnerConfig: prepareRunner
-                )
+                ))
                 try await ReviewPipeline(
                     store: store,
                     skipAgent: skipAgent,
@@ -163,7 +164,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     retrieveK: config.embeddings.retrieveK,
                     maxChunks: config.embeddings.maxChunks,
                     embedder: embedder,
-                    miner: skipAgent ? nil : OpenCodeInvocation(
+                    miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
@@ -171,7 +172,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         providerEnv: providerEnv,
                         schemasDirectory: schemasDirectory,
                         prepareRunnerConfig: prepareRunner
-                    ),
+                    )),
                     minerModel: config.minerModel,
                     risk: config.risk,
                     requireHarvest: true
@@ -188,11 +189,12 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         ) { params, _ in
             do {
                 let (config, providerEnv) = live.snapshot()
+                let engine = try AgentEngineRegistry.default.engine(id: AgentEngineRegistry.defaultEngineID)
                 if params.spec.source == .harvest {
                     try await HarvestPipeline(
                         store: store,
                         skipAgent: skipAgent,
-                        miner: skipAgent ? nil : OpenCodeInvocation(
+                        miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                             docker: docker,
                             image: config.opencodeImage,
                             runnerConfig: runnerConfig,
@@ -201,8 +203,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             schemasDirectory: schemasDirectory,
                             transcriptWriter: writeJobTranscript(store: store),
                             prepareRunnerConfig: prepareRunner
-                        ),
-                        suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
+                        )),
+                        suggestionJudge: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                             docker: docker,
                             image: config.opencodeImage,
                             runnerConfig: runnerConfig,
@@ -211,7 +213,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             schemasDirectory: schemasDirectory,
                             transcriptWriter: writeJobTranscript(store: store),
                             prepareRunnerConfig: prepareRunner
-                        ),
+                        )),
                         model: config.minerModel,
                         embedder: embedder,
                         maxChunks: config.embeddings.maxChunks
@@ -220,7 +222,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                 try await MineCorpusPipeline(
                     store: store,
                     skipAgent: skipAgent,
-                    miner: skipAgent ? nil : OpenCodeInvocation(
+                    miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
@@ -229,8 +231,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         schemasDirectory: schemasDirectory,
                         transcriptWriter: writeJobTranscript(store: store),
                         prepareRunnerConfig: prepareRunner
-                    ),
-                    suggestionJudge: skipAgent ? nil : OpenCodeInvocation(
+                    )),
+                    suggestionJudge: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
                         runnerConfig: runnerConfig,
@@ -239,7 +241,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         schemasDirectory: schemasDirectory,
                         transcriptWriter: writeJobTranscript(store: store),
                         prepareRunnerConfig: prepareRunner
-                    ),
+                    )),
                     model: config.minerModel,
                     embedder: embedder,
                     maxChunks: config.embeddings.maxChunks
