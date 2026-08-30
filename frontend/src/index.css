@@ -184,6 +184,35 @@ nav a.on { color: var(--ok-fg); border-bottom: 1px solid var(--ok-fg); }
 }
 .setup { max-width: 640px; }
 .setup p { color: var(--fg-muted); max-width: 40rem; }
+.slot-setup {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: end;
+  margin-top: 10px;
+}
+@media (max-width: 640px) {
+  .slot-setup { grid-template-columns: 1fr; }
+}
+.engine-picker select {
+  display: block; width: 100%; margin-top: 4px;
+  background: var(--bg-input); color: var(--fg); border: 1px solid var(--border-strong);
+  border-radius: 3px; padding: 6px 8px; font-family: inherit; font-size: 12.5px;
+}
+.slot-badges {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 6px 0 0; padding: 0 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+.slot-badges.compact { margin-top: 4px; padding-bottom: 4px; }
+.slot-badge {
+  font-size: 11px; color: var(--fg-muted);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 6px; background: var(--bg-raised);
+}
+.slot-badge-label {
+  color: var(--fg-dim); margin-right: 4px; text-transform: uppercase; font-size: 10px;
+}
 .picker { position: relative; }
 .picker-id { color: var(--fg-dim); font-size: 11px; margin-top: 4px; word-break: break-all; }
 .picker-menu {

@@ -3,6 +3,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { RiskMode } from "../api";
 import { getSettings, listOpenRouterModels, putSettings } from "../client";
+import { EnginePicker } from "../components/EnginePicker";
+import { ENGINE_IDS, modelPlaceholder, normalizeEngine, validateModelForEngine, type EngineId } from "../engines";
 import { ModelPicker } from "./ModelPicker";
 
 const APPETITE = [
@@ -37,6 +39,9 @@ export function SetupPage() {
 
   const [modelA, setModelA] = useState("openrouter/deepseek/deepseek-v4-flash");
   const [modelB, setModelB] = useState("openrouter/google/gemini-3.7-flash");
+  const [engineA, setEngineA] = useState<EngineId>("opencode");
+  const [engineB, setEngineB] = useState<EngineId>("opencode");
+  const [judgeEngine, setJudgeEngine] = useState<EngineId>("opencode");
   const [judge, setJudge] = useState("openrouter/openai/gpt-5.6-terra");
   const [miner, setMiner] = useState("openrouter/openai/gpt-5.6-terra");
   const [scannerImage, setScannerImage] = useState("gegenlesen/scanner:0.1.0");
@@ -55,6 +60,9 @@ export function SetupPage() {
     if (!data) return;
     setModelA(data.models.model_a);
     setModelB(data.models.model_b);
+    setEngineA(normalizeEngine(data.models.engine_a));
+    setEngineB(normalizeEngine(data.models.engine_b));
+    setJudgeEngine(normalizeEngine(data.judge_engine));
     setJudge(data.judge_model);
     setMiner(data.miner_model || data.judge_model);
     setScannerImage(data.scanner_image ?? "");
@@ -113,7 +121,13 @@ export function SetupPage() {
   const save = useMutation({
     mutationFn: () =>
       putSettings({
-        models: { model_a: modelA.trim(), model_b: modelB.trim() },
+        models: {
+          engine_a: engineA,
+          model_a: modelA.trim(),
+          engine_b: engineB,
+          model_b: modelB.trim(),
+        },
+        judge_engine: judgeEngine,
         judge_model: judge.trim(),
         miner_model: miner.trim(),
         openrouter_api_key: apiKey.trim() || undefined,
@@ -137,6 +151,23 @@ export function SetupPage() {
     }
     if (!modelA.trim() || !modelB.trim() || !judge.trim() || !miner.trim()) {
       setError("pick both reviewers, a judge, and a miner");
+      return;
+    }
+    for (const [label, engine, model] of [
+      ["Reviewer A", engineA, modelA],
+      ["Reviewer B", engineB, modelB],
+      ["Judge", judgeEngine, judge],
+    ] as const) {
+      const issue = validateModelForEngine(engine, model);
+      if (issue) {
+        setError(`${label}: ${issue}`);
+        return;
+      }
+    }
+    if (!(ENGINE_IDS as readonly string[]).includes(engineA) ||
+        !(ENGINE_IDS as readonly string[]).includes(engineB) ||
+        !(ENGINE_IDS as readonly string[]).includes(judgeEngine)) {
+      setError("pick a known engine for each slot");
       return;
     }
     save.mutate();
@@ -207,35 +238,51 @@ export function SetupPage() {
         </div>
         {catalog.isFetching ? <div className="picker-hint">loading OpenRouter models…</div> : null}
         {catalogError ? <div className="formerr">{catalogError}</div> : null}
-        <ModelPicker
-          label="Reviewer A"
-          value={modelA}
-          onChange={setModelA}
-          models={models}
-          suggestions={suggestions.data?.models ?? []}
-          disabled={!canFetch}
-          placeholder={canFetch ? "type to filter" : "add a key first"}
-        />
-        <ModelPicker
-          label="Reviewer B"
-          value={modelB}
-          onChange={setModelB}
-          models={models}
-          suggestions={suggestions.data?.models ?? []}
-          disabled={!canFetch}
-          placeholder={canFetch ? "type to filter" : "add a key first"}
-        />
-        <ModelPicker
-          label="Judge"
-          value={judge}
-          onChange={setJudge}
-          models={models}
-          suggestions={judgeSuggestions.data?.models ?? []}
-          disabled={!canFetch}
-          placeholder={canFetch ? "type to filter" : "add a key first"}
-        />
+        <div className="slot-setup">
+          <EnginePicker label="Reviewer A engine" value={engineA} onChange={setEngineA} disabled={!canFetch} />
+          <ModelPicker
+            label="Reviewer A model"
+            engine={engineA}
+            value={modelA}
+            onChange={setModelA}
+            models={models}
+            suggestions={suggestions.data?.models ?? []}
+            disabled={!canFetch}
+            placeholder={canFetch ? modelPlaceholder(engineA) : "add a key first"}
+            error={validateModelForEngine(engineA, modelA)}
+          />
+        </div>
+        <div className="slot-setup">
+          <EnginePicker label="Reviewer B engine" value={engineB} onChange={setEngineB} disabled={!canFetch} />
+          <ModelPicker
+            label="Reviewer B model"
+            engine={engineB}
+            value={modelB}
+            onChange={setModelB}
+            models={models}
+            suggestions={suggestions.data?.models ?? []}
+            disabled={!canFetch}
+            placeholder={canFetch ? modelPlaceholder(engineB) : "add a key first"}
+            error={validateModelForEngine(engineB, modelB)}
+          />
+        </div>
+        <div className="slot-setup">
+          <EnginePicker label="Judge engine" value={judgeEngine} onChange={setJudgeEngine} disabled={!canFetch} />
+          <ModelPicker
+            label="Judge model"
+            engine={judgeEngine}
+            value={judge}
+            onChange={setJudge}
+            models={models}
+            suggestions={judgeSuggestions.data?.models ?? []}
+            disabled={!canFetch}
+            placeholder={canFetch ? modelPlaceholder(judgeEngine) : "add a key first"}
+            error={validateModelForEngine(judgeEngine, judge)}
+          />
+        </div>
         <ModelPicker
           label="Miner"
+          engine="opencode"
           value={miner}
           onChange={setMiner}
           models={models}

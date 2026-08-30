@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FindingsTable } from "../components/FindingsTable";
 import { PipelineRail } from "../components/PipelineRail";
+import { reviewSlots, SlotBadges } from "../components/SlotBadges";
 import { TranscriptViewer } from "../components/TranscriptViewer";
 import { isTerminal, type FindingFeedbackRequest } from "../api";
 import { getJob, getJobFeedback, isNotFound, learnFromJob, postFindingFeedback, postRiskLabel } from "../client";
@@ -121,6 +122,7 @@ export function JobDetailPage() {
       {detail.status !== "failed" && detail.status !== "cancelled" ? (
         <PipelineRail status={detail.status} />
       ) : null}
+      <SlotBadges slots={reviewSlots(detail)} />
       <div className="pipe">
         {detail.error_message ? `${detail.error_message} · ` : "det → A ∥ B → judge · "}
         {duration ?? "—"}
