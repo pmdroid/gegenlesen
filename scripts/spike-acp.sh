@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE="${GEGENLESEN_SPIKE_IMAGE:-gegenlesen/opencode-runner:0.1.0}"
-MODEL="${GEGENLESEN_SPIKE_MODEL:-openrouter/google/gemini-3.7-flash}"
+MODEL="${GEGENLESEN_SPIKE_MODEL:-opencode/nemotron-3.5-lightning-free}"
 TIMEOUT_SEC="${GEGENLESEN_SPIKE_TIMEOUT_SEC:-900}"
 LOG_LEVEL="${GEGENLESEN_SPIKE_LOG_LEVEL:-WARN}"
 NETWORK="gegenlesen-egress"

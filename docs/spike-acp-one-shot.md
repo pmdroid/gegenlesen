@@ -19,6 +19,7 @@ Reproduce:
 
 ```bash
 OPENCODE_API_KEY=... ./scripts/spike-acp.sh
+# default model: opencode/nemotron-3.5-lightning-free (override with GEGENLESEN_SPIKE_MODEL)
 ```
 
 `OPENROUTER_API_KEY` (and other provider keys) follow the same env pass-through
