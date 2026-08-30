@@ -196,6 +196,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     /// Harvest, learn, and architecture-card mining. Independent of the findings judge.
     var minerModel: String
     var opencodeImage: String
+    var engineImages: [String: String]
     var scannerImage: String
     var embeddings: EmbeddingsConfig
     var limits: Limits
@@ -211,6 +212,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
+        case engineImages = "engine_images"
         case scannerImage = "scanner_image"
         case embeddings
         case limits
@@ -227,6 +229,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         judgeModel: String,
         minerModel: String? = nil,
         opencodeImage: String,
+        engineImages: [String: String] = [:],
         scannerImage: String = "gegenlesen/scanner:0.1.0",
         embeddings: EmbeddingsConfig = .v1,
         limits: Limits,
@@ -241,6 +244,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.judgeModel = judgeModel
         self.minerModel = Self.resolveMinerModel(minerModel, judgeModel: judgeModel)
         self.opencodeImage = opencodeImage
+        self.engineImages = engineImages
         self.scannerImage = scannerImage
         self.embeddings = embeddings
         self.limits = limits
@@ -266,6 +270,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             judgeModel: judgeModel
         )
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
+        engineImages = try container.decodeIfPresent([String: String].self, forKey: .engineImages) ?? [:]
         scannerImage = try container.decodeIfPresent(String.self, forKey: .scannerImage) ?? "gegenlesen/scanner:0.1.0"
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
@@ -283,6 +288,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(judgeModel, forKey: .judgeModel)
         try container.encode(minerModel, forKey: .minerModel)
         try container.encode(opencodeImage, forKey: .opencodeImage)
+        if !engineImages.isEmpty {
+            try container.encode(engineImages, forKey: .engineImages)
+        }
         try container.encode(scannerImage, forKey: .scannerImage)
         try container.encode(embeddings, forKey: .embeddings)
         try container.encode(limits, forKey: .limits)
@@ -303,6 +311,10 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         judgeModel: "openrouter/openai/gpt-5.6-terra",
         minerModel: "openrouter/openai/gpt-5.6-terra",
         opencodeImage: "gegenlesen/opencode-runner:0.1.0",
+        engineImages: [
+            AgentEngineID.opencode: "gegenlesen/opencode-runner:0.1.0",
+            AgentEngineID.claude: "gegenlesen/claude-runner:0.1.0",
+        ],
         scannerImage: "gegenlesen/scanner:0.1.0",
         limits: .v1
     )
@@ -392,6 +404,30 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         return false
     }
 
+    static let defaultClaudeRunnerImage = "gegenlesen/claude-runner:0.1.0"
+
+    func resolvedEngineImages() -> [String: String] {
+        var map: [String: String] = [
+            AgentEngineID.opencode: opencodeImage,
+            AgentEngineID.claude: Self.defaultClaudeRunnerImage,
+        ]
+        for (engine, image) in engineImages {
+            let trimmed = image.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            map[engine] = trimmed
+        }
+        map[AgentEngineID.opencode] = opencodeImage
+        return map
+    }
+
+    func runnerImage(for engine: String) -> String {
+        let normalized = engine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty || normalized == AgentEngineID.opencode {
+            return opencodeImage
+        }
+        return resolvedEngineImages()[normalized] ?? opencodeImage
+    }
+
     func applyingEnvironmentOverrides(
         _ environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> GegenlesenConfig {
@@ -428,6 +464,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         }
         if let value = environment["GEGENLESEN_OPENCODE_IMAGE"], !value.isEmpty {
             next.opencodeImage = value
+        }
+        if let value = environment["GEGENLESEN_CLAUDE_RUNNER_IMAGE"], !value.isEmpty {
+            next.engineImages[AgentEngineID.claude] = value
         }
         if let value = environment["GEGENLESEN_SCANNER_IMAGE"] {
             next.scannerImage = value

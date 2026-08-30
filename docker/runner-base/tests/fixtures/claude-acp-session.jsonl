@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Writing findings-model_a.json"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCall":{"toolCallId":"tc-write","title":"write_file","status":"completed"}}}}

@@ -10,6 +10,7 @@ public enum AgentEngineError: Error, Sendable, Equatable {
 public struct AgentEngineConfiguration: Sendable {
     public var docker: any DockerExecuting
     public var image: String
+    public var engineImages: [String: String]
     public var runnerConfig: URL
     public var cpus: String
     public var memory: String
@@ -23,6 +24,7 @@ public struct AgentEngineConfiguration: Sendable {
     public init(
         docker: any DockerExecuting,
         image: String,
+        engineImages: [String: String] = [:],
         runnerConfig: URL,
         cpus: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_CPUS"] ?? "2",
         memory: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_MEMORY"] ?? "4g",
@@ -35,6 +37,7 @@ public struct AgentEngineConfiguration: Sendable {
     ) {
         self.docker = docker
         self.image = image
+        self.engineImages = engineImages
         self.runnerConfig = runnerConfig
         self.cpus = cpus
         self.memory = memory
@@ -63,6 +66,32 @@ public struct OpenCodeEngine: AgentEngine {
         OpenCodeInvocation(
             docker: configuration.docker,
             image: configuration.image,
+            engineImages: configuration.engineImages,
+            runnerConfig: configuration.runnerConfig,
+            cpus: configuration.cpus,
+            memory: configuration.memory,
+            agentTimeout: configuration.agentTimeout,
+            judgeTimeout: configuration.judgeTimeout,
+            providerEnv: configuration.providerEnv,
+            schemasDirectory: configuration.schemasDirectory,
+            transcriptWriter: configuration.transcriptWriter,
+            prepareRunnerConfig: configuration.prepareRunnerConfig
+        )
+    }
+}
+
+public struct ClaudeEngine: AgentEngine {
+    public static let engineID = AgentEngineID.claude
+
+    public let id = ClaudeEngine.engineID
+
+    public init() {}
+
+    public func makeInvocation(_ configuration: AgentEngineConfiguration) -> any AgentInvoking {
+        OpenCodeInvocation(
+            docker: configuration.docker,
+            image: configuration.image,
+            engineImages: configuration.engineImages,
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
@@ -78,7 +107,7 @@ public struct OpenCodeEngine: AgentEngine {
 
 public struct AgentEngineRegistry: Sendable {
     public static let defaultEngineID = OpenCodeEngine.engineID
-    public static let `default` = AgentEngineRegistry(engines: [OpenCodeEngine()])
+    public static let `default` = AgentEngineRegistry(engines: [OpenCodeEngine(), ClaudeEngine()])
 
     private let engines: [String: any AgentEngine]
 

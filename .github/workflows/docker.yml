@@ -150,9 +150,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Nested ghcr.io/<owner>/<repo>/runner is a separate package and stays
-      # private until someone flips it in the UI. Alias onto the already-public
-      # API package so anonymous pulls work.
       - uses: docker/metadata-action@v5
         id: alias
         with:
@@ -164,18 +161,70 @@ jobs:
             type=semver,pattern=runner-{{major}}.{{minor}}
             type=raw,value=runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      - name: Build runner-base
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/runner-base
+          file: docker/runner-base/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/pmdroid/gegenlesen/runner-base:main
+          cache-from: type=gha,scope=runner-base
+          cache-to: type=gha,mode=max,scope=runner-base
+
       - uses: docker/build-push-action@v6
         with:
           context: docker/opencode-runner
           file: docker/opencode-runner/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            RUNNER_BASE=ghcr.io/pmdroid/gegenlesen/runner-base:main
           tags: |
             ${{ steps.meta.outputs.tags }}
             ${{ steps.alias.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=runner
           cache-to: type=gha,mode=max,scope=runner
+
+  claude-runner:
+    runs-on: ubuntu-latest
+    needs: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: alias
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=raw,value=claude-runner-main,enable={{is_default_branch}}
+            type=sha,prefix=claude-runner-main-,format=short,enable={{is_default_branch}}
+            type=semver,pattern=claude-runner-{{version}}
+            type=semver,pattern=claude-runner-{{major}}.{{minor}}
+            type=raw,value=claude-runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/claude-runner
+          file: docker/claude-runner/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RUNNER_BASE=ghcr.io/pmdroid/gegenlesen/runner-base:main
+          tags: ${{ steps.alias.outputs.tags }}
+          labels: ${{ steps.alias.outputs.labels }}
+          cache-from: type=gha,scope=claude-runner
+          cache-to: type=gha,mode=max,scope=claude-runner
 
   scanner:
     runs-on: ubuntu-latest

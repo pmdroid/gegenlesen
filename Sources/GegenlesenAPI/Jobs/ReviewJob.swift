@@ -133,10 +133,12 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         ) { params, _ in
             do {
                 let (config, providerEnv) = live.snapshot()
+                let engineImages = config.resolvedEngineImages()
                 let engine = try AgentEngineRegistry.default.engine(id: AgentEngineRegistry.defaultEngineID)
                 let invocation = engine.makeInvocation(AgentEngineConfiguration(
                     docker: docker,
                     image: config.opencodeImage,
+                    engineImages: engineImages,
                     runnerConfig: runnerConfig,
                     agentTimeout: Duration.seconds(config.limits.agentTimeoutSec),
                     judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
@@ -167,6 +169,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
+                        engineImages: engineImages,
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
@@ -189,6 +192,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         ) { params, _ in
             do {
                 let (config, providerEnv) = live.snapshot()
+                let engineImages = config.resolvedEngineImages()
                 let engine = try AgentEngineRegistry.default.engine(id: AgentEngineRegistry.defaultEngineID)
                 if params.spec.source == .harvest {
                     try await HarvestPipeline(
@@ -197,6 +201,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                             docker: docker,
                             image: config.opencodeImage,
+                            engineImages: engineImages,
                             runnerConfig: runnerConfig,
                             agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                             providerEnv: providerEnv,
@@ -207,6 +212,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         suggestionJudge: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                             docker: docker,
                             image: config.opencodeImage,
+                            engineImages: engineImages,
                             runnerConfig: runnerConfig,
                             judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                             providerEnv: providerEnv,
@@ -225,6 +231,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     miner: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
+                        engineImages: engineImages,
                         runnerConfig: runnerConfig,
                         agentTimeout: Duration.seconds(config.limits.mineTimeoutSec),
                         providerEnv: providerEnv,
@@ -235,6 +242,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     suggestionJudge: skipAgent ? nil : engine.makeInvocation(AgentEngineConfiguration(
                         docker: docker,
                         image: config.opencodeImage,
+                        engineImages: engineImages,
                         runnerConfig: runnerConfig,
                         judgeTimeout: Duration.seconds(config.limits.judgeTimeoutSec),
                         providerEnv: providerEnv,
