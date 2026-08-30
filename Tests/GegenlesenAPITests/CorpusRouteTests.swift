@@ -167,6 +167,52 @@ struct CorpusRouteTests {
     }
 
     @Test
+    func mineSnapshotsSlotEngines() async throws {
+        try await withGegenlesenApp(mutate: { config in
+            config.openrouterApiKey = "sk-or-test"
+            config.models.engineA = "claude"
+            config.models.engineB = "codex"
+            config.judgeEngine = "claude"
+        }) { app in
+            let res = try await postMine(app, body: #"{"item_ids":[]}"#)
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(MineAccepted.self, from: bodyData(res))
+            let stored = try #require(try await app.gegenlesenStore.job(id: accepted.jobID))
+            #expect(stored.reviewerAEngine == "claude")
+            #expect(stored.reviewerBEngine == "codex")
+            #expect(stored.judgeEngine == "claude")
+        }
+    }
+
+    @Test
+    func learnEnqueueSnapshotsSlotEngines() async throws {
+        try await withGegenlesenApp(mutate: { config in
+            config.openrouterApiKey = "sk-or-test"
+            config.models.engineA = "claude"
+            config.models.engineB = "codex"
+            config.judgeEngine = "claude"
+        }) { app in
+            let sourceID = try await insertEndorsedLearnJob(
+                app,
+                id: "aaaaaaaa-2222-4222-8222-222222222222",
+                title: "Learn source",
+                now: Date()
+            )
+            var captured: TestingHTTPResponse?
+            try await app.testing().test(.POST, "/api/jobs/\(sourceID.rawValue)/learn") { res async in
+                captured = res
+            }
+            let res = try #require(captured)
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(MineAccepted.self, from: bodyData(res))
+            let stored = try #require(try await app.gegenlesenStore.job(id: accepted.jobID))
+            #expect(stored.reviewerAEngine == "claude")
+            #expect(stored.reviewerBEngine == "codex")
+            #expect(stored.judgeEngine == "claude")
+        }
+    }
+
+    @Test
     func learnWithoutFeedbackDoesNotInboxEveryFinding() async throws {
         try await withGegenlesenApp(startQueue: true) { app in
             let now = Date()

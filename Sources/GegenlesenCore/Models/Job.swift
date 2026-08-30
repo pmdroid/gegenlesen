@@ -2,6 +2,16 @@ import Foundation
 
 public enum AgentEngineID {
     public static let opencode = "opencode"
+    public static let claude = "claude"
+    public static let codex = "codex"
+    public static let grok = "grok"
+    public static let cursorAgent = "cursor-agent"
+
+    public static let known: Set<String> = [opencode, claude, codex, grok, cursorAgent]
+
+    public static func isKnown(_ id: String) -> Bool {
+        known.contains(id)
+    }
 }
 
 public struct JobTimings: Codable, Sendable, Equatable {

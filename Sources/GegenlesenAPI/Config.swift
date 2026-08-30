@@ -29,10 +29,18 @@ struct ModelSlots: Content, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        engineA = try container.decodeIfPresent(String.self, forKey: .engineA) ?? AgentEngineID.opencode
+        engineA = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineA))
         modelA = try container.decode(String.self, forKey: .modelA)
-        engineB = try container.decodeIfPresent(String.self, forKey: .engineB) ?? AgentEngineID.opencode
+        engineB = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineB))
         modelB = try container.decode(String.self, forKey: .modelB)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(engineA, forKey: .engineA)
+        try container.encode(modelA, forKey: .modelA)
+        try container.encode(engineB, forKey: .engineB)
+        try container.encode(modelB, forKey: .modelB)
     }
 }
 
@@ -251,7 +259,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         port = try container.decode(Int.self, forKey: .port)
         dataDir = try container.decode(String.self, forKey: .dataDir)
         models = try container.decode(ModelSlots.self, forKey: .models)
-        judgeEngine = try container.decodeIfPresent(String.self, forKey: .judgeEngine) ?? AgentEngineID.opencode
+        judgeEngine = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .judgeEngine))
         judgeModel = try container.decode(String.self, forKey: .judgeModel)
         minerModel = Self.resolveMinerModel(
             try container.decodeIfPresent(String.self, forKey: .minerModel),
@@ -561,6 +569,11 @@ struct SettingsUpdate: Content, Sendable, Equatable {
 
 private struct GegenlesenConfigKey: StorageKey {
     typealias Value = GegenlesenConfig
+}
+
+private func normalizedEngine(_ raw: String?) -> String {
+    let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return trimmed.isEmpty ? AgentEngineID.opencode : trimmed
 }
 
 private struct GegenlesenConfigFileKey: StorageKey {

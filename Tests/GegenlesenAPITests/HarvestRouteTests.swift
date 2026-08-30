@@ -54,6 +54,41 @@ struct HarvestRouteTests {
     }
 
     @Test
+    func harvestSnapshotsSlotEngines() async throws {
+        try await withGegenlesenApp(mutate: { config in
+            config.openrouterApiKey = "sk-or-test"
+            config.models.engineA = "claude"
+            config.models.engineB = "codex"
+            config.judgeEngine = "claude"
+        }) { app in
+            let archive = try harvestTarGz()
+            var captured: TestingHTTPResponse?
+            try await app.testing().test(
+                .POST,
+                "/api/harvest",
+                beforeRequest: { req in
+                    try req.content.encode(
+                        HarvestPostBody(
+                            archive: File(data: .init(data: archive), filename: "tree.tar.gz")
+                        ),
+                        as: .formData
+                    )
+                },
+                afterResponse: { res async in
+                    captured = res
+                }
+            )
+            let res = try #require(captured)
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: Data(res.body.readableBytesView))
+            let stored = try #require(try await app.gegenlesenStore.job(id: accepted.id))
+            #expect(stored.reviewerAEngine == "claude")
+            #expect(stored.reviewerBEngine == "codex")
+            #expect(stored.judgeEngine == "claude")
+        }
+    }
+
+    @Test
     func ingestMissingJobIsNotFound() async throws {
         try await withGegenlesenApp { app in
             try await app.testing().test(

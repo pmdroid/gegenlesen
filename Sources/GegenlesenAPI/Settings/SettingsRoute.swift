@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+import GegenlesenCore
 import Vapor
 
 enum SettingsRoute {
@@ -36,12 +37,18 @@ enum SettingsRoute {
                 guard !engine.isEmpty else {
                     throw APIError.unprocessable("reviewer A engine is required")
                 }
+                guard AgentEngineID.isKnown(engine) else {
+                    throw APIError.unprocessable("unknown engine: \(engine)")
+                }
                 next.models.engineA = engine
             }
             if let rawEngineB = models.engineB {
                 let engine = rawEngineB.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !engine.isEmpty else {
                     throw APIError.unprocessable("reviewer B engine is required")
+                }
+                guard AgentEngineID.isKnown(engine) else {
+                    throw APIError.unprocessable("unknown engine: \(engine)")
                 }
                 next.models.engineB = engine
             }
@@ -50,6 +57,9 @@ enum SettingsRoute {
             let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
                 throw APIError.unprocessable("judge engine is required")
+            }
+            guard AgentEngineID.isKnown(trimmed) else {
+                throw APIError.unprocessable("unknown engine: \(trimmed)")
             }
             next.judgeEngine = trimmed
         }

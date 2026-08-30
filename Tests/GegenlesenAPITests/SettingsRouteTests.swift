@@ -161,6 +161,25 @@ struct SettingsRouteTests {
     }
 
     @Test
+    func putRejectsUnknownEngine() async throws {
+        try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: ModelSlotsUpdate(engineA: "unknown-engine"),
+                        judgeModel: nil,
+                        openrouterApiKey: nil
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .unprocessableEntity)
+            }
+        }
+    }
+
+    @Test
     func putRejectsBlankEngine() async throws {
         try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
             try await app.testing().test(

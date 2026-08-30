@@ -493,6 +493,19 @@ struct ModelSlots: Codable, Sendable, Equatable {
         case engineB = "engine_b"
         case modelB = "model_b"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engineA = Self.normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineA))
+        modelA = try container.decode(String.self, forKey: .modelA)
+        engineB = Self.normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engineB))
+        modelB = try container.decode(String.self, forKey: .modelB)
+    }
+
+    private static func normalizedEngine(_ raw: String?) -> String {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "opencode" : trimmed
+    }
 }
 
 struct Limits: Codable, Sendable, Equatable {
