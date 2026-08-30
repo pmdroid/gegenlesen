@@ -18,6 +18,10 @@
     "retrieve_k": 12
   },
   "opencode_image": "gegenlesen/opencode-runner:0.1.0",
+  "engine_images": {
+    "opencode": "gegenlesen/opencode-runner:0.1.0",
+    "claude": "gegenlesen/claude-runner:0.1.0"
+  },
   "scanner_image": "gegenlesen/scanner:0.1.0",
   "limits": {
     "archive_bytes": 104857600,

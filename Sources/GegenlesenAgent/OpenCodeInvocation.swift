@@ -4,6 +4,7 @@ import GegenlesenCore
 public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, SuggestionJudging, Sendable {
     public var docker: any DockerExecuting
     public var image: String
+    public var engineImages: [String: String]
     public var runnerConfig: URL
     public var cpus: String
     public var memory: String
@@ -17,6 +18,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public init(
         docker: any DockerExecuting,
         image: String,
+        engineImages: [String: String] = [:],
         runnerConfig: URL,
         cpus: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_CPUS"] ?? "2",
         memory: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_MEMORY"] ?? "4g",
@@ -29,6 +31,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     ) {
         self.docker = docker
         self.image = image
+        self.engineImages = engineImages
         self.runnerConfig = runnerConfig
         self.cpus = cpus
         self.memory = memory
@@ -85,10 +88,10 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
 
         let known = Set(request.rules.map(\.id))
-        // TODO(#38): dispatch by job.reviewerAEngine once acp-runner lands
         let resultA = await runSlot(
             request,
             slot: .modelA,
+            engine: request.job.reviewerAEngine,
             model: request.job.reviewerAModelID,
             known: known
         )
@@ -111,10 +114,10 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             )
         }
 
-        // TODO(#38): dispatch by job.reviewerBEngine once acp-runner lands
         let resultB = await runSlot(
             request,
             slot: .modelB,
+            engine: request.job.reviewerBEngine,
             model: request.job.reviewerBModelID,
             known: known
         )
@@ -227,6 +230,61 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         return paths
     }
 
+    public func acpReviewDockerRequest(
+        jobID: JobID,
+        slot: ReviewerSlot,
+        workspace: URL,
+        engine: String,
+        model: String,
+        incremental: Bool = false
+    ) throws -> DockerRequest {
+        let outputPath = "/workspace/.gegenlesen/findings-\(slot.rawValue).json"
+        let promptFile = "/workspace/.gegenlesen/prompt-\(slot.rawValue).md"
+        let timeoutSec = max(1, Int(agentTimeout.components.seconds))
+        let agentCommand = ACPEngines.agentCommand(engine: engine, model: model)
+        guard !agentCommand.isEmpty else {
+            throw AgentEngineError.unknownEngine(engine)
+        }
+        var argv = [
+            "acp-runner",
+            "--prompt-file", promptFile,
+            "--message", "Investigate the change thoroughly, then write findings as instructed.",
+            "--output", "findings",
+            "--output-path", outputPath,
+            "--timeout-sec", "\(timeoutSec)",
+            "--",
+        ]
+        argv.append(contentsOf: agentCommand)
+        var env = ACPEngines.agentEnv(engine: engine, model: model)
+        env["NODE_NO_WARNINGS"] = "1"
+        let runnerImage = engineImages[engine] ?? image
+        var request = AgentSandbox.dockerRequest(
+            name: Self.containerName(jobID: jobID, slot: slot),
+            payload: AgentContainerPayload(
+                image: runnerImage,
+                argv: argv,
+                env: env,
+                tmpfs: [
+                    "/home/gegenlesen/.claude:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
+                ]
+            ),
+            workspace: workspace,
+            providerEnv: providerEnv,
+            cpus: cpus,
+            memory: memory,
+            timeout: agentTimeout
+        )
+        _ = incremental
+        if let writer = transcriptWriter {
+            let redactor = SecretRedactor()
+            let livePhase = slot == .modelA ? "review_a" : "review_b"
+            request.onStdout = { data in
+                writer(jobID, livePhase, redactor.redact(data))
+            }
+        }
+        return request
+    }
+
     public func reviewDockerRequest(
         jobID: JobID,
         slot: ReviewerSlot,
@@ -322,7 +380,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
-            // TODO(#38): dispatch by job.judgeEngine once acp-runner lands
+            // TODO(#40): dispatch judge by job.judgeEngine when non-opencode judges land
             dockerRequest = try judgeDockerRequest(
                 jobID: request.job.id,
                 workspace: request.workspace.root,
@@ -555,6 +613,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     private func runSlot(
         _ request: AgentReviewRequest,
         slot: ReviewerSlot,
+        engine: String,
         model: String,
         known: Set<RuleID>
     ) async -> SlotOutcome {
@@ -563,13 +622,24 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
         let dockerRequest: DockerRequest
         do {
-            dockerRequest = try reviewDockerRequest(
-                jobID: request.job.id,
-                slot: slot,
-                workspace: request.workspace.root,
-                model: model,
-                incremental: request.job.scope == .incremental
-            )
+            if ACPEngines.usesACP(engine) {
+                dockerRequest = try acpReviewDockerRequest(
+                    jobID: request.job.id,
+                    slot: slot,
+                    workspace: request.workspace.root,
+                    engine: engine,
+                    model: model,
+                    incremental: request.job.scope == .incremental
+                )
+            } else {
+                dockerRequest = try reviewDockerRequest(
+                    jobID: request.job.id,
+                    slot: slot,
+                    workspace: request.workspace.root,
+                    model: model,
+                    incremental: request.job.scope == .incremental
+                )
+            }
         } catch {
             return SlotOutcome(findings: [], valid: false, transcript: Data(), providerAuth: false)
         }

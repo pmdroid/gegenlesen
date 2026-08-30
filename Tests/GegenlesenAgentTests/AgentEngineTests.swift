@@ -9,8 +9,14 @@ struct AgentEngineTests {
     func registryResolvesOpenCodeByID() throws {
         let engine = try AgentEngineRegistry.default.engine(id: "opencode")
         #expect(engine.id == OpenCodeEngine.engineID)
-        #expect(AgentEngineRegistry.default.engineIDs == ["opencode"])
+        #expect(AgentEngineRegistry.default.engineIDs == ["claude", "opencode"])
         #expect(AgentEngineRegistry.defaultEngineID == "opencode")
+    }
+
+    @Test
+    func registryResolvesClaudeByID() throws {
+        let engine = try AgentEngineRegistry.default.engine(id: AgentEngineID.claude)
+        #expect(engine.id == ClaudeEngine.engineID)
     }
 
     @Test

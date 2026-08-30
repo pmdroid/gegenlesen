@@ -54,10 +54,12 @@ COPY docker/opencode-runner /app/docker/opencode-runner
 COPY config/gegenlesen.example.json /app/config/gegenlesen.example.json
 RUN mkdir -p /data
 ARG GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main
+ARG GEGENLESEN_CLAUDE_RUNNER_IMAGE=ghcr.io/pmdroid/gegenlesen:claude-runner-main
 ARG GEGENLESEN_SCANNER_IMAGE=ghcr.io/pmdroid/gegenlesen:scanner-main
 ENV GEGENLESEN_DATA_DIR=/data
 ENV GEGENLESEN_BIND=127.0.0.1
 ENV GEGENLESEN_OPENCODE_IMAGE=${GEGENLESEN_OPENCODE_IMAGE}
+ENV GEGENLESEN_CLAUDE_RUNNER_IMAGE=${GEGENLESEN_CLAUDE_RUNNER_IMAGE}
 ENV GEGENLESEN_SCANNER_IMAGE=${GEGENLESEN_SCANNER_IMAGE}
 EXPOSE 8080
 # PID 1 must reap docker children. Foundation also fails CFSocket wakeup
