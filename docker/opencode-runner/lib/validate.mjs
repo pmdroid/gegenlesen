@@ -1,8 +1,59 @@
 const SEVERITIES = new Set(["info", "warning", "error"]);
 const JUDGE_VERDICTS = new Set(["keep", "drop", "downgrade"]);
 
+const FINDINGS_STRING_LIMITS = {
+  title: 200,
+  message: 4000,
+  file_path: 4096,
+  snippet: 4096,
+};
+
+const JUDGE_STRING_LIMITS = {
+  finding_id: Infinity,
+  rationale: 4000,
+};
+
 function push(errors, path, message) {
   errors.push({ path, message });
+}
+
+function requireNonEmptyString(errors, base, key, value, maxLength = Infinity) {
+  if (value === undefined || value === null || value === "") {
+    push(errors, `${base}.${key}`, "required");
+    return;
+  }
+  if (typeof value !== "string") {
+    push(errors, `${base}.${key}`, "expected string");
+    return;
+  }
+  if (value.length < 1) {
+    push(errors, `${base}.${key}`, "minLength 1");
+  }
+  if (value.length > maxLength) {
+    push(errors, `${base}.${key}`, `maxLength ${maxLength}`);
+  }
+}
+
+function requirePositiveInteger(errors, base, key, value) {
+  if (value === undefined || value === null || value === "") {
+    push(errors, `${base}.${key}`, "required");
+    return;
+  }
+  if (!Number.isInteger(value)) {
+    push(errors, `${base}.${key}`, "expected integer");
+    return;
+  }
+  if (value < 1) {
+    push(errors, `${base}.${key}`, "minimum 1");
+  }
+}
+
+function rejectExtraKeys(errors, base, obj, allowed) {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) {
+      push(errors, `${base}.${key}`, "additional property not allowed");
+    }
+  }
 }
 
 export function validateFindingsDocument(parsed) {
@@ -11,6 +62,7 @@ export function validateFindingsDocument(parsed) {
     push(errors, "$", "expected object");
     return errors;
   }
+  rejectExtraKeys(errors, "$", parsed, new Set(["findings"]));
   if (!Array.isArray(parsed.findings)) {
     push(errors, "$.findings", "required array");
     return errors;
@@ -24,19 +76,22 @@ export function validateFindingsDocument(parsed) {
       push(errors, base, "expected object");
       return;
     }
-    for (const key of ["title", "message", "severity", "file_path", "start_line", "end_line", "snippet"]) {
-      if (finding[key] === undefined || finding[key] === null || finding[key] === "") {
-        push(errors, `${base}.${key}`, "required");
-      }
+    for (const [key, maxLength] of Object.entries(FINDINGS_STRING_LIMITS)) {
+      requireNonEmptyString(errors, base, key, finding[key], maxLength);
     }
-    if (finding.severity && !SEVERITIES.has(finding.severity)) {
+    requirePositiveInteger(errors, base, "start_line", finding.start_line);
+    requirePositiveInteger(errors, base, "end_line", finding.end_line);
+    if (finding.severity === undefined || finding.severity === null || finding.severity === "") {
+      push(errors, `${base}.severity`, "required");
+    } else if (!SEVERITIES.has(finding.severity)) {
       push(errors, `${base}.severity`, "invalid enum");
     }
-    if (typeof finding.start_line === "number" && finding.start_line < 1) {
-      push(errors, `${base}.start_line`, "minimum 1");
-    }
-    if (typeof finding.end_line === "number" && finding.end_line < 1) {
-      push(errors, `${base}.end_line`, "minimum 1");
+    if (
+      Number.isInteger(finding.start_line) &&
+      Number.isInteger(finding.end_line) &&
+      finding.end_line < finding.start_line
+    ) {
+      push(errors, `${base}.end_line`, "must be >= start_line");
     }
   });
   return errors;
@@ -48,6 +103,7 @@ export function validateJudgeDocument(parsed) {
     push(errors, "$", "expected object");
     return errors;
   }
+  rejectExtraKeys(errors, "$", parsed, new Set(["verdicts"]));
   if (!Array.isArray(parsed.verdicts)) {
     push(errors, "$.verdicts", "required array");
     return errors;
@@ -61,15 +117,15 @@ export function validateJudgeDocument(parsed) {
       push(errors, base, "expected object");
       return;
     }
-    for (const key of ["finding_id", "verdict", "rationale"]) {
-      if (row[key] === undefined || row[key] === null || row[key] === "") {
-        push(errors, `${base}.${key}`, "required");
-      }
-    }
-    if (row.verdict && !JUDGE_VERDICTS.has(row.verdict)) {
+    rejectExtraKeys(errors, base, row, new Set(["finding_id", "verdict", "severity", "rationale"]));
+    requireNonEmptyString(errors, base, "finding_id", row.finding_id, JUDGE_STRING_LIMITS.finding_id);
+    requireNonEmptyString(errors, base, "rationale", row.rationale, JUDGE_STRING_LIMITS.rationale);
+    if (row.verdict === undefined || row.verdict === null || row.verdict === "") {
+      push(errors, `${base}.verdict`, "required");
+    } else if (!JUDGE_VERDICTS.has(row.verdict)) {
       push(errors, `${base}.verdict`, "invalid enum");
     }
-    if (row.severity && !SEVERITIES.has(row.severity)) {
+    if (row.severity !== undefined && row.severity !== null && row.severity !== "" && !SEVERITIES.has(row.severity)) {
       push(errors, `${base}.severity`, "invalid enum");
     }
   });

@@ -18,6 +18,9 @@ const findingsInvalid = validateOutput("findings", load("findings-invalid.json")
 assert.ok(findingsInvalid.some((e) => e.path.includes("severity")));
 assert.ok(findingsInvalid.some((e) => e.path.includes("start_line")));
 
+const findingsStringLines = validateOutput("findings", load("findings-string-lines.json"));
+assert.ok(findingsStringLines.some((e) => e.message.includes("integer")));
+
 const judgeInvalid = validateOutput("judge", load("judge-invalid.json"));
 assert.ok(judgeInvalid.some((e) => e.path.includes("verdict")));
 

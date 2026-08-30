@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { mapSessionUpdate } from "./lib/transcript.mjs";
 import { validateOutput } from "./lib/validate.mjs";
 
 function parseArgs(argv) {
@@ -34,6 +36,12 @@ function parseArgs(argv) {
   }
   if (args.output !== "findings" && args.output !== "judge") {
     throw new Error(`--output must be findings or judge, got ${args.output}`);
+  }
+  if (!Number.isFinite(args.timeoutSec) || args.timeoutSec <= 0) {
+    throw new Error(`--timeout-sec must be a positive number, got ${args.timeoutSec}`);
+  }
+  if (args.outputPath && !args.validationErrors) {
+    args.validationErrors = join(dirname(args.outputPath), "validation_errors.json");
   }
   return args;
 }
@@ -145,29 +153,6 @@ function pickPermissionOption(options) {
     if (match) return match;
   }
   return (options ?? [])[0];
-}
-
-function mapSessionUpdate(update) {
-  if (!update) return null;
-  if (update.sessionUpdate === "agent_message_chunk" && update.content?.type === "text") {
-    return { kind: "agent_text", text: update.content.text };
-  }
-  if (update.sessionUpdate === "tool_call") {
-    return {
-      kind: "tool_call",
-      toolCallId: update.toolCall?.toolCallId,
-      title: update.toolCall?.title,
-      status: update.toolCall?.status,
-    };
-  }
-  if (update.sessionUpdate === "tool_call_update") {
-    return {
-      kind: "tool_call_update",
-      toolCallId: update.toolCall?.toolCallId,
-      status: update.toolCall?.status,
-    };
-  }
-  return { kind: "session_update", sessionUpdate: update.sessionUpdate };
 }
 
 function handleIncoming(message) {
