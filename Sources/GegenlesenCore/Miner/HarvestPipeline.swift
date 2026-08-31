@@ -5,6 +5,7 @@ public struct HarvestPipeline: Sendable {
     public var skipAgent: Bool
     public var miner: (any MinerRunning)?
     public var suggestionJudge: (any SuggestionJudging)?
+    public var engine: String
     public var model: String
     public var embedder: (any EmbeddingClient)?
     public var maxChunks: Int
@@ -14,6 +15,7 @@ public struct HarvestPipeline: Sendable {
         skipAgent: Bool,
         miner: (any MinerRunning)? = nil,
         suggestionJudge: (any SuggestionJudging)? = nil,
+        engine: String = AgentEngineID.opencode,
         model: String,
         embedder: (any EmbeddingClient)? = nil,
         maxChunks: Int = 20_000
@@ -22,6 +24,7 @@ public struct HarvestPipeline: Sendable {
         self.skipAgent = skipAgent
         self.miner = miner
         self.suggestionJudge = suggestionJudge
+        self.engine = engine
         self.model = model
         self.embedder = embedder
         self.maxChunks = maxChunks
@@ -60,6 +63,7 @@ public struct HarvestPipeline: Sendable {
                 let result = await miner!.runMiner(
                     jobID: jobID,
                     workspace: Workspace(root: workspaceURL),
+                    engine: engine,
                     model: model,
                     isCancelled: { [store, jobID] in
                         guard let job = try? await store.job(id: jobID) else { return true }

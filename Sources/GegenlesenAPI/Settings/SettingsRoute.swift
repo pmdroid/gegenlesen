@@ -77,6 +77,40 @@ enum SettingsRoute {
             }
             next.minerModel = trimmed
         }
+        if let profiles = body.engineProfiles {
+            if let mine = profiles.mine {
+                if let engine = mine.engine {
+                    let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard AgentEngineID.isKnown(trimmed) else {
+                        throw APIError.unprocessable("unknown mine engine: \(trimmed)")
+                    }
+                    next.engineProfiles.mine.engine = trimmed
+                }
+                if let model = mine.model {
+                    let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        throw APIError.unprocessable("mine model is required")
+                    }
+                    next.engineProfiles.mine.model = trimmed
+                }
+            }
+            if let learn = profiles.learn {
+                if let engine = learn.engine {
+                    let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard AgentEngineID.isKnown(trimmed) else {
+                        throw APIError.unprocessable("unknown learn engine: \(trimmed)")
+                    }
+                    next.engineProfiles.learn.engine = trimmed
+                }
+                if let model = learn.model {
+                    let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        throw APIError.unprocessable("learn model is required")
+                    }
+                    next.engineProfiles.learn.model = trimmed
+                }
+            }
+        }
         if let risk = body.risk {
             if let mode = risk.mode {
                 next.risk.mode = mode
@@ -113,6 +147,9 @@ enum SettingsRoute {
             }
             if let minutes = limits.learnIntervalMinutes {
                 next.limits.learnIntervalMinutes = max(0, minutes)
+            }
+            if let strict = limits.reviewStrictMode {
+                next.limits.reviewStrictMode = strict
             }
         }
         if !next.isOpenRouterConfigured() {

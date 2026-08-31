@@ -31,7 +31,8 @@ extension Store {
                       base_sha, head_sha, default_branch, archive_sha256,
                       archive_bytes, file_count, error_message,
                       container_name, container_name_a, container_name_b, timings_json,
-                      risk_verdict, risk_json
+                      risk_verdict, risk_json,
+                      review_degraded, review_degraded_slot, review_degraded_engine, review_degraded_error
                     ) VALUES (
                       ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?,
@@ -41,10 +42,39 @@ extension Store {
                       ?, ?, ?, ?,
                       ?, ?, ?,
                       ?, ?, ?, ?,
-                      ?, ?
+                      ?, ?,
+                      ?, ?, ?, ?
                     )
                     """,
                 arguments: job.sqlArguments
+            )
+        }
+    }
+
+    public func updateJobReviewDegraded(
+        jobID: JobID,
+        slot: String,
+        engine: String,
+        error: String
+    ) throws {
+        try write { db in
+            try db.execute(
+                sql: """
+                    UPDATE jobs
+                    SET review_degraded = 1,
+                        review_degraded_slot = ?,
+                        review_degraded_engine = ?,
+                        review_degraded_error = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    slot,
+                    engine,
+                    error,
+                    ISO8601Dates.string(from: Date()),
+                    jobID.rawValue,
+                ]
             )
         }
     }
@@ -798,6 +828,10 @@ extension Job {
             timings.flatMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) },
             risk?.verdict.rawValue,
             risk.flatMap(RiskGate.encode),
+            reviewDegraded ? 1 : 0,
+            reviewDegradedSlot,
+            reviewDegradedEngine,
+            reviewDegradedError,
         ])
     }
 
@@ -834,7 +868,11 @@ extension Job {
             containerNameA: row.optionalString("container_name_a"),
             containerNameB: row.optionalString("container_name_b"),
             timings: timings,
-            risk: RiskGate.decode(row.optionalString("risk_json"))
+            risk: RiskGate.decode(row.optionalString("risk_json")),
+            reviewDegraded: (row["review_degraded"] as Int? ?? 0) != 0,
+            reviewDegradedSlot: row.optionalString("review_degraded_slot"),
+            reviewDegradedEngine: row.optionalString("review_degraded_engine"),
+            reviewDegradedError: row.optionalString("review_degraded_error")
         )
     }
 }

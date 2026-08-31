@@ -48,7 +48,15 @@ public struct PromptRenderer: Sendable {
             .write(to: gegenlesen.appendingPathComponent("prompt-model_a.md"), atomically: true, encoding: .utf8)
         try prompt(job: job, fileCount: files.count, slot: .modelB)
             .write(to: gegenlesen.appendingPathComponent("prompt-model_b.md"), atomically: true, encoding: .utf8)
-        try Self.judgePrompt
+        try Self.judgePrompt(singleReviewerSlot: nil)
+            .write(to: gegenlesen.appendingPathComponent("prompt-judge.md"), atomically: true, encoding: .utf8)
+    }
+
+    public func writeJudgePrompt(workspace: Workspace, singleReviewerSlot: ReviewerSlot?) throws {
+        let fm = FileManager.default
+        let gegenlesen = workspace.root.appendingPathComponent(".gegenlesen", isDirectory: true)
+        try fm.createDirectory(at: gegenlesen, withIntermediateDirectories: true)
+        try Self.judgePrompt(singleReviewerSlot: singleReviewerSlot)
             .write(to: gegenlesen.appendingPathComponent("prompt-judge.md"), atomically: true, encoding: .utf8)
     }
 
@@ -201,9 +209,19 @@ public struct PromptRenderer: Sendable {
         ]
     }
 
-    private static let judgePrompt = """
-    # gegenlesen judge
+    private static func judgePrompt(singleReviewerSlot: ReviewerSlot?) -> String {
+        var header = "# gegenlesen judge\n\n"
+        if let slot = singleReviewerSlot {
+            header += """
+            **Degraded review:** only reviewer \(slot.rawValue) produced valid findings.
+            The other slot failed validation or crashed. Judge findings from this single reviewer.
 
+            """
+        }
+        return header + judgePromptBody
+    }
+
+    private static let judgePromptBody = """
     Read .gegenlesen/judge-input.json. The host wrote it AFTER the reviewers.
     Each candidate.id is a host ULID — echo it as finding_id.
 

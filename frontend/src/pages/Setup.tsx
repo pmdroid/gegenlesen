@@ -44,6 +44,9 @@ export function SetupPage() {
   const [judgeEngine, setJudgeEngine] = useState<EngineId>("opencode");
   const [judge, setJudge] = useState("openrouter/openai/gpt-5.6-terra");
   const [miner, setMiner] = useState("openrouter/openai/gpt-5.6-terra");
+  const [mineEngine, setMineEngine] = useState<EngineId>("opencode");
+  const [learnEngine, setLearnEngine] = useState<EngineId>("opencode");
+  const [learnModel, setLearnModel] = useState("openrouter/openai/gpt-5.6-terra");
   const [scannerImage, setScannerImage] = useState("gegenlesen/scanner:0.1.0");
   const [apiKey, setApiKey] = useState("");
   const [debouncedKey, setDebouncedKey] = useState("");
@@ -65,6 +68,9 @@ export function SetupPage() {
     setJudgeEngine(normalizeEngine(data.judge_engine));
     setJudge(data.judge_model);
     setMiner(data.miner_model || data.judge_model);
+    setMineEngine(normalizeEngine(data.engine_profiles?.mine.engine ?? "opencode"));
+    setLearnEngine(normalizeEngine(data.engine_profiles?.learn.engine ?? "opencode"));
+    setLearnModel(data.engine_profiles?.learn.model ?? data.miner_model ?? data.judge_model);
     setScannerImage(data.scanner_image ?? "");
     setAppetite(data.risk.appetite);
     setRiskMode(data.risk.mode);
@@ -130,6 +136,10 @@ export function SetupPage() {
         judge_engine: judgeEngine,
         judge_model: judge.trim(),
         miner_model: miner.trim(),
+        engine_profiles: {
+          mine: { engine: mineEngine, model: miner.trim() },
+          learn: { engine: learnEngine, model: learnModel.trim() },
+        },
         openrouter_api_key: apiKey.trim() || undefined,
         scanner_image: scannerImage.trim(),
         risk: { mode: riskMode, appetite },
@@ -149,14 +159,16 @@ export function SetupPage() {
       setError("OpenRouter API key is required");
       return;
     }
-    if (!modelA.trim() || !modelB.trim() || !judge.trim() || !miner.trim()) {
-      setError("pick both reviewers, a judge, and a miner");
+    if (!modelA.trim() || !modelB.trim() || !judge.trim() || !miner.trim() || !learnModel.trim()) {
+      setError("pick both reviewers, a judge, and mine/learn models");
       return;
     }
     for (const [label, engine, model] of [
       ["Reviewer A", engineA, modelA],
       ["Reviewer B", engineB, modelB],
       ["Judge", judgeEngine, judge],
+      ["Mine", mineEngine, miner],
+      ["Learn", learnEngine, learnModel],
     ] as const) {
       const issue = validateModelForEngine(engine, model);
       if (issue) {
@@ -166,7 +178,9 @@ export function SetupPage() {
     }
     if (!(ENGINE_IDS as readonly string[]).includes(engineA) ||
         !(ENGINE_IDS as readonly string[]).includes(engineB) ||
-        !(ENGINE_IDS as readonly string[]).includes(judgeEngine)) {
+        !(ENGINE_IDS as readonly string[]).includes(judgeEngine) ||
+        !(ENGINE_IDS as readonly string[]).includes(mineEngine) ||
+        !(ENGINE_IDS as readonly string[]).includes(learnEngine)) {
       setError("pick a known engine for each slot");
       return;
     }
@@ -304,16 +318,50 @@ export function SetupPage() {
             error={validateModelForEngine(judgeEngine, judge)}
           />
         </div>
-        <ModelPicker
-          label="Miner"
-          engine="opencode"
-          value={miner}
-          onChange={setMiner}
-          models={models}
-          suggestions={suggestions.data?.models ?? []}
-          disabled={!canFetch}
-          placeholder={canFetch ? "type to filter" : "add a key first"}
-        />
+        <div className="slot-setup">
+          <EnginePicker
+            label="Mine engine"
+            value={mineEngine}
+            onChange={(next) => {
+              setMineEngine(next);
+              setMiner((prev) => reconcileModelForEngine(next, prev));
+            }}
+            disabled={!canFetch}
+          />
+          <ModelPicker
+            label="Mine model"
+            engine={mineEngine}
+            value={miner}
+            onChange={setMiner}
+            models={models}
+            suggestions={suggestions.data?.models ?? []}
+            disabled={!canFetch}
+            placeholder={canFetch ? modelPlaceholder(mineEngine) : "add a key first"}
+            error={validateModelForEngine(mineEngine, miner)}
+          />
+        </div>
+        <div className="slot-setup">
+          <EnginePicker
+            label="Learn engine"
+            value={learnEngine}
+            onChange={(next) => {
+              setLearnEngine(next);
+              setLearnModel((prev) => reconcileModelForEngine(next, prev));
+            }}
+            disabled={!canFetch}
+          />
+          <ModelPicker
+            label="Learn model"
+            engine={learnEngine}
+            value={learnModel}
+            onChange={setLearnModel}
+            models={models}
+            suggestions={suggestions.data?.models ?? []}
+            disabled={!canFetch}
+            placeholder={canFetch ? modelPlaceholder(learnEngine) : "add a key first"}
+            error={validateModelForEngine(learnEngine, learnModel)}
+          />
+        </div>
         <p className="formhint">
           Harvest, learn, and architecture cards. Independent of the findings judge. A stronger
           model usually mines better rules, and costs more.

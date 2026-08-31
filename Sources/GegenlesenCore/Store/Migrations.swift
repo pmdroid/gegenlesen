@@ -5,6 +5,7 @@ public enum Migrations {
     public static let v2Repositories = "v2_repositories"
     public static let v3Risk = "v3_risk"
     public static let v4SlotEngines = "v4_slot_engines"
+    public static let v5ReviewDegraded = "v5_review_degraded"
 
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -12,6 +13,7 @@ public enum Migrations {
         migrator.registerMigration(v2Repositories, migrate: migrateV2Repositories)
         migrator.registerMigration(v3Risk, migrate: migrateV3Risk)
         migrator.registerMigration(v4SlotEngines, migrate: migrateV4SlotEngines)
+        migrator.registerMigration(v5ReviewDegraded, migrate: migrateV5ReviewDegraded)
         return migrator
     }
 
@@ -198,5 +200,12 @@ public enum Migrations {
         try db.execute(sql: "ALTER TABLE jobs ADD COLUMN reviewer_a_engine TEXT NOT NULL DEFAULT 'opencode'")
         try db.execute(sql: "ALTER TABLE jobs ADD COLUMN reviewer_b_engine TEXT NOT NULL DEFAULT 'opencode'")
         try db.execute(sql: "ALTER TABLE jobs ADD COLUMN judge_engine TEXT NOT NULL DEFAULT 'opencode'")
+    }
+
+    private static func migrateV5ReviewDegraded(_ db: Database) throws {
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN review_degraded INTEGER NOT NULL DEFAULT 0")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN review_degraded_slot TEXT")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN review_degraded_engine TEXT")
+        try db.execute(sql: "ALTER TABLE jobs ADD COLUMN review_degraded_error TEXT")
     }
 }

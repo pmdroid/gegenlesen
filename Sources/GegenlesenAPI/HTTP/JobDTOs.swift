@@ -126,6 +126,10 @@ struct JobListItem: Content {
     var finishedAt: Date?
     var errorMessage: String?
     var risk: RiskAssessment?
+    var reviewDegraded: Bool
+    var reviewDegradedSlot: String?
+    var reviewDegradedEngine: String?
+    var reviewDegradedError: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status, scope
@@ -146,6 +150,10 @@ struct JobListItem: Content {
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
         case risk
+        case reviewDegraded = "review_degraded"
+        case reviewDegradedSlot = "review_degraded_slot"
+        case reviewDegradedEngine = "review_degraded_engine"
+        case reviewDegradedError = "review_degraded_error"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -171,6 +179,10 @@ struct JobListItem: Content {
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
         try container.encodeNilIfNeeded(risk, forKey: .risk)
+        try container.encode(reviewDegraded, forKey: .reviewDegraded)
+        try container.encodeNilIfNeeded(reviewDegradedSlot, forKey: .reviewDegradedSlot)
+        try container.encodeNilIfNeeded(reviewDegradedEngine, forKey: .reviewDegradedEngine)
+        try container.encodeNilIfNeeded(reviewDegradedError, forKey: .reviewDegradedError)
     }
 
     static func from(_ job: Job, queuePosition: Int?, summary: JobSummary?) -> JobListItem {
@@ -195,7 +207,11 @@ struct JobListItem: Content {
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
             errorMessage: job.errorMessage,
-            risk: job.risk
+            risk: job.risk,
+            reviewDegraded: job.reviewDegraded,
+            reviewDegradedSlot: job.reviewDegradedSlot,
+            reviewDegradedEngine: job.reviewDegradedEngine,
+            reviewDegradedError: job.reviewDegradedError
         )
     }
 }
@@ -222,6 +238,10 @@ struct JobDetail: Content {
     var finishedAt: Date?
     var errorMessage: String?
     var risk: RiskAssessment?
+    var reviewDegraded: Bool
+    var reviewDegradedSlot: String?
+    var reviewDegradedEngine: String?
+    var reviewDegradedError: String?
     var findings: [FindingDTO]
     var events: [JobEventDTO]
 
@@ -244,6 +264,10 @@ struct JobDetail: Content {
         case finishedAt = "finished_at"
         case errorMessage = "error_message"
         case risk
+        case reviewDegraded = "review_degraded"
+        case reviewDegradedSlot = "review_degraded_slot"
+        case reviewDegradedEngine = "review_degraded_engine"
+        case reviewDegradedError = "review_degraded_error"
         case findings, events
     }
 
@@ -270,6 +294,10 @@ struct JobDetail: Content {
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
         try container.encodeNilIfNeeded(risk, forKey: .risk)
+        try container.encode(reviewDegraded, forKey: .reviewDegraded)
+        try container.encodeNilIfNeeded(reviewDegradedSlot, forKey: .reviewDegradedSlot)
+        try container.encodeNilIfNeeded(reviewDegradedEngine, forKey: .reviewDegradedEngine)
+        try container.encodeNilIfNeeded(reviewDegradedError, forKey: .reviewDegradedError)
         try container.encode(findings, forKey: .findings)
         try container.encode(events, forKey: .events)
     }
@@ -303,6 +331,10 @@ struct JobDetail: Content {
             finishedAt: job.finishedAt,
             errorMessage: job.errorMessage,
             risk: job.risk,
+            reviewDegraded: job.reviewDegraded,
+            reviewDegradedSlot: job.reviewDegradedSlot,
+            reviewDegradedEngine: job.reviewDegradedEngine,
+            reviewDegradedError: job.reviewDegradedError,
             findings: findings.map(FindingDTO.init(finding:)),
             events: events.map(JobEventDTO.init(event:))
         )

@@ -140,23 +140,85 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             )
         }
 
-        let findings = resultA.findings + resultB.findings
+        let findings = resultA.valid && resultB.valid
+            ? resultA.findings + resultB.findings
+            : resultA.valid
+                ? resultA.findings
+                : resultB.findings
         let valid = (resultA.valid ? 1 : 0) + (resultB.valid ? 1 : 0)
-        let failed = request.newWork && valid == 0
+
+        if request.newWork && valid == 0 {
+            persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
+            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            let errorMessage = "reviewer_no_findings_file"
+            return AgentReviewResult(
+                findings: findings,
+                validFileCount: valid,
+                failed: true,
+                errorMessage: errorMessage,
+                payloadJSON: Self.reviewEventPayload(
+                    errorMessage: errorMessage,
+                    transcripts: [resultA.transcript, resultB.transcript]
+                ),
+                containerNameA: nameA,
+                containerNameB: nameB,
+                containerName: judgeName
+            )
+        }
+
+        if valid == 1, !resultA.valid || !resultB.valid {
+            if request.reviewStrictMode {
+                persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
+                persistAgentCopies(workspace: request.workspace, jobID: jobID)
+                let failedResult = resultA.valid ? resultB : resultA
+                let errorMessage = failedResult.validationError ?? "reviewer_validation_failed"
+                return AgentReviewResult(
+                    findings: findings,
+                    validFileCount: valid,
+                    failed: true,
+                    errorMessage: errorMessage,
+                    payloadJSON: Self.reviewEventPayload(
+                        errorMessage: errorMessage,
+                        transcripts: [resultA.transcript, resultB.transcript]
+                    ),
+                    containerNameA: nameA,
+                    containerNameB: nameB,
+                    containerName: judgeName
+                )
+            }
+            let failedSlot: ReviewerSlot = resultA.valid ? .modelB : .modelA
+            let failedResult = resultA.valid ? resultB : resultA
+            let survivingSlot: ReviewerSlot = resultA.valid ? .modelA : .modelB
+            let failedEngine = failedSlot == .modelA
+                ? request.job.reviewerAEngine
+                : request.job.reviewerBEngine
+            let degradedError = failedResult.validationError ?? "reviewer_validation_failed"
+            try? PromptRenderer(schemasDirectory: schemasDirectory).writeJudgePrompt(
+                workspace: request.workspace,
+                singleReviewerSlot: survivingSlot
+            )
+            persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
+            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            return AgentReviewResult(
+                findings: findings,
+                validFileCount: valid,
+                failed: false,
+                containerNameA: nameA,
+                containerNameB: nameB,
+                containerName: judgeName,
+                reviewDegraded: true,
+                reviewDegradedSlot: failedSlot.rawValue,
+                reviewDegradedEngine: failedEngine,
+                reviewDegradedError: degradedError
+            )
+        }
+
         persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
         persistAgentCopies(workspace: request.workspace, jobID: jobID)
-        let errorMessage = failed ? "reviewer_no_findings_file" : nil
         return AgentReviewResult(
             findings: findings,
             validFileCount: valid,
-            failed: failed,
-            errorMessage: errorMessage,
-            payloadJSON: failed
-                ? Self.reviewEventPayload(
-                    errorMessage: errorMessage ?? ReviewFailureClass.noFindingsFile.rawValue,
-                    transcripts: [resultA.transcript, resultB.transcript]
-                )
-                : nil,
+            failed: false,
             containerNameA: nameA,
             containerNameB: nameB,
             containerName: judgeName
@@ -264,9 +326,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 image: runnerImage,
                 argv: argv,
                 env: env,
-                tmpfs: [
-                    "/home/gegenlesen/.claude:rw,nosuid,nodev,uid=1000,gid=1000,size=64m",
-                ]
+                tmpfs: ACPEngines.engineTmpfs(engine: engine)
             ),
             workspace: workspace,
             providerEnv: providerEnv,
@@ -351,11 +411,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public func minerDockerRequest(
         jobID: JobID,
         workspace: URL,
+        engine: String,
         model: String,
         extraFiles: [String] = [],
         defaultAgent: String = "miner"
     ) throws -> DockerRequest {
-        try isolatedDockerRequest(
+        let runnerImage = engineImages[engine] ?? image
+        return try isolatedDockerRequest(
             name: ReviewContainers.miner(jobID),
             workspace: workspace,
             model: model,
@@ -365,7 +427,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             extraFiles: extraFiles,
             message: "Mine candidate rules as instructed.",
             jobID: jobID,
-            livePhase: "mine"
+            livePhase: "mine",
+            runnerImage: runnerImage
         )
     }
 
@@ -487,9 +550,17 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public func runMiner(
         jobID: JobID,
         workspace: Workspace,
+        engine: String,
         model: String,
         isCancelled: (@Sendable () async -> Bool)? = nil
     ) async -> MinerRunResult {
+        guard engine == AgentEngineID.opencode else {
+            return MinerRunResult(
+                containerName: ReviewContainers.miner(jobID),
+                failed: true,
+                errorMessage: "mine_engine_requires_opencode"
+            )
+        }
         let name = ReviewContainers.miner(jobID)
         do {
             try await prepareRunnerConfig?(jobID, nil)
@@ -511,6 +582,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             dockerRequest = try minerDockerRequest(
                 jobID: jobID,
                 workspace: workspace.root,
+                engine: engine,
                 model: model,
                 extraFiles: Self.minerFilePaths(workspace: workspace),
                 defaultAgent: FileManager.default.fileExists(
@@ -545,7 +617,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         extraFiles: [String],
         message: String,
         jobID: JobID? = nil,
-        livePhase: String? = nil
+        livePhase: String? = nil,
+        runnerImage: String? = nil
     ) throws -> DockerRequest {
         let policy = try OpenCodeConfig.policyJSON(model: model, defaultAgent: defaultAgent)
         let permission = try OpenCodeConfig.permissionJSON()
@@ -580,7 +653,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var request = AgentSandbox.dockerRequest(
             name: name,
             payload: AgentContainerPayload(
-                image: image,
+                image: runnerImage ?? image,
                 argv: argv,
                 env: env,
                 tmpfs: Self.configTmpfs,
@@ -608,6 +681,19 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var valid: Bool
         var transcript: Data
         var providerAuth: Bool
+        var validationError: String?
+    }
+
+    private func appendRetryNotice(workspace: Workspace, slot: ReviewerSlot, errors: String) throws {
+        let promptURL = workspace.root.appendingPathComponent(".gegenlesen/prompt-\(slot.rawValue).md")
+        let existing = (try? String(contentsOf: promptURL, encoding: .utf8)) ?? ""
+        let notice = """
+
+        ## Retry
+
+        Previous output failed validation: \(errors)
+        """
+        try (existing + notice).write(to: promptURL, atomically: true, encoding: .utf8)
     }
 
     private func runSlot(
@@ -617,8 +703,57 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         model: String,
         known: Set<RuleID>
     ) async -> SlotOutcome {
+        var combinedTranscript = Data()
+        var lastOutcome = SlotOutcome(
+            findings: [],
+            valid: false,
+            transcript: Data(),
+            providerAuth: false,
+            validationError: "reviewer_no_findings_file"
+        )
+        for attempt in 1...2 {
+            let outcome = await executeSlotAttempt(
+                request,
+                slot: slot,
+                engine: engine,
+                model: model,
+                known: known
+            )
+            combinedTranscript.append(outcome.transcript)
+            lastOutcome = SlotOutcome(
+                findings: outcome.findings,
+                valid: outcome.valid,
+                transcript: combinedTranscript,
+                providerAuth: outcome.providerAuth,
+                validationError: outcome.validationError
+            )
+            if outcome.valid || outcome.providerAuth {
+                return lastOutcome
+            }
+            if attempt == 1, let error = outcome.validationError {
+                try? appendRetryNotice(workspace: request.workspace, slot: slot, errors: error)
+                continue
+            }
+            break
+        }
+        return lastOutcome
+    }
+
+    private func executeSlotAttempt(
+        _ request: AgentReviewRequest,
+        slot: ReviewerSlot,
+        engine: String,
+        model: String,
+        known: Set<RuleID>
+    ) async -> SlotOutcome {
         if await request.isCancelled?() == true {
-            return SlotOutcome(findings: [], valid: false, transcript: Data(), providerAuth: false)
+            return SlotOutcome(
+                findings: [],
+                valid: false,
+                transcript: Data(),
+                providerAuth: false,
+                validationError: "cancelled"
+            )
         }
         let dockerRequest: DockerRequest
         do {
@@ -641,7 +776,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 )
             }
         } catch {
-            return SlotOutcome(findings: [], valid: false, transcript: Data(), providerAuth: false)
+            return SlotOutcome(
+                findings: [],
+                valid: false,
+                transcript: Data(),
+                providerAuth: false,
+                validationError: String(describing: error)
+            )
         }
         var transcript = Data()
         var providerAuth = false
@@ -661,7 +802,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         let shared = request.workspace.root.appendingPathComponent(".gegenlesen/findings.json")
         let data = (try? Data(contentsOf: url)) ?? (try? Data(contentsOf: shared))
         guard let data else {
-            return SlotOutcome(findings: [], valid: false, transcript: transcript, providerAuth: providerAuth)
+            return SlotOutcome(
+                findings: [],
+                valid: false,
+                transcript: transcript,
+                providerAuth: providerAuth,
+                validationError: "reviewer_no_findings_file"
+            )
         }
         do {
             let parsed = try FindingsParser.parse(
@@ -675,10 +822,17 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 findings: parsed.findings,
                 valid: true,
                 transcript: transcript,
-                providerAuth: false
+                providerAuth: false,
+                validationError: nil
             )
         } catch {
-            return SlotOutcome(findings: [], valid: false, transcript: transcript, providerAuth: providerAuth)
+            return SlotOutcome(
+                findings: [],
+                valid: false,
+                transcript: transcript,
+                providerAuth: providerAuth,
+                validationError: String(describing: error)
+            )
         }
     }
 

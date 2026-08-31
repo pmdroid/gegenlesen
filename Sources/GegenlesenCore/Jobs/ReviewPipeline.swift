@@ -15,7 +15,9 @@ public struct ReviewPipeline: Sendable {
     public var maxChunks: Int
     public var embedder: (any EmbeddingClient)?
     public var miner: (any MinerRunning)?
-    public var minerModel: String
+    public var learnEngine: String
+    public var learnModel: String
+    public var reviewStrictMode: Bool
     public var risk: RiskConfig
     public var requireHarvest: Bool
 
@@ -34,7 +36,9 @@ public struct ReviewPipeline: Sendable {
         maxChunks: Int = 20_000,
         embedder: (any EmbeddingClient)? = nil,
         miner: (any MinerRunning)? = nil,
-        minerModel: String = "openrouter/openai/gpt-5.6-terra",
+        learnEngine: String = AgentEngineID.opencode,
+        learnModel: String = "openrouter/openai/gpt-5.6-terra",
+        reviewStrictMode: Bool = false,
         risk: RiskConfig = .v1,
         requireHarvest: Bool = false
     ) {
@@ -52,7 +56,9 @@ public struct ReviewPipeline: Sendable {
         self.maxChunks = maxChunks
         self.embedder = embedder
         self.miner = miner ?? (reviewer as? any MinerRunning)
-        self.minerModel = minerModel
+        self.learnEngine = learnEngine
+        self.learnModel = learnModel
+        self.reviewStrictMode = reviewStrictMode
         self.risk = risk
         self.requireHarvest = requireHarvest
     }
@@ -201,7 +207,8 @@ public struct ReviewPipeline: Sendable {
                 maxChunks: maxChunks,
                 skipAgent: skipAgent,
                 miner: miner,
-                model: minerModel,
+                engine: learnEngine,
+                model: learnModel,
                 onWarning: { [store, jobID] message in
                     try? await store.appendEvent(jobID: jobID, level: .warning, message: message)
                 },
@@ -420,6 +427,7 @@ public struct ReviewPipeline: Sendable {
                 rules: rules,
                 parentFindings: parentFindings,
                 newWork: newWork,
+                reviewStrictMode: reviewStrictMode,
                 isCancelled: {
                     (try? await store.job(id: jobID))?.status.isTerminal ?? true
                 }
@@ -427,6 +435,28 @@ public struct ReviewPipeline: Sendable {
         )
         try await recordTiming(\.reviewMS, from: reviewStarted, jobID: jobID, timings: &timings)
         if try await stopped(jobID) { return }
+        if review.reviewDegraded,
+           let slot = review.reviewDegradedSlot,
+           let engine = review.reviewDegradedEngine,
+           let error = review.reviewDegradedError
+        {
+            try await store.updateJobReviewDegraded(
+                jobID: jobID,
+                slot: slot,
+                engine: engine,
+                error: error
+            )
+            try await store.appendEvent(
+                jobID: jobID,
+                level: .warning,
+                message: "review_degraded",
+                payloadJSON: JobEvent.payloadJSON([
+                    "slot": slot,
+                    "engine": engine,
+                    "error": error,
+                ])
+            )
+        }
         let reviewFindings = review.findings.compactMap { finding -> Finding? in
             let collapsed = matcher.collapse(
                 child: finding,

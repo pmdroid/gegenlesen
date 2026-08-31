@@ -176,7 +176,9 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         schemasDirectory: schemasDirectory,
                         prepareRunnerConfig: prepareRunner
                     )),
-                    minerModel: config.minerModel,
+                    learnEngine: config.engineProfiles.learn.engine,
+                    learnModel: config.engineProfiles.learn.model,
+                    reviewStrictMode: config.limits.reviewStrictMode,
                     risk: config.risk,
                     requireHarvest: true
                 ).run(jobID: params.jobID)
@@ -220,7 +222,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                             transcriptWriter: writeJobTranscript(store: store),
                             prepareRunnerConfig: prepareRunner
                         )),
-                        model: config.minerModel,
+                        engine: config.engineProfiles.mine.engine,
+                        model: config.engineProfiles.mine.model,
                         embedder: embedder,
                         maxChunks: config.embeddings.maxChunks
                     ).run(jobID: params.corpusJobID)
@@ -250,7 +253,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         transcriptWriter: writeJobTranscript(store: store),
                         prepareRunnerConfig: prepareRunner
                     )),
-                    model: config.minerModel,
+                    engine: config.engineProfiles.mine.engine,
+                    model: config.engineProfiles.mine.model,
                     embedder: embedder,
                     maxChunks: config.embeddings.maxChunks
                 ).run(jobID: params.corpusJobID, spec: params.spec)

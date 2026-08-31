@@ -105,9 +105,64 @@ public struct ClaudeEngine: AgentEngine {
     }
 }
 
+public struct CodexEngine: AgentEngine {
+    public static let engineID = AgentEngineID.codex
+
+    public let id = CodexEngine.engineID
+
+    public init() {}
+
+    public func makeInvocation(_ configuration: AgentEngineConfiguration) -> any AgentInvoking {
+        OpenCodeInvocation(
+            docker: configuration.docker,
+            image: configuration.image,
+            engineImages: configuration.engineImages,
+            runnerConfig: configuration.runnerConfig,
+            cpus: configuration.cpus,
+            memory: configuration.memory,
+            agentTimeout: configuration.agentTimeout,
+            judgeTimeout: configuration.judgeTimeout,
+            providerEnv: configuration.providerEnv,
+            schemasDirectory: configuration.schemasDirectory,
+            transcriptWriter: configuration.transcriptWriter,
+            prepareRunnerConfig: configuration.prepareRunnerConfig
+        )
+    }
+}
+
+public struct CursorEngine: AgentEngine {
+    public static let engineID = AgentEngineID.cursorAgent
+
+    public let id = CursorEngine.engineID
+
+    public init() {}
+
+    public func makeInvocation(_ configuration: AgentEngineConfiguration) -> any AgentInvoking {
+        OpenCodeInvocation(
+            docker: configuration.docker,
+            image: configuration.image,
+            engineImages: configuration.engineImages,
+            runnerConfig: configuration.runnerConfig,
+            cpus: configuration.cpus,
+            memory: configuration.memory,
+            agentTimeout: configuration.agentTimeout,
+            judgeTimeout: configuration.judgeTimeout,
+            providerEnv: configuration.providerEnv,
+            schemasDirectory: configuration.schemasDirectory,
+            transcriptWriter: configuration.transcriptWriter,
+            prepareRunnerConfig: configuration.prepareRunnerConfig
+        )
+    }
+}
+
 public struct AgentEngineRegistry: Sendable {
     public static let defaultEngineID = OpenCodeEngine.engineID
-    public static let `default` = AgentEngineRegistry(engines: [OpenCodeEngine(), ClaudeEngine()])
+    public static let `default` = AgentEngineRegistry(engines: [
+        OpenCodeEngine(),
+        ClaudeEngine(),
+        CodexEngine(),
+        CursorEngine(),
+    ])
 
     private let engines: [String: any AgentEngine]
 

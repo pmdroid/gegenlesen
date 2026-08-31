@@ -77,6 +77,16 @@ export interface HealthDTO {
   version: string;
 }
 
+export interface EngineProfile {
+  engine: string;
+  model: string;
+}
+
+export interface EngineProfiles {
+  mine: EngineProfile;
+  learn: EngineProfile;
+}
+
 export interface Limits {
   archive_bytes: number;
   queued_archive_bytes: number;
@@ -88,6 +98,7 @@ export interface Limits {
   learn_interval_minutes: number;
   scanner_timeout_sec?: number;
   mine_timeout_sec?: number;
+  review_strict_mode?: boolean;
 }
 
 export interface ModelSlots {
@@ -138,6 +149,7 @@ export interface SettingsDTO {
   judge_engine: string;
   judge_model: string;
   miner_model: string;
+  engine_profiles: EngineProfiles;
   opencode_image: string;
   scanner_image?: string;
   limits: Limits;
@@ -150,6 +162,10 @@ export interface SettingsUpdate {
   judge_engine?: string;
   judge_model?: string;
   miner_model?: string;
+  engine_profiles?: {
+    mine?: { engine?: string; model?: string };
+    learn?: { engine?: string; model?: string };
+  };
   openrouter_api_key?: string;
   scanner_image?: string;
   risk?: {
@@ -160,6 +176,7 @@ export interface SettingsUpdate {
     mine_timeout_sec?: number;
     agent_timeout_sec?: number;
     learn_interval_minutes?: number;
+    review_strict_mode?: boolean;
   };
 }
 
@@ -261,6 +278,10 @@ export interface JobListItem {
   finished_at: string | null;
   error_message: string | null;
   risk: RiskAssessment | null;
+  review_degraded?: boolean;
+  review_degraded_slot?: string | null;
+  review_degraded_engine?: string | null;
+  review_degraded_error?: string | null;
 }
 
 export interface JobEvent {

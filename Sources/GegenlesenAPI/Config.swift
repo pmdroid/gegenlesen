@@ -44,6 +44,38 @@ struct ModelSlots: Content, Sendable, Equatable {
     }
 }
 
+struct EngineProfile: Content, Sendable, Equatable, Codable {
+    var engine: String
+    var model: String
+
+    init(engine: String = AgentEngineID.opencode, model: String) {
+        self.engine = engine
+        self.model = model
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engine = normalizedEngine(try container.decodeIfPresent(String.self, forKey: .engine))
+        model = try container.decode(String.self, forKey: .model)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case engine, model
+    }
+}
+
+struct EngineProfiles: Content, Sendable, Equatable, Codable {
+    var mine: EngineProfile
+    var learn: EngineProfile
+
+    static func `default`(minerModel: String) -> EngineProfiles {
+        EngineProfiles(
+            mine: EngineProfile(model: minerModel),
+            learn: EngineProfile(model: minerModel)
+        )
+    }
+}
+
 struct EmbeddingsConfig: Content, Sendable, Equatable {
     var model: String
     var dimensions: Int
@@ -105,6 +137,8 @@ struct Limits: Content, Sendable, Equatable {
     var scannerTimeoutSec: Int
     /// Harvest and learn miner containers. Reviewer A/B still use `agentTimeoutSec`.
     var mineTimeoutSec: Int
+    /// When true, a single slot validation failure fails the job instead of degrading.
+    var reviewStrictMode: Bool
 
     enum CodingKeys: String, CodingKey {
         case archiveBytes = "archive_bytes"
@@ -117,6 +151,7 @@ struct Limits: Content, Sendable, Equatable {
         case learnIntervalMinutes = "learn_interval_minutes"
         case scannerTimeoutSec = "scanner_timeout_sec"
         case mineTimeoutSec = "mine_timeout_sec"
+        case reviewStrictMode = "review_strict_mode"
     }
 
     static let minMineTimeoutSec = 60
@@ -155,7 +190,8 @@ struct Limits: Content, Sendable, Equatable {
         ruleTokenBudget: Int,
         learnIntervalMinutes: Int = 0,
         scannerTimeoutSec: Int = 120,
-        mineTimeoutSec: Int = 3600
+        mineTimeoutSec: Int = 3600,
+        reviewStrictMode: Bool = false
     ) {
         self.archiveBytes = archiveBytes
         self.queuedArchiveBytes = queuedArchiveBytes
@@ -167,6 +203,7 @@ struct Limits: Content, Sendable, Equatable {
         self.learnIntervalMinutes = max(0, learnIntervalMinutes)
         self.scannerTimeoutSec = max(1, min(scannerTimeoutSec, 600))
         self.mineTimeoutSec = Self.clampMineTimeout(mineTimeoutSec)
+        self.reviewStrictMode = reviewStrictMode
     }
 
     init(from decoder: Decoder) throws {
@@ -181,7 +218,8 @@ struct Limits: Content, Sendable, Equatable {
             ruleTokenBudget: try container.decode(Int.self, forKey: .ruleTokenBudget),
             learnIntervalMinutes: try container.decodeIfPresent(Int.self, forKey: .learnIntervalMinutes) ?? 0,
             scannerTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .scannerTimeoutSec) ?? 120,
-            mineTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .mineTimeoutSec) ?? 3600
+            mineTimeoutSec: try container.decodeIfPresent(Int.self, forKey: .mineTimeoutSec) ?? 3600,
+            reviewStrictMode: try container.decodeIfPresent(Bool.self, forKey: .reviewStrictMode) ?? false
         )
     }
 }
@@ -197,6 +235,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var minerModel: String
     var opencodeImage: String
     var engineImages: [String: String]
+    var engineProfiles: EngineProfiles
     var scannerImage: String
     var embeddings: EmbeddingsConfig
     var limits: Limits
@@ -213,6 +252,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case minerModel = "miner_model"
         case opencodeImage = "opencode_image"
         case engineImages = "engine_images"
+        case engineProfiles = "engine_profiles"
         case scannerImage = "scanner_image"
         case embeddings
         case limits
@@ -230,6 +270,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         minerModel: String? = nil,
         opencodeImage: String,
         engineImages: [String: String] = [:],
+        engineProfiles: EngineProfiles? = nil,
         scannerImage: String = "gegenlesen/scanner:0.1.0",
         embeddings: EmbeddingsConfig = .v1,
         limits: Limits,
@@ -245,6 +286,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.minerModel = Self.resolveMinerModel(minerModel, judgeModel: judgeModel)
         self.opencodeImage = opencodeImage
         self.engineImages = engineImages
+        self.engineProfiles = engineProfiles ?? .default(minerModel: self.minerModel)
         self.scannerImage = scannerImage
         self.embeddings = embeddings
         self.limits = limits
@@ -271,6 +313,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         )
         opencodeImage = try container.decode(String.self, forKey: .opencodeImage)
         engineImages = try container.decodeIfPresent([String: String].self, forKey: .engineImages) ?? [:]
+        engineProfiles = try container.decodeIfPresent(EngineProfiles.self, forKey: .engineProfiles)
+            ?? .default(minerModel: minerModel)
         scannerImage = try container.decodeIfPresent(String.self, forKey: .scannerImage) ?? "gegenlesen/scanner:0.1.0"
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
@@ -291,6 +335,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if !engineImages.isEmpty {
             try container.encode(engineImages, forKey: .engineImages)
         }
+        try container.encode(engineProfiles, forKey: .engineProfiles)
         try container.encode(scannerImage, forKey: .scannerImage)
         try container.encode(embeddings, forKey: .embeddings)
         try container.encode(limits, forKey: .limits)
@@ -314,6 +359,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         engineImages: [
             AgentEngineID.opencode: "gegenlesen/opencode-runner:0.1.0",
             AgentEngineID.claude: "gegenlesen/claude-runner:0.1.0",
+            AgentEngineID.codex: "gegenlesen/codex-runner:0.1.0",
+            AgentEngineID.cursorAgent: "gegenlesen/cursor-runner:0.1.0",
         ],
         scannerImage: "gegenlesen/scanner:0.1.0",
         limits: .v1
@@ -385,7 +432,14 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         from environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
         var env: [String: String] = [:]
-        for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"] {
+        for key in [
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CODEX_API_KEY",
+            "CURSOR_API_KEY",
+            "CURSOR_AUTH_TOKEN",
+        ] {
             if let value = environment[key], !value.isEmpty {
                 env[key] = value
             }
@@ -405,11 +459,15 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     }
 
     static let defaultClaudeRunnerImage = "gegenlesen/claude-runner:0.1.0"
+    static let defaultCodexRunnerImage = "gegenlesen/codex-runner:0.1.0"
+    static let defaultCursorRunnerImage = "gegenlesen/cursor-runner:0.1.0"
 
     func resolvedEngineImages() -> [String: String] {
         var map: [String: String] = [
             AgentEngineID.opencode: opencodeImage,
             AgentEngineID.claude: Self.defaultClaudeRunnerImage,
+            AgentEngineID.codex: Self.defaultCodexRunnerImage,
+            AgentEngineID.cursorAgent: Self.defaultCursorRunnerImage,
         ]
         for (engine, image) in engineImages {
             let trimmed = image.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -468,6 +526,27 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_CLAUDE_RUNNER_IMAGE"], !value.isEmpty {
             next.engineImages[AgentEngineID.claude] = value
         }
+        if let value = environment["GEGENLESEN_CODEX_RUNNER_IMAGE"], !value.isEmpty {
+            next.engineImages[AgentEngineID.codex] = value
+        }
+        if let value = environment["GEGENLESEN_CURSOR_RUNNER_IMAGE"], !value.isEmpty {
+            next.engineImages[AgentEngineID.cursorAgent] = value
+        }
+        if let value = environment["GEGENLESEN_MINE_ENGINE"], !value.isEmpty {
+            next.engineProfiles.mine.engine = value
+        }
+        if let value = environment["GEGENLESEN_MINE_MODEL"], !value.isEmpty {
+            next.engineProfiles.mine.model = value
+        }
+        if let value = environment["GEGENLESEN_LEARN_ENGINE"], !value.isEmpty {
+            next.engineProfiles.learn.engine = value
+        }
+        if let value = environment["GEGENLESEN_LEARN_MODEL"], !value.isEmpty {
+            next.engineProfiles.learn.model = value
+        }
+        if let value = environment["GEGENLESEN_REVIEW_STRICT_MODE"], !value.isEmpty {
+            next.limits.reviewStrictMode = ["1", "true", "yes"].contains(value.lowercased())
+        }
         if let value = environment["GEGENLESEN_SCANNER_IMAGE"] {
             next.scannerImage = value
         }
@@ -509,6 +588,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             judgeEngine: judgeEngine,
             judgeModel: judgeModel,
             minerModel: minerModel,
+            engineProfiles: engineProfiles,
             opencodeImage: opencodeImage,
             scannerImage: scannerImage,
             limits: limits,
@@ -530,6 +610,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var judgeEngine: String
     var judgeModel: String
     var minerModel: String
+    var engineProfiles: EngineProfiles
     var opencodeImage: String
     var scannerImage: String
     var limits: Limits
@@ -541,6 +622,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
         case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
+        case engineProfiles = "engine_profiles"
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case limits
@@ -562,11 +644,27 @@ struct LimitsSettingsUpdate: Content, Sendable, Equatable {
     var mineTimeoutSec: Int?
     var agentTimeoutSec: Int?
     var learnIntervalMinutes: Int?
+    var reviewStrictMode: Bool?
 
     enum CodingKeys: String, CodingKey {
         case mineTimeoutSec = "mine_timeout_sec"
         case agentTimeoutSec = "agent_timeout_sec"
         case learnIntervalMinutes = "learn_interval_minutes"
+        case reviewStrictMode = "review_strict_mode"
+    }
+}
+
+struct EngineProfileUpdate: Content, Sendable, Equatable {
+    var engine: String?
+    var model: String?
+}
+
+struct EngineProfilesUpdate: Content, Sendable, Equatable {
+    var mine: EngineProfileUpdate?
+    var learn: EngineProfileUpdate?
+
+    enum CodingKeys: String, CodingKey {
+        case mine, learn
     }
 }
 
@@ -589,6 +687,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
     var judgeEngine: String? = nil
     var judgeModel: String?
     var minerModel: String? = nil
+    var engineProfiles: EngineProfilesUpdate? = nil
     var openrouterApiKey: String?
     var scannerImage: String? = nil
     var risk: RiskSettingsUpdate? = nil
@@ -599,6 +698,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
         case judgeEngine = "judge_engine"
         case judgeModel = "judge_model"
         case minerModel = "miner_model"
+        case engineProfiles = "engine_profiles"
         case openrouterApiKey = "openrouter_api_key"
         case scannerImage = "scanner_image"
         case risk

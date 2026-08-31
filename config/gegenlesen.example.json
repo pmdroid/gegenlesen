@@ -20,7 +20,19 @@
   "opencode_image": "gegenlesen/opencode-runner:0.1.0",
   "engine_images": {
     "opencode": "gegenlesen/opencode-runner:0.1.0",
-    "claude": "gegenlesen/claude-runner:0.1.0"
+    "claude": "gegenlesen/claude-runner:0.1.0",
+    "codex": "gegenlesen/codex-runner:0.1.0",
+    "cursor-agent": "gegenlesen/cursor-runner:0.1.0"
+  },
+  "engine_profiles": {
+    "mine": {
+      "engine": "opencode",
+      "model": "openrouter/openai/gpt-5.6-terra"
+    },
+    "learn": {
+      "engine": "opencode",
+      "model": "openrouter/openai/gpt-5.6-terra"
+    }
   },
   "scanner_image": "gegenlesen/scanner:0.1.0",
   "limits": {
