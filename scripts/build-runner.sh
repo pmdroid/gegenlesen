@@ -11,8 +11,10 @@ CODEX_IMAGE="gegenlesen/codex-runner:0.1.0"
 CURSOR_IMAGE="gegenlesen/cursor-runner:0.1.0"
 GROK_IMAGE="gegenlesen/grok-runner:0.1.0"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.1.25}"
-CLAUDE_CODE_ACP_VERSION="${CLAUDE_CODE_ACP_VERSION:-0.16.2}"
-CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-1.7.0}"
+CLAUDE_ACP_VERSION="${CLAUDE_ACP_VERSION:-0.72.0}"
+CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-2.1.257}"
+CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-1.8.0}"
+GROK_VERSION="${GROK_VERSION:-1.0.17}"
 
 arch="$(uname -m)"
 if [[ "$arch" == "arm64" || "$arch" == "aarch64" ]]; then
@@ -41,7 +43,8 @@ build_claude() {
   docker build \
     --platform "$platform" \
     --build-arg "RUNNER_BASE=${BASE_IMAGE}" \
-    --build-arg "CLAUDE_CODE_ACP_VERSION=${CLAUDE_CODE_ACP_VERSION}" \
+    --build-arg "CLAUDE_ACP_VERSION=${CLAUDE_ACP_VERSION}" \
+    --build-arg "CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION}" \
     -t "$CLAUDE_IMAGE" \
     "$ROOT/docker/claude-runner"
 }
@@ -67,6 +70,7 @@ build_grok() {
   docker build \
     --platform "$platform" \
     --build-arg "RUNNER_BASE=${BASE_IMAGE}" \
+    --build-arg "GROK_VERSION=${GROK_VERSION}" \
     -t "$GROK_IMAGE" \
     "$ROOT/docker/grok-runner"
 }

@@ -36,7 +36,7 @@ assert.match(`${unknown.stderr}${unknown.stdout}`, /suggestion_judge/);
 const modelsScript = join(here, "..", "acp-models.mjs");
 const missingClaude = spawnSync(
   process.execPath,
-  [modelsScript, "--", "claude-code-acp"],
+  [modelsScript, "--", "claude-agent-acp"],
   {
     encoding: "utf8",
     env: {

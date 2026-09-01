@@ -29,9 +29,10 @@ RUN BIN="$(swift build -c release --product GegenlesenAPI --show-bin-path)" \
 FROM debian:bookworm-slim
 # git depends on libcurl-gnutls. Swift/Foundation links OpenSSL libcurl4.
 ARG TARGETARCH
-ARG GROK_VERSION=1.0.13
-ARG CLAUDE_CODE_ACP_VERSION=0.16.2
+ARG GROK_VERSION=1.0.17
+ARG CLAUDE_ACP_VERSION=0.72.0
 ARG CLAUDE_CODE_VERSION=2.1.257
+ARG CODEX_ACP_VERSION=1.8.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
@@ -52,10 +53,13 @@ RUN apt-get install -y --no-install-recommends \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g \
-      "@zed-industries/claude-code-acp@${CLAUDE_CODE_ACP_VERSION}" \
+      "@agentclientprotocol/claude-agent-acp@${CLAUDE_ACP_VERSION}" \
+      "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-    && command -v claude-code-acp \
+    && command -v claude-agent-acp \
+    && command -v codex-acp \
     && command -v claude \
+    && ln -sf "$(command -v claude-agent-acp)" /usr/local/bin/claude-code-acp \
     && curl https://cursor.com/install -fsS | bash \
     && install -d -m 0755 /opt/cursor-agent \
     && cp -a /root/.local/share/cursor-agent/versions /opt/cursor-agent/versions \

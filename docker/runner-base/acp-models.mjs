@@ -20,8 +20,13 @@ function isGrokAgent(path) {
   return out.includes("grok");
 }
 
+function isClaudeACPPart(part) {
+  const value = String(part);
+  return value.includes("claude-agent-acp") || value.includes("claude-code-acp");
+}
+
 function isClaudeCommand(command) {
-  return command.some((part) => String(part).includes("claude-code-acp"));
+  return command.some((part) => isClaudeACPPart(part));
 }
 
 function findOnPath(name) {
@@ -67,7 +72,12 @@ function resolveProbeCommand(command) {
     if (claudeAcp && isRunnable(claudeAcp)) {
       return [claudeAcp];
     }
-    for (const candidate of ["/usr/local/bin/claude-code-acp", "/usr/bin/claude-code-acp"]) {
+    for (const candidate of [
+      "/usr/local/bin/claude-agent-acp",
+      "/usr/bin/claude-agent-acp",
+      "/usr/local/bin/claude-code-acp",
+      "/usr/bin/claude-code-acp",
+    ]) {
       if (isRunnable(candidate)) {
         return [candidate];
       }
