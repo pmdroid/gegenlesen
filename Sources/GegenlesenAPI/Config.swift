@@ -543,7 +543,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         }
         if let value = environment["GEGENLESEN_MINE_ENGINE"], !value.isEmpty {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed == AgentEngineID.opencode {
+            if AgentEngineID.isKnown(trimmed) {
                 next.engineProfiles.mine.engine = trimmed
             }
         }
@@ -552,7 +552,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         }
         if let value = environment["GEGENLESEN_LEARN_ENGINE"], !value.isEmpty {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed == AgentEngineID.opencode {
+            if AgentEngineID.isKnown(trimmed) {
                 next.engineProfiles.learn.engine = trimmed
             }
         }

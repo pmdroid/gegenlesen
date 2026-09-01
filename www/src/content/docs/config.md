@@ -19,6 +19,8 @@ Override the path with `GEGENLESEN_CONFIG`. GET `/api/settings` never returns th
 | `GEGENLESEN_BIND` / `GEGENLESEN_PORT` / `GEGENLESEN_DATA_DIR` | Listen and store |
 | `GEGENLESEN_HOST_HOME` | Host home inside the API container (default: process home). Set to `/host-home` when mounting `~/.claude`, `~/.cursor`, etc. for ACP Setup auth |
 | `GEGENLESEN_MODEL_A` / `GEGENLESEN_MODEL_B` / `GEGENLESEN_JUDGE_MODEL` | Model ids |
+| `GEGENLESEN_MINE_ENGINE` / `GEGENLESEN_MINE_MODEL` | Harvest and corpus miner slot |
+| `GEGENLESEN_LEARN_ENGINE` / `GEGENLESEN_LEARN_MODEL` | Job Learn and architecture card slot |
 | `GEGENLESEN_LEARN_INTERVAL_MINUTES` | Sweep. `0` disables |
 | `GEGENLESEN_DOCKER` | `docker` binary |
 | `GEGENLESEN_OPENCODE_IMAGE` | Runner image. From source: `gegenlesen/opencode-runner:0.1.0`. Docker image default: `ghcr.io/pmdroid/gegenlesen:runner-main` |

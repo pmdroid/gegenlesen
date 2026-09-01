@@ -27,10 +27,10 @@ A job-level merge-intent label (would you have merged unread?) is also learn **e
 ## Pipeline
 
 1. Host filter (this-job endorsement, or would-not-merge kept errors)
-2. Miner uses reviewer A (DeepSeek Flash). Cheap pass.
-3. Suggestion judge (Terra) defaults to **drop**. A keep may include `rewrite.title` and `rewrite.body`.
+2. Miner uses the **mine** or **learn** engine from Setup (same ACP engines as reviewers/judge, or OpenCode). Harvest and corpus use the mine slot. Job Learn and the architecture card use the learn slot.
+3. Suggestion judge uses that same slot and defaults to **drop**. A keep may include `rewrite.title` and `rewrite.body`.
 4. Kept **rules** upsert as **disabled** only after two distinct-job endorsements. Context notes may inbox after one job.
 
 Nothing auto-enables.
 
-The original miner title and body stay in the learning payload as `original_title` / `original_body` when Terra rewrites.
+The original miner title and body stay in the learning payload as `original_title` / `original_body` when the suggestion judge rewrites.

@@ -318,8 +318,11 @@ public struct MineCorpusPipeline: Sendable {
         var keptCandidates = candidates
         if !skipAgent, let suggestionJudge, !candidates.isEmpty, let mineJob = try await store.job(id: jobID) {
             try SuggestionJudge.writeInput(candidates, workspace: workspace)
+            var slotJob = mineJob
+            slotJob.judgeEngine = engine
+            slotJob.judgeModelID = model
             let judged = await suggestionJudge.runSuggestionJudge(
-                job: mineJob,
+                job: slotJob,
                 workspace: Workspace(root: workspace)
             )
             keptCandidates = SuggestionJudge.apply(

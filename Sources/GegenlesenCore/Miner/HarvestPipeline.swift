@@ -206,8 +206,11 @@ public struct HarvestPipeline: Sendable {
                 workspace: workspace,
                 prompt: SuggestionJudge.harvestPrompt
             )
+            var slotJob = job
+            slotJob.judgeEngine = engine
+            slotJob.judgeModelID = model
             let judged = await suggestionJudge.runSuggestionJudge(
-                job: job,
+                job: slotJob,
                 workspace: Workspace(root: workspace)
             )
             didJudge = !judged.failed

@@ -163,6 +163,105 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
+    func minerACPOutputPicksHarvestMineAndArchitecture() throws {
+        try withTempDir("miner-acp-output") { root in
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(".gegenlesen", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            let empty = OpenCodeInvocation.minerACPOutput(workspace: Workspace(root: root))
+            #expect(empty.kind == "mine")
+            #expect(empty.path == "/workspace/.gegenlesen/mined-rules.json")
+
+            try "scan".write(
+                to: root.appendingPathComponent(".gegenlesen/harvest-scan.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let harvest = OpenCodeInvocation.minerACPOutput(workspace: Workspace(root: root))
+            #expect(harvest.kind == "harvest")
+            #expect(harvest.path == "/workspace/.gegenlesen/harvest.json")
+        }
+        try withTempDir("miner-acp-arch") { root in
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent(".gegenlesen", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try "draft".write(
+                to: root.appendingPathComponent(".gegenlesen/architecture-draft.md"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let architecture = OpenCodeInvocation.minerACPOutput(workspace: Workspace(root: root))
+            #expect(architecture.kind == "architecture")
+            #expect(architecture.path == "/workspace/.gegenlesen/architecture-draft.md")
+        }
+        try withTempDir("miner-acp-job") { root in
+            try FileManager.default.createDirectory(
+                at: root.appendingPathComponent("job", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try "{}".write(
+                to: root.appendingPathComponent("job/findings.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+            let jobLearn = OpenCodeInvocation.minerACPOutput(workspace: Workspace(root: root))
+            #expect(jobLearn.kind == "mine")
+            #expect(jobLearn.path == "/workspace/.gegenlesen/mined-rules.json")
+        }
+    }
+
+    @Test
+    func runMinerDispatchesACPForCursor() async throws {
+        try await withTempDir("miner-acp-run") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 0))
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                engineImages: [AgentEngineID.cursorAgent: "gegenlesen/cursor-runner:0.1.0"],
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let result = await invocation.runMiner(
+                jobID: JobID("job-acp-mine"),
+                workspace: Workspace(root: root),
+                engine: AgentEngineID.cursorAgent,
+                model: "composer-2.5"
+            )
+            #expect(result.errorMessage != "mine_engine_requires_opencode")
+            #expect(result.errorMessage != "unknown_engine")
+            #expect(!result.failed)
+            let requests = await docker.requests
+            #expect(requests.count == 1)
+            #expect(requests[0].image == "gegenlesen/cursor-runner:0.1.0")
+            #expect(requests[0].argv.contains("acp-runner"))
+            #expect(requests[0].argv.contains("mine"))
+            #expect(requests[0].argv.contains("/workspace/.gegenlesen/mined-rules.json"))
+        }
+    }
+
+    @Test
+    func runMinerRejectsUnknownEngine() async throws {
+        try await withTempDir("miner-unknown") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let invocation = OpenCodeInvocation(
+                docker: NoopDocker(),
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let result = await invocation.runMiner(
+                jobID: JobID("job-unknown-mine"),
+                workspace: Workspace(root: root),
+                engine: "not-an-engine",
+                model: "whatever"
+            )
+            #expect(result.failed)
+            #expect(result.errorMessage == "unknown_engine")
+        }
+    }
+
+    @Test
     func parallelSlotsAndEmptyFindingsSucceed() async throws {
         try await withTempDir("invoke-empty") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)

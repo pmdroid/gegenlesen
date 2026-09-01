@@ -103,9 +103,19 @@ struct ConfigLimitsTests {
     }
 
     @Test
-    func mineEngineEnvOverrideIgnoresNonOpenCode() {
+    func mineAndLearnEngineEnvOverrideAcceptsKnownEngines() {
         let config = GegenlesenConfig.example.applyingEnvironmentOverrides([
             "GEGENLESEN_MINE_ENGINE": "claude",
+            "GEGENLESEN_LEARN_ENGINE": "codex",
+        ])
+        #expect(config.engineProfiles.mine.engine == "claude")
+        #expect(config.engineProfiles.learn.engine == "codex")
+    }
+
+    @Test
+    func mineEngineEnvOverrideIgnoresUnknown() {
+        let config = GegenlesenConfig.example.applyingEnvironmentOverrides([
+            "GEGENLESEN_MINE_ENGINE": "not-an-engine",
         ])
         #expect(config.engineProfiles.mine.engine == "opencode")
     }

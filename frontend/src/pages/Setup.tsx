@@ -69,9 +69,9 @@ export function SetupPage() {
     setEngineB(normalizeEngine(data.models.engine_b));
     setJudgeEngine(normalizeEngine(data.judge_engine));
     setJudge(data.judge_model);
-    setMiner(data.miner_model || data.judge_model);
-    setMineEngine("opencode");
-    setLearnEngine("opencode");
+    setMiner(data.miner_model || data.engine_profiles?.mine.model || data.judge_model);
+    setMineEngine(normalizeEngine(data.engine_profiles?.mine.engine));
+    setLearnEngine(normalizeEngine(data.engine_profiles?.learn.engine));
     setLearnModel(data.engine_profiles?.learn.model ?? data.miner_model ?? data.judge_model);
     setScannerImage(data.scanner_image ?? "");
     setAppetite(data.risk.appetite);
@@ -139,8 +139,8 @@ export function SetupPage() {
         judge_model: judge.trim(),
         miner_model: miner.trim(),
         engine_profiles: {
-          mine: { engine: "opencode", model: miner.trim() },
-          learn: { engine: "opencode", model: learnModel.trim() },
+          mine: { engine: mineEngine, model: miner.trim() },
+          learn: { engine: learnEngine, model: learnModel.trim() },
         },
         openrouter_api_key: apiKey.trim() || undefined,
         scanner_image: scannerImage.trim(),
@@ -195,6 +195,8 @@ export function SetupPage() {
   const modelsAcp = useEngineModels(engineA, engineAuth);
   const modelsBcp = useEngineModels(engineB, engineAuth);
   const judgeAcp = useEngineModels(judgeEngine, engineAuth);
+  const mineAcp = useEngineModels(mineEngine, engineAuth);
+  const learnAcp = useEngineModels(learnEngine, engineAuth);
   const models = catalog.data?.models ?? [];
   const catalogError = catalog.error instanceof Error ? catalog.error.message : null;
 
@@ -341,40 +343,52 @@ export function SetupPage() {
           <EnginePicker
             label="Mine engine"
             value={mineEngine}
-            engines={["opencode"]}
-            onChange={() => setMineEngine("opencode")}
-            disabled
+            onChange={(next) => {
+              setMineEngine(next);
+              setMiner((prev) => reconcileModelForEngine(next, prev, mineAcp.data?.models));
+            }}
+            disabled={false}
           />
+          <EngineAuthHint engine={mineEngine} engineAuth={engineAuth} />
           <ModelPicker
             label="Mine model"
-            engine="opencode"
+            engine={mineEngine}
             value={miner}
             onChange={setMiner}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder("opencode") : "add OpenRouter key first"}
-            error={validateModelForEngine("opencode", miner)}
+            nativeModels={mineAcp.data?.models}
+            nativeLoading={mineAcp.isFetching}
+            nativeError={mineAcp.error instanceof Error ? mineAcp.error.message : null}
+            disabled={(!canFetch && mineEngine === "opencode") || (mineEngine !== "opencode" && mineAcp.isFetching)}
+            placeholder={canFetch || mineEngine !== "opencode" ? modelPlaceholder(mineEngine) : "add OpenRouter key first"}
+            error={validateModelForEngine(mineEngine, miner)}
           />
         </div>
         <div className="slot-setup">
           <EnginePicker
             label="Learn engine"
             value={learnEngine}
-            engines={["opencode"]}
-            onChange={() => setLearnEngine("opencode")}
-            disabled
+            onChange={(next) => {
+              setLearnEngine(next);
+              setLearnModel((prev) => reconcileModelForEngine(next, prev, learnAcp.data?.models));
+            }}
+            disabled={false}
           />
+          <EngineAuthHint engine={learnEngine} engineAuth={engineAuth} />
           <ModelPicker
             label="Learn model"
-            engine="opencode"
+            engine={learnEngine}
             value={learnModel}
             onChange={setLearnModel}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder("opencode") : "add OpenRouter key first"}
-            error={validateModelForEngine("opencode", learnModel)}
+            nativeModels={learnAcp.data?.models}
+            nativeLoading={learnAcp.isFetching}
+            nativeError={learnAcp.error instanceof Error ? learnAcp.error.message : null}
+            disabled={(!canFetch && learnEngine === "opencode") || (learnEngine !== "opencode" && learnAcp.isFetching)}
+            placeholder={canFetch || learnEngine !== "opencode" ? modelPlaceholder(learnEngine) : "add OpenRouter key first"}
+            error={validateModelForEngine(learnEngine, learnModel)}
           />
         </div>
         <p className="formhint">
