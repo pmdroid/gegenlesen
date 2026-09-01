@@ -59,12 +59,18 @@ public enum ACPModelProbe {
             return cached
         }
 
+        let enrichedEnv = EngineHostCredentials.enrichedProviderEnv(
+            engine: normalized,
+            homeDirectory: EngineHostCredentials.hostHomeDirectory(),
+            providerEnv: providerEnv
+        )
         let list = try await Task.detached {
-            try runProbe(
+            let command = try probeCommand(for: normalized)
+            return try runProbe(
                 engine: normalized,
                 script: scriptURL(packageRoot: packageRoot),
-                command: probeCommand(for: normalized),
-                providerEnv: providerEnv
+                command: command,
+                providerEnv: enrichedEnv
             )
         }.value
         storeCache(list, engine: normalized)
@@ -81,16 +87,13 @@ public enum ACPModelProbe {
             throw ACPModelProbeError.scriptMissing
         }
 
-        var env = ProcessInfo.processInfo.environment
-        for (key, value) in providerEnv where !value.isEmpty {
-            env[key] = value
-        }
+        let (env, cwd) = try probeRuntimeEnvironment(engine: engine, providerEnv: providerEnv)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["node", script.path, "--"] + command
         process.environment = env
-        process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        process.currentDirectoryURL = cwd
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -149,7 +152,45 @@ public enum ACPModelProbe {
         var value = Data()
     }
 
-    private static func probeCommand(for engine: String) -> [String] {
+    private static func probeRuntimeEnvironment(
+        engine: String,
+        providerEnv: [String: String]
+    ) throws -> (env: [String: String], cwd: URL) {
+        var env = ProcessInfo.processInfo.environment
+        for (key, value) in providerEnv where !value.isEmpty {
+            env[key] = value
+        }
+
+        let hostHomeRaw = env["GEGENLESEN_HOST_HOME"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !hostHomeRaw.isEmpty else {
+            let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            return (env, home)
+        }
+
+        let hostHome = URL(fileURLWithPath: hostHomeRaw, isDirectory: true)
+        if engine == AgentEngineID.codex {
+            let probeHome = FileManager.default.temporaryDirectory
+                .appendingPathComponent("gegenlesen-acp-probe-codex", isDirectory: true)
+            let codexDir = probeHome.appendingPathComponent(".codex", isDirectory: true)
+            try FileManager.default.createDirectory(at: codexDir, withIntermediateDirectories: true)
+            let authSource = hostHome.appendingPathComponent(".codex/auth.json")
+            let authDest = codexDir.appendingPathComponent("auth.json")
+            if FileManager.default.isReadableFile(atPath: authSource.path) {
+                if FileManager.default.fileExists(atPath: authDest.path) {
+                    try FileManager.default.removeItem(at: authDest)
+                }
+                try FileManager.default.copyItem(at: authSource, to: authDest)
+            }
+            env["HOME"] = probeHome.path
+            return (env, probeHome)
+        }
+
+        env["HOME"] = hostHomeRaw
+        return (env, hostHome)
+    }
+
+    private static func probeCommand(for engine: String) throws -> [String] {
         let home = EngineHostCredentials.hostHomeDirectory()
         switch engine {
         case AgentEngineID.claude:
@@ -164,12 +205,12 @@ public enum ACPModelProbe {
             if let agent = EngineAgentPaths.cursorAgent(home: home) {
                 return [agent, "acp"]
             }
-            return ["agent", "acp"]
+            throw ACPModelProbeError.probeFailed("cursor agent binary not found — rebuild API image or set GEGENLESEN_CURSOR_AGENT")
         case AgentEngineID.grok:
             if let agent = EngineAgentPaths.grokAgent(home: home) {
                 return [agent, "agent", "stdio"]
             }
-            return ["agent", "agent", "stdio"]
+            throw ACPModelProbeError.probeFailed("grok agent binary not found — rebuild API image or set GEGENLESEN_GROK_AGENT")
         default:
             return []
         }

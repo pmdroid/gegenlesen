@@ -26,8 +26,11 @@ RUN BIN="$(swift build -c release --product GegenlesenAPI --show-bin-path)" \
 
 FROM debian:bookworm-slim
 # git depends on libcurl-gnutls. Swift/Foundation links OpenSSL libcurl4.
+ARG TARGETARCH
+ARG GROK_VERSION=1.0.13
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     docker.io \
     git \
     libarchive13 \
@@ -40,7 +43,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @zed-industries/claude-code-acp@0.16.2
+    && npm install -g @zed-industries/claude-code-acp@0.16.2 \
+    && curl https://cursor.com/install -fsS | bash \
+    && install -d -m 0755 /opt/cursor-agent \
+    && cp -a /root/.local/share/cursor-agent/versions /opt/cursor-agent/versions \
+    && AGENT_VERSION="$(ls /opt/cursor-agent/versions | head -1)" \
+    && ln -sf "/opt/cursor-agent/versions/${AGENT_VERSION}/cursor-agent" /usr/local/bin/cursor-agent \
+    && test -x "/opt/cursor-agent/versions/${AGENT_VERSION}/cursor-agent" \
+    && set -eux; \
+    case "$TARGETARCH" in \
+      arm64) grok_arch=aarch64 ;; \
+      amd64) grok_arch=x86_64 ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL \
+      "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-${GROK_VERSION}-linux-${grok_arch}" \
+      -o /usr/local/bin/grok; \
+    chmod 0755 /usr/local/bin/grok; \
+    /usr/local/bin/grok --version
 WORKDIR /app
 COPY --from=build /usr/local/bin/GegenlesenAPI /usr/local/bin/GegenlesenAPI
 RUN missing="$(ldd /usr/local/bin/GegenlesenAPI | awk '/not found/ {print}')" \

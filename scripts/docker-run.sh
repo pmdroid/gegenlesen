@@ -17,11 +17,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA="${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}"
 CONFIG="${GEGENLESEN_CONFIG_DIR:-${HOME}/gegenlesen-config}"
 HOST_HOME="${GEGENLESEN_HOST_HOME_MOUNT:-/host-home}"
-IMAGE="${GEGENLESEN_IMAGE:-ghcr.io/pmdroid/gegenlesen:0.1.15}"
+IMAGE="${GEGENLESEN_IMAGE:-ghcr.io/pmdroid/gegenlesen:0.1.17}"
 PUBLISH_BIND="${GEGENLESEN_PUBLISH_BIND:-0.0.0.0}"
 PORT="${GEGENLESEN_PORT:-8080}"
 NAME="${GEGENLESEN_CONTAINER_NAME:-gegenlesen}"
-RUNNER_TAG="${GEGENLESEN_RUNNER_TAG:-0.1.15}"
+RUNNER_TAG="${GEGENLESEN_RUNNER_TAG:-0.1.17}"
 REGISTRY="${GEGENLESEN_REGISTRY:-ghcr.io/pmdroid/gegenlesen}"
 
 HOST_NETWORK=0
@@ -45,6 +45,84 @@ done
 
 mkdir -p "$DATA" "$CONFIG"
 
+sync_claude_credentials() {
+  [[ "$(uname -s)" == "Darwin" ]] || return 0
+  local raw dest="${HOME}/.claude/.credentials.json"
+  raw="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)" || return 0
+  mkdir -p "${HOME}/.claude/debug"
+  python3 - "$raw" "$dest" <<'PY'
+import json, os, sys
+raw, dest = sys.argv[1], sys.argv[2]
+try:
+    obj = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(0)
+oauth = obj.get("claudeAiOauth")
+if not oauth and obj.get("accessToken"):
+    oauth = obj
+if not oauth or (not oauth.get("accessToken") and not oauth.get("refreshToken")):
+    sys.exit(0)
+tmp = dest + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump({"claudeAiOauth": oauth}, f, sort_keys=True)
+    f.write("\n")
+os.replace(tmp, dest)
+PY
+}
+
+sync_claude_credentials
+
+sync_cursor_auth_token() {
+  [[ "$(uname -s)" == "Darwin" ]] || return 0
+  if [[ -n "${CURSOR_AUTH_TOKEN:-}" ]]; then
+    return 0
+  fi
+  local token
+  token="$(security find-generic-password -s cursor-access-token -a cursor-user -w 2>/dev/null)" || return 0
+  CURSOR_AUTH_TOKEN="$token"
+  export CURSOR_AUTH_TOKEN
+}
+
+sync_cursor_auth_token
+
+AGENT_CACHE="${GEGENLESEN_AGENT_CACHE:-${DATA}/container-agents}"
+
+ensure_cursor_agent() {
+  local root="${AGENT_CACHE}/cursor-root/opt/cursor-agent"
+  if [[ -d "${root}/versions" ]]; then
+    return 0
+  fi
+  mkdir -p "${AGENT_CACHE}/cursor-root/opt"
+  local cid="gegenlesen-agent-extract-cursor-$$"
+  echo "==> extracting cursor-agent bundle from ${REGISTRY}:cursor-runner-${RUNNER_TAG}"
+  docker rm -f "$cid" 2>/dev/null || true
+  docker create --name "$cid" "${REGISTRY}:cursor-runner-${RUNNER_TAG}" >/dev/null
+  docker cp "${cid}:/opt/cursor-agent" "${AGENT_CACHE}/cursor-root/opt/cursor-agent"
+  docker rm "$cid" >/dev/null
+  chmod -R a+rx "${AGENT_CACHE}/cursor-root/opt/cursor-agent"
+}
+
+ensure_grok_agent() {
+  local dest="${AGENT_CACHE}/grok-agent"
+  if [[ -f "$dest" ]]; then
+    return 0
+  fi
+  mkdir -p "$AGENT_CACHE"
+  local cid="gegenlesen-agent-extract-grok-$$"
+  echo "==> extracting grok from ${REGISTRY}:grok-runner-${RUNNER_TAG}"
+  docker rm -f "$cid" 2>/dev/null || true
+  docker create --name "$cid" "${REGISTRY}:grok-runner-${RUNNER_TAG}" >/dev/null
+  docker cp "${cid}:/usr/local/bin/agent" "$dest"
+  docker rm "$cid" >/dev/null
+  chmod 0755 "$dest"
+}
+
+ensure_cursor_agent
+ensure_grok_agent
+
+CURSOR_VERSION="$(ls "${AGENT_CACHE}/cursor-root/opt/cursor-agent/versions" | head -1)"
+CURSOR_AGENT_PATH="/opt/cursor-agent/versions/${CURSOR_VERSION}/cursor-agent"
+
 mount_if() {
   local src="$1" dest="$2" mode="${3:-ro}"
   if [[ -e "$src" ]]; then
@@ -58,12 +136,16 @@ MOUNTS=(
   -v "${CONFIG}:/app/config"
 )
 
-mount_if "${HOME}/.claude" "${HOST_HOME}/.claude"
-mount_if "${HOME}/.codex" "${HOST_HOME}/.codex"
-mount_if "${HOME}/.cursor" "${HOST_HOME}/.cursor"
-mount_if "${HOME}/.grok" "${HOST_HOME}/.grok"
+mount_if "${HOME}/.claude" "${HOST_HOME}/.claude" rw
+mount_if "${HOME}/.codex" "${HOST_HOME}/.codex" rw
+mount_if "${HOME}/.cursor" "${HOST_HOME}/.cursor" rw
+mount_if "${HOME}/.grok" "${HOST_HOME}/.grok" rw
 mount_if "${HOME}/.config/cursor" "${HOST_HOME}/.config/cursor"
-mount_if "${HOME}/.local/bin" "${HOST_HOME}/.local/bin"
+MOUNTS+=(-v "${AGENT_CACHE}/cursor-root/opt/cursor-agent:/opt/cursor-agent:ro")
+MOUNTS+=(-v "${AGENT_CACHE}/grok-agent:/usr/local/bin/grok:ro")
+if [[ -f "${ROOT}/docker/runner-base/acp-models.mjs" ]]; then
+  MOUNTS+=(-v "${ROOT}/docker/runner-base/acp-models.mjs:/app/docker/runner-base/acp-models.mjs:ro")
+fi
 
 ENV_ARGS=(
   -e "GEGENLESEN_DATA_DIR=${DATA}"
@@ -77,6 +159,8 @@ ENV_ARGS=(
   -e "GEGENLESEN_CURSOR_RUNNER_IMAGE=${REGISTRY}:cursor-runner-${RUNNER_TAG}"
   -e "GEGENLESEN_GROK_RUNNER_IMAGE=${REGISTRY}:grok-runner-${RUNNER_TAG}"
   -e "GEGENLESEN_SCANNER_IMAGE=${REGISTRY}:scanner-${RUNNER_TAG}"
+  -e "GEGENLESEN_CURSOR_AGENT=${CURSOR_AGENT_PATH}"
+  -e "GEGENLESEN_GROK_AGENT=/usr/local/bin/grok"
 )
 
 for key in \

@@ -206,6 +206,12 @@ public enum EngineHostCredentials {
               !oauth.isEmpty else {
             return false
         }
+        if nonEmpty(oauth["refreshToken"] as? String) != nil {
+            return true
+        }
+        guard nonEmpty(oauth["accessToken"] as? String) != nil else {
+            return false
+        }
         guard let expiresAt = oauth["expiresAt"] as? NSNumber else {
             return true
         }

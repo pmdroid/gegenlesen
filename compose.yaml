@@ -33,8 +33,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}:${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}
       - ${GEGENLESEN_CONFIG_DIR:-./config}:/app/config
-      - ${HOME}/.claude:${GEGENLESEN_HOST_HOME:-/host-home}/.claude:ro
-      - ${HOME}/.codex:${GEGENLESEN_HOST_HOME:-/host-home}/.codex:ro
+      - ${HOME}/.claude:${GEGENLESEN_HOST_HOME:-/host-home}/.claude
+      - ${HOME}/.codex:${GEGENLESEN_HOST_HOME:-/host-home}/.codex
       - ${HOME}/.cursor:${GEGENLESEN_HOST_HOME:-/host-home}/.cursor:ro
       - ${HOME}/.grok:${GEGENLESEN_HOST_HOME:-/host-home}/.grok:ro
       - ${HOME}/.config/cursor:${GEGENLESEN_HOST_HOME:-/host-home}/.config/cursor:ro

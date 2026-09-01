@@ -5,38 +5,77 @@ public enum EngineAgentPaths {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         home: URL = EngineHostCredentials.hostHomeDirectory()
     ) -> String? {
-        if let override = nonEmpty(environment["GEGENLESEN_CURSOR_AGENT"]), FileManager.default.isExecutableFile(atPath: override) {
+        if let override = nonEmpty(environment["GEGENLESEN_CURSOR_AGENT"]),
+           isRunnableAgent(at: override) {
             return override
         }
-        let candidates = [
-            home.appendingPathComponent(".local/bin/agent").path,
+        let containerMode = hostHomeOverride(in: environment) != nil
+        var candidates = [
+            "/usr/local/bin/cursor-agent",
             "/usr/local/bin/agent",
-            "/opt/homebrew/bin/agent",
         ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        if !containerMode {
+            candidates.append(contentsOf: [
+                home.appendingPathComponent(".local/bin/agent").path,
+                "/opt/homebrew/bin/agent",
+            ])
+        }
+        for path in candidates where isRunnableAgent(at: path) {
             if !isGrokAgent(at: path) { return path }
         }
-        return which("agent", environment: environment).flatMap { path in
-            isGrokAgent(at: path) ? nil : path
-        }
+        return which("cursor-agent", environment: environment)
+            ?? which("agent", environment: environment).flatMap { path in
+                isGrokAgent(at: path) ? nil : path
+            }
     }
 
     public static func grokAgent(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         home: URL = EngineHostCredentials.hostHomeDirectory()
     ) -> String? {
-        if let override = nonEmpty(environment["GEGENLESEN_GROK_AGENT"]), FileManager.default.isExecutableFile(atPath: override) {
+        if let override = nonEmpty(environment["GEGENLESEN_GROK_AGENT"]),
+           isRunnableAgent(at: override) {
             return override
         }
-        let candidates = [
-            home.appendingPathComponent(".grok/bin/agent").path,
+        let containerMode = hostHomeOverride(in: environment) != nil
+        var candidates = [
+            "/usr/local/bin/grok",
+            "/usr/local/bin/grok-agent",
         ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
-            return path
+        if !containerMode {
+            candidates.append(contentsOf: [
+                home.appendingPathComponent(".grok/bin/agent").path,
+                home.appendingPathComponent(".grok/bin/grok").path,
+            ])
         }
-        return which("agent", environment: environment).flatMap { path in
-            isGrokAgent(at: path) ? path : nil
+        for path in candidates where isRunnableAgent(at: path) {
+            if isGrokAgent(at: path) { return path }
         }
+        return which("grok", environment: environment)
+            ?? which("agent", environment: environment).flatMap { path in
+                isGrokAgent(at: path) ? path : nil
+            }
+    }
+
+    private static func hostHomeOverride(in environment: [String: String]) -> String? {
+        nonEmpty(environment["GEGENLESEN_HOST_HOME"])
+    }
+
+    private static func isRunnableAgent(at path: String) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: path) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     private static func isGrokAgent(at path: String) -> Bool {
