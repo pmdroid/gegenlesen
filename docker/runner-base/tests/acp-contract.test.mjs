@@ -33,4 +33,22 @@ const unknown = spawnSync(
 assert.notEqual(unknown.status, 0);
 assert.match(`${unknown.stderr}${unknown.stdout}`, /suggestion_judge/);
 
+const modelsScript = join(here, "..", "acp-models.mjs");
+const missingClaude = spawnSync(
+  process.execPath,
+  [modelsScript, "--", "claude-code-acp"],
+  {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: "/usr/bin:/bin",
+      GEGENLESEN_HOST_HOME: join(here, "fixtures"),
+      GEGENLESEN_CLAUDE: "",
+    },
+  },
+);
+assert.notEqual(missingClaude.status, 0);
+assert.match(`${missingClaude.stderr}${missingClaude.stdout}`, /claude CLI not found on PATH/);
+assert.doesNotMatch(`${missingClaude.stderr}`, /ENOENT/);
+
 console.log("acp-contract.test.mjs: ok");
