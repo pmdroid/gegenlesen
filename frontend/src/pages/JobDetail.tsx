@@ -117,6 +117,11 @@ export function JobDetailPage() {
             {detail.risk.verdict}
           </span>
         ) : null}
+        {detail.review_degraded ? (
+          <span className="st human" title={detail.review_degraded_error ?? undefined}>
+            degraded · {detail.review_degraded_slot}
+          </span>
+        ) : null}
         <Link to="/">← jobs</Link>
       </div>
       {detail.status !== "failed" && detail.status !== "cancelled" ? (

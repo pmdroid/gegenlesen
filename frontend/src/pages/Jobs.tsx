@@ -145,6 +145,11 @@ export function JobsPage() {
                   {displayJobTitle(job, key ? pulls[key] : null)}
                 </Link>
                 <span className={chip.className}>{chip.label}</span>
+                {job.review_degraded ? (
+                  <span className="st human" title={job.review_degraded_error ?? undefined}>
+                    degraded · {job.review_degraded_slot}
+                  </span>
+                ) : null}
                 {job.status === "succeeded" && job.risk ? (
                   <span className={job.risk.verdict === "auto_approve" ? "st ok" : "st human"}>
                     {job.risk.verdict}

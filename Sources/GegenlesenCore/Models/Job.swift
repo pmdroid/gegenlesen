@@ -97,6 +97,10 @@ public struct Job: Sendable, Equatable {
     public var containerNameB: String?
     public var timings: JobTimings?
     public var risk: RiskAssessment?
+    public var reviewDegraded: Bool
+    public var reviewDegradedSlot: String?
+    public var reviewDegradedEngine: String?
+    public var reviewDegradedError: String?
 
     public init(
         id: JobID,
@@ -126,7 +130,11 @@ public struct Job: Sendable, Equatable {
         containerNameA: String? = nil,
         containerNameB: String? = nil,
         timings: JobTimings? = nil,
-        risk: RiskAssessment? = nil
+        risk: RiskAssessment? = nil,
+        reviewDegraded: Bool = false,
+        reviewDegradedSlot: String? = nil,
+        reviewDegradedEngine: String? = nil,
+        reviewDegradedError: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -156,5 +164,9 @@ public struct Job: Sendable, Equatable {
         self.containerNameB = containerNameB
         self.timings = timings
         self.risk = risk
+        self.reviewDegraded = reviewDegraded
+        self.reviewDegradedSlot = reviewDegradedSlot
+        self.reviewDegradedEngine = reviewDegradedEngine
+        self.reviewDegradedError = reviewDegradedError
     }
 }

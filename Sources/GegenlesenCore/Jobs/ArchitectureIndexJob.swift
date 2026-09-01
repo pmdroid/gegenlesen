@@ -6,6 +6,7 @@ public struct ArchitectureIndexJob: Sendable {
     public var maxChunks: Int
     public var skipAgent: Bool
     public var miner: (any MinerRunning)?
+    public var engine: String
     public var model: String
     public var onWarning: (@Sendable (String) async -> Void)?
     public var onInfo: (@Sendable (String) async -> Void)?
@@ -16,6 +17,7 @@ public struct ArchitectureIndexJob: Sendable {
         maxChunks: Int = 20_000,
         skipAgent: Bool = true,
         miner: (any MinerRunning)? = nil,
+        engine: String = AgentEngineID.opencode,
         model: String = "openrouter/openai/gpt-5.6-terra",
         onWarning: (@Sendable (String) async -> Void)? = nil,
         onInfo: (@Sendable (String) async -> Void)? = nil
@@ -25,6 +27,7 @@ public struct ArchitectureIndexJob: Sendable {
         self.maxChunks = maxChunks
         self.skipAgent = skipAgent
         self.miner = miner
+        self.engine = engine
         self.model = model
         self.onWarning = onWarning
         self.onInfo = onInfo
@@ -302,6 +305,7 @@ public struct ArchitectureIndexJob: Sendable {
         let result = await miner.runMiner(
             jobID: jobID,
             workspace: workspace,
+            engine: engine,
             model: model,
             isCancelled: nil
         )

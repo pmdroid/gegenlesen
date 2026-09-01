@@ -53,10 +53,16 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             echo "runner=${API_IMAGE}:runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "claude=${API_IMAGE}:claude-runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "codex=${API_IMAGE}:codex-runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "cursor=${API_IMAGE}:cursor-runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "grok=${API_IMAGE}:grok-runner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "scanner=${API_IMAGE}:scanner-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
             echo "runner=${API_IMAGE}:runner-main" >> "$GITHUB_OUTPUT"
             echo "claude=${API_IMAGE}:claude-runner-main" >> "$GITHUB_OUTPUT"
+            echo "codex=${API_IMAGE}:codex-runner-main" >> "$GITHUB_OUTPUT"
+            echo "cursor=${API_IMAGE}:cursor-runner-main" >> "$GITHUB_OUTPUT"
+            echo "grok=${API_IMAGE}:grok-runner-main" >> "$GITHUB_OUTPUT"
             echo "scanner=${API_IMAGE}:scanner-main" >> "$GITHUB_OUTPUT"
           fi
 
@@ -75,6 +81,9 @@ jobs:
           build-args: |
             GEGENLESEN_OPENCODE_IMAGE=${{ steps.sidecars.outputs.runner }}
             GEGENLESEN_CLAUDE_RUNNER_IMAGE=${{ steps.sidecars.outputs.claude }}
+            GEGENLESEN_CODEX_RUNNER_IMAGE=${{ steps.sidecars.outputs.codex }}
+            GEGENLESEN_CURSOR_RUNNER_IMAGE=${{ steps.sidecars.outputs.cursor }}
+            GEGENLESEN_GROK_RUNNER_IMAGE=${{ steps.sidecars.outputs.grok }}
             GEGENLESEN_SCANNER_IMAGE=${{ steps.sidecars.outputs.scanner }}
           outputs: type=image,name=${{ env.API_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=api-${{ env.PLATFORM_PAIR }}
@@ -228,6 +237,123 @@ jobs:
           labels: ${{ steps.alias.outputs.labels }}
           cache-from: type=gha,scope=claude-runner
           cache-to: type=gha,mode=max,scope=claude-runner
+
+  codex-runner:
+    runs-on: ubuntu-latest
+    needs: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: alias
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=raw,value=codex-runner-main,enable={{is_default_branch}}
+            type=sha,prefix=codex-runner-main-,format=short,enable={{is_default_branch}}
+            type=semver,pattern=codex-runner-{{version}}
+            type=semver,pattern=codex-runner-{{major}}.{{minor}}
+            type=raw,value=codex-runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/codex-runner
+          file: docker/codex-runner/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RUNNER_BASE=ghcr.io/pmdroid/gegenlesen/runner-base:main
+          tags: ${{ steps.alias.outputs.tags }}
+          labels: ${{ steps.alias.outputs.labels }}
+          cache-from: type=gha,scope=codex-runner
+          cache-to: type=gha,mode=max,scope=codex-runner
+
+  cursor-runner:
+    runs-on: ubuntu-latest
+    needs: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: alias
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=raw,value=cursor-runner-main,enable={{is_default_branch}}
+            type=sha,prefix=cursor-runner-main-,format=short,enable={{is_default_branch}}
+            type=semver,pattern=cursor-runner-{{version}}
+            type=semver,pattern=cursor-runner-{{major}}.{{minor}}
+            type=raw,value=cursor-runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/cursor-runner
+          file: docker/cursor-runner/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RUNNER_BASE=ghcr.io/pmdroid/gegenlesen/runner-base:main
+          tags: ${{ steps.alias.outputs.tags }}
+          labels: ${{ steps.alias.outputs.labels }}
+          cache-from: type=gha,scope=cursor-runner
+          cache-to: type=gha,mode=max,scope=cursor-runner
+
+  grok-runner:
+    runs-on: ubuntu-latest
+    needs: runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: alias
+        with:
+          images: ${{ env.API_IMAGE }}
+          tags: |
+            type=raw,value=grok-runner-main,enable={{is_default_branch}}
+            type=sha,prefix=grok-runner-main-,format=short,enable={{is_default_branch}}
+            type=semver,pattern=grok-runner-{{version}}
+            type=semver,pattern=grok-runner-{{major}}.{{minor}}
+            type=raw,value=grok-runner,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker/grok-runner
+          file: docker/grok-runner/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            RUNNER_BASE=ghcr.io/pmdroid/gegenlesen/runner-base:main
+          tags: ${{ steps.alias.outputs.tags }}
+          labels: ${{ steps.alias.outputs.labels }}
+          cache-from: type=gha,scope=grok-runner
+          cache-to: type=gha,mode=max,scope=grok-runner
 
   scanner:
     runs-on: ubuntu-latest

@@ -87,6 +87,7 @@ struct OpenCodeInvocationTests {
         let request = try invocation.minerDockerRequest(
             jobID: JobID("job-9"),
             workspace: URL(fileURLWithPath: "/tmp/ws"),
+            engine: AgentEngineID.opencode,
             model: "anthropic/claude-sonnet-4-5"
         )
         let args = request.dockerCLIArguments()
@@ -388,7 +389,7 @@ struct OpenCodeInvocationTests {
             #expect(result.payloadJSON?.contains("no_findings_file") == true)
             #expect(result.payloadJSON?.contains("provider_auth") != true)
             let requests = await docker.requests
-            #expect(requests.count == 2)
+            #expect(requests.count == 4)
         }
     }
 

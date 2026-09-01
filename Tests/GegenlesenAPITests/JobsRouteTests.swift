@@ -567,6 +567,7 @@ private let jobListKeys: Set<String> = [
     "judge_engine", "judge_model_id",
     "base_sha", "head_sha", "queue_position", "summary",
     "created_at", "started_at", "finished_at", "error_message", "risk",
+    "review_degraded", "review_degraded_slot", "review_degraded_engine", "review_degraded_error",
 ]
 
 private func postJob(

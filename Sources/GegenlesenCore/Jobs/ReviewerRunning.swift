@@ -7,6 +7,7 @@ public struct AgentReviewRequest: Sendable {
     public var rules: [Rule]
     public var parentFindings: [Finding]
     public var newWork: Bool
+    public var reviewStrictMode: Bool
     public var isCancelled: (@Sendable () async -> Bool)?
 
     public init(
@@ -16,6 +17,7 @@ public struct AgentReviewRequest: Sendable {
         rules: [Rule],
         parentFindings: [Finding] = [],
         newWork: Bool,
+        reviewStrictMode: Bool = false,
         isCancelled: (@Sendable () async -> Bool)? = nil
     ) {
         self.job = job
@@ -24,6 +26,7 @@ public struct AgentReviewRequest: Sendable {
         self.rules = rules
         self.parentFindings = parentFindings
         self.newWork = newWork
+        self.reviewStrictMode = reviewStrictMode
         self.isCancelled = isCancelled
     }
 }
@@ -37,6 +40,10 @@ public struct AgentReviewResult: Sendable {
     public var containerNameA: String
     public var containerNameB: String
     public var containerName: String
+    public var reviewDegraded: Bool
+    public var reviewDegradedSlot: String?
+    public var reviewDegradedEngine: String?
+    public var reviewDegradedError: String?
 
     public init(
         findings: [Finding],
@@ -46,7 +53,11 @@ public struct AgentReviewResult: Sendable {
         payloadJSON: String? = nil,
         containerNameA: String,
         containerNameB: String,
-        containerName: String
+        containerName: String,
+        reviewDegraded: Bool = false,
+        reviewDegradedSlot: String? = nil,
+        reviewDegradedEngine: String? = nil,
+        reviewDegradedError: String? = nil
     ) {
         self.findings = findings
         self.validFileCount = validFileCount
@@ -56,6 +67,10 @@ public struct AgentReviewResult: Sendable {
         self.containerNameA = containerNameA
         self.containerNameB = containerNameB
         self.containerName = containerName
+        self.reviewDegraded = reviewDegraded
+        self.reviewDegradedSlot = reviewDegradedSlot
+        self.reviewDegradedEngine = reviewDegradedEngine
+        self.reviewDegradedError = reviewDegradedError
     }
 }
 

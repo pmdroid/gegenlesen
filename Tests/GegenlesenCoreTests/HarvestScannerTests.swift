@@ -389,6 +389,7 @@ private struct HarvestMinerStub: MinerRunning {
     func runMiner(
         jobID: JobID,
         workspace: Workspace,
+        engine: String,
         model: String,
         isCancelled: (@Sendable () async -> Bool)?
     ) async -> MinerRunResult {
@@ -403,6 +404,7 @@ private struct FailedHarvestMiner: MinerRunning {
     func runMiner(
         jobID: JobID,
         workspace: Workspace,
+        engine: String,
         model: String,
         isCancelled: (@Sendable () async -> Bool)?
     ) async -> MinerRunResult {

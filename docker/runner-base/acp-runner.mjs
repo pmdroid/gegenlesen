@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { mapSessionUpdate } from "./lib/transcript.mjs";
 import { validateOutput } from "./lib/validate.mjs";
+import { readWorkspaceTextFile, writeWorkspaceTextFile, WORKSPACE_ROOT } from "./lib/workspace-fs.mjs";
+import { WorkspaceTerminalManager } from "./lib/workspace-terminal.mjs";
 
 function parseArgs(argv) {
   const args = {
@@ -48,6 +50,10 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv);
 if (args.transcript) writeFileSync(args.transcript, "");
+
+try {
+  mkdirSync("/home/gegenlesen/.claude/debug", { recursive: true });
+} catch {}
 
 function redact(text) {
   return text
@@ -100,6 +106,8 @@ const child = spawn(args.command[0], args.command.slice(1), {
 let nextId = 1;
 const pending = new Map();
 let settled = false;
+let sessionId = null;
+const terminals = new WorkspaceTerminalManager();
 
 function finish(code, reason) {
   if (settled) return;
@@ -155,6 +163,61 @@ function pickPermissionOption(options) {
   return (options ?? [])[0];
 }
 
+async function configureSession(session) {
+  const modes = session.modes?.availableModes ?? [];
+  for (const preferred of ["bypassPermissions", "agent-full-access", "dontAsk", "default"]) {
+    const match = modes.find((mode) => mode.id === preferred);
+    if (!match) continue;
+    try {
+      await request("session/set_mode", { sessionId: session.sessionId, modeId: match.id });
+      status(`session mode set: ${match.id}`);
+      record({ dir: "job_log", event: "session_mode_set", modeId: match.id });
+      break;
+    } catch (error) {
+      status(`session/set_mode ${match.id} failed: ${error.message}`);
+    }
+  }
+
+  const codexModel = process.env.CODEX_ACP_MODEL?.trim();
+  const cursorModel = process.env.CURSOR_ACP_MODEL?.trim() || process.env.CURSOR_MODEL?.trim();
+  const grokModel = process.env.GROK_ACP_MODEL?.trim() || process.env.GROK_MODEL?.trim();
+  const modelId = codexModel || cursorModel || grokModel;
+  if (!modelId) return;
+
+  const modelOption = (session.configOptions ?? session.models?.availableModels ?? []).find(
+    (entry) => entry?.category === "model" || entry?.configId === "model" || entry?.modelId === modelId,
+  );
+  if (modelOption?.configId) {
+    try {
+      await request("session/set_config_option", {
+        sessionId: session.sessionId,
+        configId: modelOption.configId,
+        value: modelId,
+      });
+      status(`session model set: ${modelId}`);
+      record({ dir: "job_log", event: "session_model_set", modelId });
+      return;
+    } catch (error) {
+      status(`session/set_config_option failed: ${error.message}`);
+    }
+  }
+  try {
+    await request("session/set_model", { sessionId: session.sessionId, modelId });
+    status(`session model set: ${modelId}`);
+    record({ dir: "job_log", event: "session_model_set", modelId });
+  } catch (error) {
+    status(`session/set_model failed: ${error.message}`);
+  }
+}
+
+function respondOk(id, result = null) {
+  send({ jsonrpc: "2.0", id, result });
+}
+
+function respondError(id, message) {
+  send({ jsonrpc: "2.0", id, error: { code: -32000, message } });
+}
+
 function handleIncoming(message) {
   if (message.id !== undefined && message.method === undefined) {
     const entry = pending.get(message.id);
@@ -187,6 +250,67 @@ function handleIncoming(message) {
     if (mapped) record({ dir: "job_log", event: "session_update", ...mapped });
     if (message.params?.update?.sessionUpdate === "agent_message_chunk" && message.params.update.content?.type === "text") {
       process.stderr.write(message.params.update.content.text);
+    }
+    return;
+  }
+  if (message.method === "fs/read_text_file") {
+    try {
+      const result = readWorkspaceTextFile(message.params?.path, message.params?.line, message.params?.limit);
+      status(`fs read: ${message.params?.path}`);
+      respondOk(message.id, result);
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
+    }
+    return;
+  }
+  if (message.method === "fs/write_text_file") {
+    try {
+      writeWorkspaceTextFile(message.params?.path, message.params?.content ?? "");
+      status(`fs write: ${message.params?.path}`);
+      respondOk(message.id);
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
+    }
+    return;
+  }
+  if (message.method === "terminal/create") {
+    try {
+      const result = terminals.create(message.params ?? {});
+      status(`terminal create: ${message.params?.command} ${(message.params?.args ?? []).join(" ")}`.trim());
+      respondOk(message.id, result);
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
+    }
+    return;
+  }
+  if (message.method === "terminal/output") {
+    try {
+      respondOk(message.id, terminals.output(message.params?.terminalId));
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
+    }
+    return;
+  }
+  if (message.method === "terminal/wait_for_exit") {
+    terminals
+      .waitForExit(message.params?.terminalId)
+      .then((exitStatus) => respondOk(message.id, exitStatus))
+      .catch((error) => respondError(message.id, String(error.message ?? error)));
+    return;
+  }
+  if (message.method === "terminal/kill") {
+    try {
+      respondOk(message.id, terminals.kill(message.params?.terminalId));
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
+    }
+    return;
+  }
+  if (message.method === "terminal/release") {
+    try {
+      respondOk(message.id, terminals.release(message.params?.terminalId));
+    } catch (error) {
+      respondError(message.id, String(error.message ?? error));
     }
     return;
   }
@@ -233,14 +357,19 @@ child.on("error", (error) => {
 try {
   const init = await request("initialize", {
     protocolVersion: 1,
-    clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
+    clientCapabilities: {
+      fs: { readTextFile: true, writeTextFile: true },
+      terminal: true,
+    },
   });
   status(`initialized: protocolVersion=${init.protocolVersion}`);
   record({ dir: "job_log", event: "initialized", protocolVersion: init.protocolVersion });
 
-  const session = await request("session/new", { cwd: "/workspace", mcpServers: [] });
-  status(`session created: ${session.sessionId}`);
-  record({ dir: "job_log", event: "session_created", sessionId: session.sessionId });
+  const session = await request("session/new", { cwd: WORKSPACE_ROOT, mcpServers: [] });
+  sessionId = session.sessionId;
+  status(`session created: ${sessionId}`);
+  record({ dir: "job_log", event: "session_created", sessionId });
+  await configureSession(session);
 
   const prompt = [{ type: "text", text: args.message }];
   if (args.promptFile) {
