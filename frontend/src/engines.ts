@@ -43,28 +43,28 @@ export const ENGINE_AUTH: Record<EngineId, EngineAuthInfo> = {
     cliPaths: ["~/.claude/.credentials.json"],
     cliSetup: "CLI login: run claude login on the host (OAuth stored under ~/.claude).",
     apiSetup: "API key: set ANTHROPIC_API_KEY on the host running GegenlesenAPI.",
-    inContainer: "OAuth file is bind-mounted read-only; API keys pass through env. Model via ANTHROPIC_MODEL.",
+    inContainer: "Mount ~/.claude into the API container at $GEGENLESEN_HOST_HOME/.claude (see scripts/docker-run.sh). Keys pass through env.",
   },
   codex: {
     envVars: ["OPENAI_API_KEY", "CODEX_API_KEY"],
     cliPaths: ["~/.codex/auth.json"],
     cliSetup: "CLI login: run codex login on the host (tokens in ~/.codex/auth.json).",
     apiSetup: "API key: set OPENAI_API_KEY or CODEX_API_KEY on the host.",
-    inContainer: "OAuth auth.json is bind-mounted read-only when present; keys pass through env. Model via CODEX_CONFIG.",
+    inContainer: "Mount ~/.codex into the API container at $GEGENLESEN_HOST_HOME/.codex. Keys pass through env.",
   },
   "cursor-agent": {
     envVars: ["CURSOR_API_KEY", "CURSOR_AUTH_TOKEN"],
-    cliPaths: ["~/.cursor/sdk/auth.json"],
+    cliPaths: ["~/.cursor/cli-config.json", "~/.cursor/sdk/auth.json"],
     cliSetup: "CLI login: run agent login on the host (stored in ~/.cursor/sdk/auth.json).",
     apiSetup: "API key: create one at cursor.com/settings and set CURSOR_API_KEY on the host.",
-    inContainer: "Login file is bind-mounted read-only when present; keys pass through env. Model via CURSOR_MODEL.",
+    inContainer: "Mount ~/.cursor into the API container at $GEGENLESEN_HOST_HOME/.cursor. Keys pass through env.",
   },
   grok: {
     envVars: ["XAI_API_KEY", "GROK_API_KEY"],
     cliPaths: ["~/.grok/auth.json"],
     cliSetup: "CLI login: run grok login on the host (stored in ~/.grok/auth.json).",
     apiSetup: "API key: set XAI_API_KEY or GROK_API_KEY on the host.",
-    inContainer: "OAuth auth.json is bind-mounted when present; keys pass through env. Model via --model on agent stdio.",
+    inContainer: "Mount ~/.grok into the API container at $GEGENLESEN_HOST_HOME/.grok. Keys pass through env.",
   },
 };
 

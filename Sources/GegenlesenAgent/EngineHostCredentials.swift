@@ -174,9 +174,10 @@ public enum EngineHostCredentials {
         let sdkLogin = nonEmpty(auth?["apiKey"] as? String) != nil
             || nonEmpty(auth?["accessToken"] as? String) != nil
         let cliConfig = home.appendingPathComponent(".cursor/cli-config.json").path
+        let hasCliConfig = FileManager.default.isReadableFile(atPath: cliConfig)
         let cliLogin = sdkLogin
-            || (EngineAgentPaths.cursorAgent(environment: environment, home: home) != nil
-                && FileManager.default.isReadableFile(atPath: cliConfig))
+            || hasCliConfig
+            || EngineAgentPaths.cursorAgent(environment: environment, home: home) != nil
         return EngineAuthStatus(apiKey: apiKey, cliLogin: cliLogin)
     }
 

@@ -12,20 +12,31 @@ No login. Bind `127.0.0.1`. One agent job at a time.
 
 ## Run
 
-Linux, host network, Docker socket. Full copy: [Start](https://gegenlesen.dev/docs/start).
+Linux: host network, Docker socket, and **host agent credential dirs** mounted into the API container so Ledger Setup sees Claude/Codex/Cursor/Grok auth. Full copy: [Start](https://gegenlesen.dev/docs/start).
 
 ```bash
 DATA="$HOME/gegenlesen-data"
+HOST_HOME="/host-home"
 mkdir -p "$DATA" "$HOME/gegenlesen-config"
+
 docker pull ghcr.io/pmdroid/gegenlesen:main
 docker pull ghcr.io/pmdroid/gegenlesen:runner-main
 docker pull ghcr.io/pmdroid/gegenlesen:scanner-main
+
 docker run --rm --init --name gegenlesen \
   --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$DATA:$DATA" \
   -v "$HOME/gegenlesen-config:/app/config" \
+  -v "$HOME/.claude:$HOST_HOME/.claude:ro" \
+  -v "$HOME/.codex:$HOST_HOME/.codex:ro" \
+  -v "$HOME/.cursor:$HOST_HOME/.cursor:ro" \
+  -v "$HOME/.grok:$HOST_HOME/.grok:ro" \
+  -v "$HOME/.config/cursor:$HOST_HOME/.config/cursor:ro" \
+  -v "$HOME/.local/bin:$HOST_HOME/.local/bin:ro" \
   -e GEGENLESEN_DATA_DIR="$DATA" \
+  -e GEGENLESEN_HOST_HOME="$HOST_HOME" \
+  -e GEGENLESEN_ALLOW_REMOTE=1 \
   -e GEGENLESEN_OPENCODE_IMAGE=ghcr.io/pmdroid/gegenlesen:runner-main \
   -e GEGENLESEN_SCANNER_IMAGE=ghcr.io/pmdroid/gegenlesen:scanner-main \
   ghcr.io/pmdroid/gegenlesen:main
@@ -35,7 +46,7 @@ Open `http://127.0.0.1:8080`. Ledger **setup** writes the OpenRouter key. From a
 
 Agents: symlink [`skills/gegenlesen`](skills/gegenlesen/SKILL.md) into `~/.agents/skills`, `~/.grok/skills`, or `~/.claude/skills` so they self-review committed `HEAD` before push.
 
-On a Mac, Docker Desktop does not share loopback this way. From source: `scripts/build-runner.sh` then `make run` (Xcode’s Swift, not `/usr/bin/swift`).
+On a Mac, Docker Desktop does not share loopback with `--network host`. Use `./scripts/docker-run.sh` (port publish + agent mounts) or from source: `scripts/build-runner.sh` then `make run`.
 
 CI builds `ghcr.io/pmdroid/gegenlesen` (`:main`, semver), the runner as `:runner-main` / `:runner-0.1.0`, and the scanner as `:scanner-main` / `:scanner-0.1.0` on the same package.
 

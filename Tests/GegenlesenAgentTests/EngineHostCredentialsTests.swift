@@ -86,6 +86,20 @@ struct EngineHostCredentialsTests {
     }
 
     @Test
+    func cursorAcceptsCliConfigWithoutAgentBinary() throws {
+        let home = try tempHome()
+        try writeJSON(["version": 1], at: home, relative: ".cursor/cli-config.json")
+
+        let status = EngineHostCredentials.probeEngine(
+            engine: AgentEngineID.cursorAgent,
+            home: home,
+            providerEnv: [:]
+        )
+        #expect(status.cliLogin)
+        #expect(status.configured)
+    }
+
+    @Test
     func cursorAcceptsEnvKeyOrSdkLogin() throws {
         let home = try tempHome()
         try writeJSON(["apiKey": "ck-test"], at: home, relative: ".cursor/sdk/auth.json")
