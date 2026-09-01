@@ -99,10 +99,86 @@ struct HarvestRouteTests {
             }
         }
     }
+
+    @Test
+    func ingestMissingHarvestFileIsUnprocessable() async throws {
+        try await withGegenlesenApp { app in
+            let jobID = JobID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+            try await app.gegenlesenStore.insertJob(harvestJob(id: jobID, status: .failed))
+            try await app.testing().test(
+                .POST,
+                "/api/jobs/\(jobID.rawValue)/harvest/ingest"
+            ) { res async throws in
+                #expect(res.status == .unprocessableEntity)
+                #expect(res.body.string.contains("no harvest.json"))
+            }
+        }
+    }
+
+    @Test
+    func ingestExistingHarvestPersistsDisabledRules() async throws {
+        try await withGegenlesenApp { app in
+            let jobID = JobID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+            try await app.gegenlesenStore.insertJob(harvestJob(id: jobID, status: .failed))
+            let dir = app.gegenlesenStore.blobs.workspaceURL(jobID: jobID.rawValue)
+                .appendingPathComponent(".gegenlesen", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try """
+            {
+              "rules": [{
+                "title": "Never print in payment code",
+                "severity": "high",
+                "kind": "semantic",
+                "instruction": "Never print in payment code.",
+                "body": "Never print in payment code.",
+                "evidence": [{"path": "Sources/Pay.swift", "excerpt": "Logger.shared"}]
+              }],
+              "notes": [{
+                "title": "CI is optional",
+                "body": "Guest boot is not a required check.",
+                "evidence": [{"path": "docs/ci.md", "excerpt": "never a required status check"}]
+              }]
+            }
+            """.write(
+                to: dir.appendingPathComponent("harvest.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+            try await app.testing().test(
+                .POST,
+                "/api/harvest/\(jobID.rawValue)/ingest"
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let body = try JSONDecoder().decode(HarvestIngestResponse.self, from: Data(res.body.readableBytesView))
+                #expect(body.rules == 1)
+                #expect(body.notes == 1)
+            }
+            let rules = try await app.gegenlesenStore.listRules(RuleListFilter(includeDeleted: true))
+            let harvest = rules.filter { $0.provenance == .harvest }
+            #expect(harvest.count == 1)
+            #expect(harvest[0].enabled == false)
+            #expect(harvest[0].severity == .error)
+        }
+    }
 }
 
 private struct HarvestPostBody: Content {
     var archive: File
+}
+
+private func harvestJob(id: JobID, status: JobStatus) -> Job {
+    let now = Date()
+    return Job(
+        id: id,
+        createdAt: now,
+        updatedAt: now,
+        status: status,
+        scope: .full,
+        title: "harvest leftover",
+        reviewerAModelID: "a",
+        reviewerBModelID: "b",
+        judgeModelID: "j"
+    )
 }
 
 private func harvestTarGz() throws -> Data {

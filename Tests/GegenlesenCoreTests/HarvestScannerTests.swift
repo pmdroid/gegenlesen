@@ -104,7 +104,50 @@ struct HarvestPipelineTests {
             #expect(quarantined.isEmpty)
             let events = try await store.events(jobID: jobID)
             #expect(events.contains { $0.message == "miner_failed" })
+            #expect(!events.contains { $0.message == "harvest_parse_failed" })
             #expect(!events.contains { $0.message == "harvest_done" })
+        }
+    }
+
+    @Test
+    func parseFailureIsNotMinerFailed() async throws {
+        try await withPackedHarvest { store, jobID in
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: "{not json"),
+                suggestionJudge: KeepingSuggestionJudge(),
+                model: "none"
+            ).run(jobID: jobID)
+            let job = try #require(await store.job(id: jobID))
+            #expect(job.status == .failed)
+            #expect(job.errorMessage == "harvest_parse_failed")
+            let events = try await store.events(jobID: jobID)
+            let failed = try #require(events.first { $0.message == "harvest_parse_failed" })
+            #expect(failed.level == .error)
+            #expect(failed.payloadJSON?.contains("message") == true)
+            #expect(!events.contains { $0.message == "miner_failed" })
+        }
+    }
+
+    @Test
+    func highMediumLowHarvestPersistsDisabledRules() async throws {
+        try await withPackedHarvest { store, jobID in
+            try await HarvestPipeline(
+                store: store,
+                skipAgent: false,
+                miner: HarvestMinerStub(json: highMediumLowHarvestJSON),
+                suggestionJudge: KeepingSuggestionJudge(),
+                model: "none"
+            ).run(jobID: jobID)
+            let job = try #require(await store.job(id: jobID))
+            #expect(job.status == .succeeded)
+            let rules = try await store.listRules(RuleListFilter(includeDeleted: true))
+            let harvest = rules.filter { $0.provenance == .harvest }
+            #expect(harvest.count == 1)
+            #expect(harvest[0].enabled == false)
+            #expect(harvest[0].severity == .error)
+            #expect(harvest[0].title.contains("project logger"))
         }
     }
 
@@ -305,6 +348,55 @@ struct HarvestPipelineTests {
 @Suite
 struct HarvestFileTests {
     @Test
+    func mapsHighMediumLowAndDropsUnknownSeverity() throws {
+        let data = Data("""
+        {
+          "rules": [
+            {
+              "title": "High rule",
+              "severity": "high",
+              "kind": "semantic",
+              "instruction": "Use the project logger.",
+              "body": "Use the project logger.",
+              "evidence": [{"path": "Sources/Log.swift", "excerpt": "Logger.shared"}]
+            },
+            {
+              "title": "Medium rule",
+              "severity": "MEDIUM",
+              "kind": "semantic",
+              "instruction": "Prefer structured logs.",
+              "body": "Prefer structured logs.",
+              "evidence": [{"path": "Sources/Log.swift", "excerpt": "os_log"}]
+            },
+            {
+              "title": "Low rule",
+              "severity": "low",
+              "kind": "semantic",
+              "instruction": "Name tests next to sources.",
+              "body": "Name tests next to sources.",
+              "evidence": [{"path": "Tests/LogTests.swift", "excerpt": "LogTests"}]
+            },
+            {
+              "title": "Unknown rule",
+              "severity": "catastrophic",
+              "kind": "semantic",
+              "instruction": "Do not invent severity.",
+              "body": "Do not invent severity.",
+              "evidence": [{"path": "Sources/Log.swift", "excerpt": "Logger.shared"}]
+            }
+          ],
+          "notes": []
+        }
+        """.utf8)
+        let bundle = try HarvestFile.parse(data)
+        #expect(bundle.rules.count == 4)
+        #expect(bundle.rules[0].severity == .error)
+        #expect(bundle.rules[1].severity == .warning)
+        #expect(bundle.rules[2].severity == .info)
+        #expect(bundle.rules[3].severity == .warning)
+    }
+
+    @Test
     func rejectsWholeReadmeAndDocsDumps() {
         let readme = HarvestNoteDraft(
             title: "README dump",
@@ -362,6 +454,26 @@ private let dumpHarvestJSON: String = {
     }
     """
 }()
+
+private let highMediumLowHarvestJSON = """
+{
+  "rules": [{
+    "title": "Use the project logger",
+    "severity": "high",
+    "kind": "semantic",
+    "languages": ["*"],
+    "path_globs": ["**/*"],
+    "instruction": "Use the project logger.",
+    "body": "Use the project logger.",
+    "evidence": [{"path": "README.md", "excerpt": "Use the project logger."}]
+  }],
+  "notes": [{
+    "title": "CI is optional",
+    "body": "Guest boot is not a required check.",
+    "evidence": [{"path": "docs/ci.md", "excerpt": "never a required status check"}]
+  }]
+}
+"""
 
 private let citedHarvestJSON = """
 {
