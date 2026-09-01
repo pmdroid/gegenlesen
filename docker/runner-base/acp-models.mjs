@@ -53,6 +53,15 @@ async function probe(command) {
   let buffer = "";
   let nextId = 0;
   const pending = new Map();
+  let spawnError = null;
+
+  child.on("error", (err) => {
+    spawnError = err;
+    for (const { reject } of pending.values()) {
+      reject(err);
+    }
+    pending.clear();
+  });
 
   child.stdout.on("data", (chunk) => {
     buffer += chunk.toString("utf8");
@@ -92,6 +101,7 @@ async function probe(command) {
   }
 
   try {
+    if (spawnError) throw spawnError;
     await request("initialize", {
       protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
