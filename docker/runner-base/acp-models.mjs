@@ -105,6 +105,12 @@ function cursorProbeHome(hostHome) {
   try {
     cpSync(join(hostHome, ".cursor", "sdk"), join(cursorDir, "sdk"), { recursive: true });
   } catch {}
+  // Cursor's login token lives in ~/.config/cursor/auth.json, not ~/.cursor.
+  const cursorConfigDir = join(probeHome, ".config", "cursor");
+  mkdirSync(cursorConfigDir, { recursive: true });
+  try {
+    cpSync(join(hostHome, ".config", "cursor", "auth.json"), join(cursorConfigDir, "auth.json"));
+  } catch {}
   process.env.HOME = probeHome;
 }
 

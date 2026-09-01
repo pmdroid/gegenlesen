@@ -30,10 +30,14 @@ FROM debian:bookworm-slim
 # git depends on libcurl-gnutls. Swift/Foundation links OpenSSL libcurl4.
 ARG TARGETARCH
 ARG GROK_VERSION=1.0.13
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    docker.io \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+       > /etc/apt/sources.list.d/docker.list \
+    && apt-get update
+RUN apt-get install -y --no-install-recommends \
+    docker-ce-cli \
     git \
     libarchive13 \
     libcurl4 \
