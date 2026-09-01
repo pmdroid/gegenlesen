@@ -6,6 +6,7 @@ public enum ACPEngines: Sendable {
         AgentEngineID.claude,
         AgentEngineID.codex,
         AgentEngineID.cursorAgent,
+        AgentEngineID.grok,
     ]
 
     public static func usesACP(_ engine: String) -> Bool {
@@ -19,7 +20,9 @@ public enum ACPEngines: Sendable {
         case AgentEngineID.codex:
             return ["codex-acp"]
         case AgentEngineID.cursorAgent:
-            return ["agent", "acp"]
+            return ["agent", "--model", model, "acp"]
+        case AgentEngineID.grok:
+            return ["agent", "agent", "--model", model, "stdio"]
         default:
             return []
         }
@@ -30,14 +33,24 @@ public enum ACPEngines: Sendable {
         case AgentEngineID.claude:
             return ["ANTHROPIC_MODEL": model]
         case AgentEngineID.codex:
-            let config = #"{"model":"\#(model)","sandbox":"disabled"}"#
+            let baseModel = codexBaseModel(from: model)
+            let config = #"{"model":"\#(baseModel)","sandbox":"disabled"}"#
             return [
                 "NO_BROWSER": "1",
                 "INITIAL_AGENT_MODE": "agent-full-access",
                 "CODEX_CONFIG": config,
+                "CODEX_ACP_MODEL": model,
             ]
         case AgentEngineID.cursorAgent:
-            return [:]
+            return [
+                "CURSOR_MODEL": model,
+                "CURSOR_ACP_MODEL": model,
+            ]
+        case AgentEngineID.grok:
+            return [
+                "GROK_MODEL": model,
+                "GROK_ACP_MODEL": model,
+            ]
         default:
             return [:]
         }
@@ -47,7 +60,7 @@ public enum ACPEngines: Sendable {
         let spec = "rw,nosuid,nodev,uid=1000,gid=1000,size=64m"
         switch engine {
         case AgentEngineID.claude:
-            return ["/home/gegenlesen/.claude:\(spec)"]
+            return ["/home/gegenlesen:rw,nosuid,nodev,uid=1000,gid=1000,size=512m"]
         case AgentEngineID.codex:
             return ["/home/gegenlesen/.codex:\(spec)"]
         case AgentEngineID.cursorAgent:
@@ -55,8 +68,15 @@ public enum ACPEngines: Sendable {
                 "/home/gegenlesen/.cursor:\(spec)",
                 "/home/gegenlesen/.config/cursor:\(spec)",
             ]
+        case AgentEngineID.grok:
+            return ["/home/gegenlesen/.grok:\(spec)"]
         default:
             return []
         }
+    }
+
+    static func codexBaseModel(from model: String) -> String {
+        guard let bracket = model.firstIndex(of: "[") else { return model }
+        return String(model[..<bracket])
     }
 }

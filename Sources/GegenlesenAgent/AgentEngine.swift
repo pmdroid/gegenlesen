@@ -155,6 +155,31 @@ public struct CursorEngine: AgentEngine {
     }
 }
 
+public struct GrokEngine: AgentEngine {
+    public static let engineID = AgentEngineID.grok
+
+    public let id = GrokEngine.engineID
+
+    public init() {}
+
+    public func makeInvocation(_ configuration: AgentEngineConfiguration) -> any AgentInvoking {
+        OpenCodeInvocation(
+            docker: configuration.docker,
+            image: configuration.image,
+            engineImages: configuration.engineImages,
+            runnerConfig: configuration.runnerConfig,
+            cpus: configuration.cpus,
+            memory: configuration.memory,
+            agentTimeout: configuration.agentTimeout,
+            judgeTimeout: configuration.judgeTimeout,
+            providerEnv: configuration.providerEnv,
+            schemasDirectory: configuration.schemasDirectory,
+            transcriptWriter: configuration.transcriptWriter,
+            prepareRunnerConfig: configuration.prepareRunnerConfig
+        )
+    }
+}
+
 public struct AgentEngineRegistry: Sendable {
     public static let defaultEngineID = OpenCodeEngine.engineID
     public static let `default` = AgentEngineRegistry(engines: [
@@ -162,6 +187,7 @@ public struct AgentEngineRegistry: Sendable {
         ClaudeEngine(),
         CodexEngine(),
         CursorEngine(),
+        GrokEngine(),
     ])
 
     private let engines: [String: any AgentEngine]

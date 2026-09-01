@@ -101,6 +101,7 @@ func configure(
 
     SettingsRoute.register(app)
     ModelsRoute.register(app)
+    EngineModelsRoute.register(app)
     AgentsRoute.register(app)
 
     let rulesDir = URL(fileURLWithPath: app.directory.workingDirectory, isDirectory: true)

@@ -9,9 +9,10 @@ OPENCODE_IMAGE="gegenlesen/opencode-runner:0.1.0"
 CLAUDE_IMAGE="gegenlesen/claude-runner:0.1.0"
 CODEX_IMAGE="gegenlesen/codex-runner:0.1.0"
 CURSOR_IMAGE="gegenlesen/cursor-runner:0.1.0"
+GROK_IMAGE="gegenlesen/grok-runner:0.1.0"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.1.25}"
 CLAUDE_CODE_ACP_VERSION="${CLAUDE_CODE_ACP_VERSION:-0.16.2}"
-CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-0.7.0}"
+CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-1.7.0}"
 
 arch="$(uname -m)"
 if [[ "$arch" == "arm64" || "$arch" == "aarch64" ]]; then
@@ -62,6 +63,14 @@ build_cursor() {
     "$ROOT/docker/cursor-runner"
 }
 
+build_grok() {
+  docker build \
+    --platform "$platform" \
+    --build-arg "RUNNER_BASE=${BASE_IMAGE}" \
+    -t "$GROK_IMAGE" \
+    "$ROOT/docker/grok-runner"
+}
+
 target="${1:-all}"
 case "$target" in
   base) build_base ;;
@@ -69,15 +78,17 @@ case "$target" in
   claude) build_base && build_claude ;;
   codex) build_base && build_codex ;;
   cursor) build_base && build_cursor ;;
+  grok) build_base && build_grok ;;
   all)
     build_base
     build_opencode
     build_claude
     build_codex
     build_cursor
+    build_grok
     ;;
   *)
-    echo "usage: $0 [base|opencode|claude|codex|cursor|all]" >&2
+    echo "usage: $0 [base|opencode|claude|codex|cursor|grok|all]" >&2
     exit 2
     ;;
 esac

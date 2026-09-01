@@ -20,6 +20,7 @@ import type {
   AgentImproveResponse,
   AgentList,
   OpenRouterModelList,
+  EngineModelList,
   SettingsDTO,
   SettingsUpdate,
   TranscriptPhase,
@@ -138,6 +139,10 @@ export function listOpenRouterModels(opts: {
   const query = params.toString();
   const headers = opts.key ? { "X-OpenRouter-Key": opts.key } : undefined;
   return getJSON(`/api/models${query ? `?${query}` : ""}`, headers);
+}
+
+export function listEngineModels(engine: string): Promise<EngineModelList> {
+  return getJSON(`/api/engines/${encodeURIComponent(engine)}/models`);
 }
 
 export function listJobs(query?: {

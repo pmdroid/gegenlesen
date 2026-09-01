@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import type { RiskMode } from "../api";
 import { getSettings, listOpenRouterModels, putSettings } from "../client";
 import { EnginePicker } from "../components/EnginePicker";
+import { EngineAuthHint } from "../components/EngineAuthHint";
+import { useEngineModels } from "../hooks/useEngineModels";
 import { ENGINE_IDS, modelPlaceholder, normalizeEngine, reconcileModelForEngine, validateModelForEngine, type EngineId } from "../engines";
 import { ModelPicker } from "./ModelPicker";
 
@@ -155,8 +157,9 @@ export function SetupPage() {
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (!settings.data?.openrouter_configured && !apiKey.trim()) {
-      setError("OpenRouter API key is required");
+    const usesOpenCode = [engineA, engineB, judgeEngine, mineEngine, learnEngine].some((e) => e === "opencode");
+    if (usesOpenCode && !settings.data?.openrouter_configured && !apiKey.trim()) {
+      setError("OpenRouter API key is required when any slot uses OpenCode");
       return;
     }
     if (!modelA.trim() || !modelB.trim() || !judge.trim() || !miner.trim() || !learnModel.trim()) {
@@ -188,6 +191,12 @@ export function SetupPage() {
   }
 
   const firstRun = settings.data ? !settings.data.openrouter_configured : true;
+  const engineAuth = settings.data?.engine_auth;
+  const modelsAcp = useEngineModels(engineA, engineAuth);
+  const modelsBcp = useEngineModels(engineB, engineAuth);
+  const judgeAcp = useEngineModels(judgeEngine, engineAuth);
+  const mineAcp = useEngineModels(mineEngine, engineAuth);
+  const learnAcp = useEngineModels(learnEngine, engineAuth);
   const models = catalog.data?.models ?? [];
   const catalogError = catalog.error instanceof Error ? catalog.error.message : null;
 
@@ -195,8 +204,8 @@ export function SetupPage() {
     <div className="page setup">
       <h1>{firstRun ? "set up gegenlesen" : "models and key"}</h1>
       <p className="neverapply">
-        Paste an OpenRouter key and we load the live catalog. Search by name. Rankings come from
-        OpenRouter, programming first for reviewers and the miner, intelligence for the judge.
+        OpenCode slots use the live OpenRouter catalog. Claude, Codex, Cursor, and Grok model lists are
+        fetched live from each engine's ACP agent using your host credentials — not a hardcoded catalog.
       </p>
       <form className="form" onSubmit={onSubmit}>
         <label>
@@ -258,10 +267,11 @@ export function SetupPage() {
             value={engineA}
             onChange={(next) => {
               setEngineA(next);
-              setModelA((prev) => reconcileModelForEngine(next, prev));
+              setModelA((prev) => reconcileModelForEngine(next, prev, modelsAcp.data?.models));
             }}
-            disabled={!canFetch}
+            disabled={false}
           />
+          <EngineAuthHint engine={engineA} engineAuth={engineAuth} />
           <ModelPicker
             label="Reviewer A model"
             engine={engineA}
@@ -269,8 +279,11 @@ export function SetupPage() {
             onChange={setModelA}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder(engineA) : "add a key first"}
+            nativeModels={modelsAcp.data?.models}
+            nativeLoading={modelsAcp.isFetching}
+            nativeError={modelsAcp.error instanceof Error ? modelsAcp.error.message : null}
+            disabled={(!canFetch && engineA === "opencode") || (engineA !== "opencode" && modelsAcp.isFetching)}
+            placeholder={canFetch || engineA !== "opencode" ? modelPlaceholder(engineA) : "add OpenRouter key first"}
             error={validateModelForEngine(engineA, modelA)}
           />
         </div>
@@ -280,10 +293,11 @@ export function SetupPage() {
             value={engineB}
             onChange={(next) => {
               setEngineB(next);
-              setModelB((prev) => reconcileModelForEngine(next, prev));
+              setModelB((prev) => reconcileModelForEngine(next, prev, modelsBcp.data?.models));
             }}
-            disabled={!canFetch}
+            disabled={false}
           />
+          <EngineAuthHint engine={engineB} engineAuth={engineAuth} />
           <ModelPicker
             label="Reviewer B model"
             engine={engineB}
@@ -291,8 +305,11 @@ export function SetupPage() {
             onChange={setModelB}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder(engineB) : "add a key first"}
+            nativeModels={modelsBcp.data?.models}
+            nativeLoading={modelsBcp.isFetching}
+            nativeError={modelsBcp.error instanceof Error ? modelsBcp.error.message : null}
+            disabled={(!canFetch && engineB === "opencode") || (engineB !== "opencode" && modelsBcp.isFetching)}
+            placeholder={canFetch || engineB !== "opencode" ? modelPlaceholder(engineB) : "add OpenRouter key first"}
             error={validateModelForEngine(engineB, modelB)}
           />
         </div>
@@ -302,10 +319,11 @@ export function SetupPage() {
             value={judgeEngine}
             onChange={(next) => {
               setJudgeEngine(next);
-              setJudge((prev) => reconcileModelForEngine(next, prev));
+              setJudge((prev) => reconcileModelForEngine(next, prev, judgeAcp.data?.models));
             }}
-            disabled={!canFetch}
+            disabled={false}
           />
+          <EngineAuthHint engine={judgeEngine} engineAuth={engineAuth} />
           <ModelPicker
             label="Judge model"
             engine={judgeEngine}
@@ -313,8 +331,11 @@ export function SetupPage() {
             onChange={setJudge}
             models={models}
             suggestions={judgeSuggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder(judgeEngine) : "add a key first"}
+            nativeModels={judgeAcp.data?.models}
+            nativeLoading={judgeAcp.isFetching}
+            nativeError={judgeAcp.error instanceof Error ? judgeAcp.error.message : null}
+            disabled={(!canFetch && judgeEngine === "opencode") || (judgeEngine !== "opencode" && judgeAcp.isFetching)}
+            placeholder={canFetch || judgeEngine !== "opencode" ? modelPlaceholder(judgeEngine) : "add OpenRouter key first"}
             error={validateModelForEngine(judgeEngine, judge)}
           />
         </div>
@@ -324,10 +345,11 @@ export function SetupPage() {
             value={mineEngine}
             onChange={(next) => {
               setMineEngine(next);
-              setMiner((prev) => reconcileModelForEngine(next, prev));
+              setMiner((prev) => reconcileModelForEngine(next, prev, mineAcp.data?.models));
             }}
-            disabled={!canFetch}
+            disabled={false}
           />
+          <EngineAuthHint engine={mineEngine} engineAuth={engineAuth} />
           <ModelPicker
             label="Mine model"
             engine={mineEngine}
@@ -335,8 +357,11 @@ export function SetupPage() {
             onChange={setMiner}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder(mineEngine) : "add a key first"}
+            nativeModels={mineAcp.data?.models}
+            nativeLoading={mineAcp.isFetching}
+            nativeError={mineAcp.error instanceof Error ? mineAcp.error.message : null}
+            disabled={(!canFetch && mineEngine === "opencode") || (mineEngine !== "opencode" && mineAcp.isFetching)}
+            placeholder={canFetch || mineEngine !== "opencode" ? modelPlaceholder(mineEngine) : "add OpenRouter key first"}
             error={validateModelForEngine(mineEngine, miner)}
           />
         </div>
@@ -346,10 +371,11 @@ export function SetupPage() {
             value={learnEngine}
             onChange={(next) => {
               setLearnEngine(next);
-              setLearnModel((prev) => reconcileModelForEngine(next, prev));
+              setLearnModel((prev) => reconcileModelForEngine(next, prev, learnAcp.data?.models));
             }}
-            disabled={!canFetch}
+            disabled={false}
           />
+          <EngineAuthHint engine={learnEngine} engineAuth={engineAuth} />
           <ModelPicker
             label="Learn model"
             engine={learnEngine}
@@ -357,8 +383,11 @@ export function SetupPage() {
             onChange={setLearnModel}
             models={models}
             suggestions={suggestions.data?.models ?? []}
-            disabled={!canFetch}
-            placeholder={canFetch ? modelPlaceholder(learnEngine) : "add a key first"}
+            nativeModels={learnAcp.data?.models}
+            nativeLoading={learnAcp.isFetching}
+            nativeError={learnAcp.error instanceof Error ? learnAcp.error.message : null}
+            disabled={(!canFetch && learnEngine === "opencode") || (learnEngine !== "opencode" && learnAcp.isFetching)}
+            placeholder={canFetch || learnEngine !== "opencode" ? modelPlaceholder(learnEngine) : "add OpenRouter key first"}
             error={validateModelForEngine(learnEngine, learnModel)}
           />
         </div>

@@ -37,6 +37,8 @@ public enum AgentSandbox {
         "CODEX_API_KEY",
         "CURSOR_API_KEY",
         "CURSOR_AUTH_TOKEN",
+        "XAI_API_KEY",
+        "GROK_API_KEY",
     ]
 
     public static func dockerRequest(

@@ -320,16 +320,25 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var env = ACPEngines.agentEnv(engine: engine, model: model)
         env["NODE_NO_WARNINGS"] = "1"
         let runnerImage = engineImages[engine] ?? image
+        let resolvedProviderEnv = EngineHostCredentials.enrichedProviderEnv(
+            engine: engine,
+            providerEnv: providerEnv
+        )
+        let isolation = EngineHostCredentials.engineIsolation(
+            engine: engine,
+            providerEnv: resolvedProviderEnv
+        )
         var request = AgentSandbox.dockerRequest(
             name: Self.containerName(jobID: jobID, slot: slot),
             payload: AgentContainerPayload(
                 image: runnerImage,
                 argv: argv,
                 env: env,
-                tmpfs: ACPEngines.engineTmpfs(engine: engine)
+                tmpfs: isolation.tmpfs,
+                binds: isolation.credentialBinds
             ),
             workspace: workspace,
-            providerEnv: providerEnv,
+            providerEnv: resolvedProviderEnv,
             cpus: cpus,
             memory: memory,
             timeout: agentTimeout
@@ -340,6 +349,64 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             let livePhase = slot == .modelA ? "review_a" : "review_b"
             request.onStdout = { data in
                 writer(jobID, livePhase, redactor.redact(data))
+            }
+        }
+        return request
+    }
+
+    public func acpJudgeDockerRequest(
+        jobID: JobID,
+        workspace: URL,
+        engine: String,
+        model: String
+    ) throws -> DockerRequest {
+        let outputPath = "/workspace/.gegenlesen/judge.json"
+        let promptFile = "/workspace/.gegenlesen/prompt-judge.md"
+        let timeoutSec = max(1, Int(judgeTimeout.components.seconds))
+        let agentCommand = ACPEngines.agentCommand(engine: engine, model: model)
+        guard !agentCommand.isEmpty else {
+            throw AgentEngineError.unknownEngine(engine)
+        }
+        var argv = [
+            "acp-runner",
+            "--prompt-file", promptFile,
+            "--message", "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
+            "--output", "judge",
+            "--output-path", outputPath,
+            "--timeout-sec", "\(timeoutSec)",
+            "--",
+        ]
+        argv.append(contentsOf: agentCommand)
+        var env = ACPEngines.agentEnv(engine: engine, model: model)
+        env["NODE_NO_WARNINGS"] = "1"
+        let runnerImage = engineImages[engine] ?? image
+        let resolvedProviderEnv = EngineHostCredentials.enrichedProviderEnv(
+            engine: engine,
+            providerEnv: providerEnv
+        )
+        let isolation = EngineHostCredentials.engineIsolation(
+            engine: engine,
+            providerEnv: resolvedProviderEnv
+        )
+        var request = AgentSandbox.dockerRequest(
+            name: ReviewContainers.judge(jobID),
+            payload: AgentContainerPayload(
+                image: runnerImage,
+                argv: argv,
+                env: env,
+                tmpfs: isolation.tmpfs,
+                binds: isolation.credentialBinds
+            ),
+            workspace: workspace,
+            providerEnv: resolvedProviderEnv,
+            cpus: cpus,
+            memory: memory,
+            timeout: judgeTimeout
+        )
+        if let writer = transcriptWriter {
+            let redactor = SecretRedactor()
+            request.onStdout = { data in
+                writer(jobID, "judge", redactor.redact(data))
             }
         }
         return request
@@ -443,12 +510,20 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             if let runner = docker as? DockerRunner {
                 try runner.ensureEgressNetwork()
             }
-            // TODO(#40): dispatch judge by job.judgeEngine when non-opencode judges land
-            dockerRequest = try judgeDockerRequest(
-                jobID: request.job.id,
-                workspace: request.workspace.root,
-                model: request.job.judgeModelID
-            )
+            if ACPEngines.usesACP(request.job.judgeEngine) {
+                dockerRequest = try acpJudgeDockerRequest(
+                    jobID: request.job.id,
+                    workspace: request.workspace.root,
+                    engine: request.job.judgeEngine,
+                    model: request.job.judgeModelID
+                )
+            } else {
+                dockerRequest = try judgeDockerRequest(
+                    jobID: request.job.id,
+                    workspace: request.workspace.root,
+                    model: request.job.judgeModelID
+                )
+            }
         } catch {
             return JudgeRunResult(outcome: .containerFailed, containerName: name)
         }

@@ -5,8 +5,12 @@ USER root
 
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && curl https://cursor.com/install -fsS | bash \
-    && install -m 0755 /root/.local/bin/agent /usr/local/bin/agent \
-    && agent --version \
+    && install -d -m 0755 /opt/cursor-agent \
+    && cp -a /root/.local/share/cursor-agent/versions /opt/cursor-agent/versions \
+    && AGENT_VERSION="$(ls /opt/cursor-agent/versions | head -1)" \
+    && ln -sf "/opt/cursor-agent/versions/${AGENT_VERSION}/cursor-agent" /usr/local/bin/agent \
+    && test -x "/opt/cursor-agent/versions/${AGENT_VERSION}/cursor-agent" \
+    && chown -R 1000:1000 /opt/cursor-agent \
     && rm -rf /var/lib/apt/lists/*
 
 LABEL org.gegenlesen.engine="cursor-agent"

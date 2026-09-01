@@ -142,6 +142,24 @@ export interface RiskAssessment {
   safe_unread: boolean | null;
 }
 
+export interface EngineAuthStatus {
+  configured: boolean;
+  api_key: boolean;
+  cli_login: boolean;
+}
+
+export interface EngineModelList {
+  engine: string;
+  models: EngineModel[];
+  source: string;
+}
+
+export interface EngineModel {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface SettingsDTO {
   bind: string;
   port: number;
@@ -154,6 +172,7 @@ export interface SettingsDTO {
   scanner_image?: string;
   limits: Limits;
   openrouter_configured: boolean;
+  engine_auth?: Record<string, EngineAuthStatus>;
   risk: RiskConfig;
 }
 

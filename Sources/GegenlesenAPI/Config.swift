@@ -1,4 +1,5 @@
 import Foundation
+import GegenlesenAgent
 import GegenlesenCore
 import Vapor
 
@@ -361,6 +362,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             AgentEngineID.claude: "gegenlesen/claude-runner:0.1.0",
             AgentEngineID.codex: "gegenlesen/codex-runner:0.1.0",
             AgentEngineID.cursorAgent: "gegenlesen/cursor-runner:0.1.0",
+            AgentEngineID.grok: "gegenlesen/grok-runner:0.1.0",
         ],
         scannerImage: "gegenlesen/scanner:0.1.0",
         limits: .v1
@@ -461,6 +463,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     static let defaultClaudeRunnerImage = "gegenlesen/claude-runner:0.1.0"
     static let defaultCodexRunnerImage = "gegenlesen/codex-runner:0.1.0"
     static let defaultCursorRunnerImage = "gegenlesen/cursor-runner:0.1.0"
+    static let defaultGrokRunnerImage = "gegenlesen/grok-runner:0.1.0"
 
     func resolvedEngineImages() -> [String: String] {
         var map: [String: String] = [
@@ -468,6 +471,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             AgentEngineID.claude: Self.defaultClaudeRunnerImage,
             AgentEngineID.codex: Self.defaultCodexRunnerImage,
             AgentEngineID.cursorAgent: Self.defaultCursorRunnerImage,
+            AgentEngineID.grok: Self.defaultGrokRunnerImage,
         ]
         for (engine, image) in engineImages {
             let trimmed = image.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -532,6 +536,9 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_CURSOR_RUNNER_IMAGE"], !value.isEmpty {
             next.engineImages[AgentEngineID.cursorAgent] = value
         }
+        if let value = environment["GEGENLESEN_GROK_RUNNER_IMAGE"], !value.isEmpty {
+            next.engineImages[AgentEngineID.grok] = value
+        }
         if let value = environment["GEGENLESEN_MINE_ENGINE"], !value.isEmpty {
             next.engineProfiles.mine.engine = value
         }
@@ -578,6 +585,19 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         settingsDTO(environment: ProcessInfo.processInfo.environment)
     }
 
+    func engineAuthStatus(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: EngineAuthStatus] {
+        var statuses = EngineHostCredentials.probeAll(
+            homeDirectory: EngineHostCredentials.hostHomeDirectory(environment: environment),
+            environment: providerEnv(from: environment)
+        )
+        if isOpenRouterConfigured(environment: environment) {
+            statuses[AgentEngineID.opencode] = EngineAuthStatus(apiKey: true, cliLogin: false)
+        }
+        return statuses
+    }
+
     func settingsDTO(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> SettingsDTO {
@@ -593,6 +613,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             scannerImage: scannerImage,
             limits: limits,
             openrouterConfigured: isOpenRouterConfigured(environment: environment),
+            engineAuth: engineAuthStatus(environment: environment),
             risk: risk
         )
     }
@@ -615,6 +636,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var scannerImage: String
     var limits: Limits
     var openrouterConfigured: Bool
+    var engineAuth: [String: EngineAuthStatus]
     var risk: RiskConfig
 
     enum CodingKeys: String, CodingKey {
@@ -627,6 +649,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
         case scannerImage = "scanner_image"
         case limits
         case openrouterConfigured = "openrouter_configured"
+        case engineAuth = "engine_auth"
         case risk
     }
 }
