@@ -59,12 +59,28 @@ public enum ACPModelProbe {
             return cached
         }
 
-        let script = scriptURL(packageRoot: packageRoot)
+        let list = try await Task.detached {
+            try runProbe(
+                engine: normalized,
+                script: scriptURL(packageRoot: packageRoot),
+                command: probeCommand(for: normalized),
+                providerEnv: providerEnv
+            )
+        }.value
+        storeCache(list, engine: normalized)
+        return list
+    }
+
+    private static func runProbe(
+        engine: String,
+        script: URL,
+        command: [String],
+        providerEnv: [String: String]
+    ) throws -> EngineModelList {
         guard FileManager.default.isReadableFile(atPath: script.path) else {
             throw ACPModelProbeError.scriptMissing
         }
 
-        let command = probeCommand(for: normalized)
         var env = ProcessInfo.processInfo.environment
         for (key, value) in providerEnv where !value.isEmpty {
             env[key] = value
@@ -81,46 +97,33 @@ public enum ACPModelProbe {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        let outLock = NSLock()
-        let errLock = NSLock()
-        var outData = Data()
-        var errData = Data()
-        stdout.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            outLock.lock()
-            outData.append(chunk)
-            outLock.unlock()
+        let outBox = DataBox()
+        let errBox = DataBox()
+        let outReader = Thread {
+            outBox.value = stdout.fileHandleForReading.readDataToEndOfFile()
         }
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            errLock.lock()
-            errData.append(chunk)
-            errLock.unlock()
+        let errReader = Thread {
+            errBox.value = stderr.fileHandleForReading.readDataToEndOfFile()
         }
+        outReader.start()
+        errReader.start()
 
         try process.run()
-        let deadline = ContinuousClock.now + .seconds(25)
+        let deadline = Date().addingTimeInterval(25)
         while process.isRunning {
-            if ContinuousClock.now >= deadline {
-                stdout.fileHandleForReading.readabilityHandler = nil
-                stderr.fileHandleForReading.readabilityHandler = nil
+            if Date() >= deadline {
                 process.terminate()
                 throw ACPModelProbeError.probeFailed("ACP model probe timed out")
             }
-            try? await Task.sleep(for: .milliseconds(50))
+            Thread.sleep(forTimeInterval: 0.05)
         }
         process.waitUntilExit()
+        while outReader.isExecuting || errReader.isExecuting {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
 
-        stdout.fileHandleForReading.readabilityHandler = nil
-        stderr.fileHandleForReading.readabilityHandler = nil
-        outLock.lock()
-        outData.append(stdout.fileHandleForReading.readDataToEndOfFile())
-        outLock.unlock()
-        errLock.lock()
-        errData.append(stderr.fileHandleForReading.readDataToEndOfFile())
-        errLock.unlock()
+        let outData = outBox.value
+        let errData = errBox.value
 
         guard process.terminationStatus == 0 else {
             let err = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,20 +131,22 @@ public enum ACPModelProbe {
         }
 
         let decoded = try JSONDecoder().decode(ProbePayload.self, from: outData)
-        let list = EngineModelList(
-            engine: normalized,
+        return EngineModelList(
+            engine: engine,
             models: decoded.models.map {
                 EngineModelDTO(id: $0.id, name: $0.name, description: $0.description)
             },
             source: decoded.source
         )
-        storeCache(list, engine: normalized)
-        return list
     }
 
     private struct ProbePayload: Decodable {
         var models: [EngineModelDTO]
         var source: String
+    }
+
+    private final class DataBox: @unchecked Sendable {
+        var value = Data()
     }
 
     private static func probeCommand(for engine: String) -> [String] {
