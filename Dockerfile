@@ -30,6 +30,8 @@ FROM debian:bookworm-slim
 # git depends on libcurl-gnutls. Swift/Foundation links OpenSSL libcurl4.
 ARG TARGETARCH
 ARG GROK_VERSION=1.0.13
+ARG CLAUDE_CODE_ACP_VERSION=0.16.2
+ARG CLAUDE_CODE_VERSION=2.1.257
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
@@ -49,7 +51,11 @@ RUN apt-get install -y --no-install-recommends \
     tzdata \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @zed-industries/claude-code-acp@0.16.2 \
+    && npm install -g \
+      "@zed-industries/claude-code-acp@${CLAUDE_CODE_ACP_VERSION}" \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && command -v claude-code-acp \
+    && command -v claude \
     && curl https://cursor.com/install -fsS | bash \
     && install -d -m 0755 /opt/cursor-agent \
     && cp -a /root/.local/share/cursor-agent/versions /opt/cursor-agent/versions \

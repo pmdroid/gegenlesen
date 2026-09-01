@@ -20,6 +20,27 @@ function isGrokAgent(path) {
   return out.includes("grok");
 }
 
+function isClaudeCommand(command) {
+  return command.some((part) => String(part).includes("claude-code-acp"));
+}
+
+function findOnPath(name) {
+  const path = process.env.PATH ?? "";
+  for (const dir of path.split(":")) {
+    if (!dir) continue;
+    const candidate = join(dir, name);
+    if (isRunnable(candidate)) return candidate;
+  }
+  return null;
+}
+
+function assertClaudeCLI() {
+  const override = process.env.GEGENLESEN_CLAUDE?.trim();
+  if (override && isRunnable(override)) return;
+  if (findOnPath("claude")) return;
+  throw new Error("claude CLI not found on PATH");
+}
+
 function resolveProbeCommand(command) {
   const hostHome = process.env.GEGENLESEN_HOST_HOME?.trim();
   if (!hostHome) return command;
@@ -27,6 +48,7 @@ function resolveProbeCommand(command) {
   const head = String(command[0] ?? "");
   const wantsCursor = command[1] === "acp";
   const wantsGrok = command.includes("stdio");
+  const wantsClaude = isClaudeCommand(command);
 
   if (wantsCursor || (head.endsWith("/agent") && !wantsGrok && command[1] === "acp")) {
     const cursorAgent = process.env.GEGENLESEN_CURSOR_AGENT?.trim();
@@ -36,6 +58,18 @@ function resolveProbeCommand(command) {
     for (const candidate of ["/usr/local/bin/cursor-agent"]) {
       if (candidate && isRunnable(candidate) && !isGrokAgent(candidate)) {
         return [candidate, "acp"];
+      }
+    }
+  }
+
+  if (wantsClaude) {
+    const claudeAcp = process.env.GEGENLESEN_CLAUDE_ACP?.trim();
+    if (claudeAcp && isRunnable(claudeAcp)) {
+      return [claudeAcp];
+    }
+    for (const candidate of ["/usr/local/bin/claude-code-acp", "/usr/bin/claude-code-acp"]) {
+      if (isRunnable(candidate)) {
+        return [candidate];
       }
     }
   }
@@ -71,6 +105,19 @@ function applyHostHomeEnv() {
   const hostHome = process.env.GEGENLESEN_HOST_HOME?.trim();
   if (!hostHome) return;
   process.env.HOME = hostHome;
+}
+
+function claudeProbeHome(hostHome) {
+  const probeHome = mkdtempSync(join(tmpdir(), "gegenlesen-acp-probe-claude-"));
+  const claudeDir = join(probeHome, ".claude");
+  mkdirSync(claudeDir, { recursive: true });
+  try {
+    cpSync(join(hostHome, ".claude", ".credentials.json"), join(claudeDir, ".credentials.json"));
+  } catch {}
+  try {
+    cpSync(join(hostHome, ".claude.json"), join(probeHome, ".claude.json"));
+  } catch {}
+  process.env.HOME = probeHome;
 }
 
 function grokProbeHome(hostHome) {
@@ -259,20 +306,31 @@ async function probe(command) {
   }
 }
 
-const command = resolveProbeCommand(parseArgs(process.argv));
-const hostHome = process.env.GEGENLESEN_HOST_HOME?.trim();
-if (hostHome) {
-  if (command.some((part) => String(part).includes("codex-acp"))) {
-    codexProbeHome(hostHome);
-  } else if (command[1] === "acp") {
-    cursorProbeHome(hostHome);
-  } else if (command.includes("stdio")) {
-    grokProbeHome(hostHome);
+try {
+  const command = resolveProbeCommand(parseArgs(process.argv));
+  if (isClaudeCommand(command)) {
+    assertClaudeCLI();
+  }
+  const hostHome = process.env.GEGENLESEN_HOST_HOME?.trim();
+  if (hostHome) {
+    if (command.some((part) => String(part).includes("codex-acp"))) {
+      codexProbeHome(hostHome);
+    } else if (isClaudeCommand(command)) {
+      claudeProbeHome(hostHome);
+    } else if (command[1] === "acp") {
+      cursorProbeHome(hostHome);
+    } else if (command.includes("stdio")) {
+      grokProbeHome(hostHome);
+    } else {
+      applyHostHomeEnv();
+    }
   } else {
     applyHostHomeEnv();
   }
-} else {
-  applyHostHomeEnv();
+  const models = await probe(command);
+  process.stdout.write(`${JSON.stringify({ models, source: "acp" })}\n`);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
 }
-const models = await probe(command);
-process.stdout.write(`${JSON.stringify({ models, source: "acp" })}\n`);
