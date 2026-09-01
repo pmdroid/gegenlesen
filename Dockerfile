@@ -39,7 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     tzdata \
     zlib1g \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @zed-industries/claude-code-acp@0.16.2
 WORKDIR /app
 COPY --from=build /usr/local/bin/GegenlesenAPI /usr/local/bin/GegenlesenAPI
 RUN missing="$(ldd /usr/local/bin/GegenlesenAPI | awk '/not found/ {print}')" \

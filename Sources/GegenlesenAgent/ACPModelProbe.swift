@@ -109,7 +109,7 @@ public enum ACPModelProbe {
         errReader.start()
 
         try process.run()
-        let deadline = Date().addingTimeInterval(90)
+        let deadline = Date().addingTimeInterval(120)
         while process.isRunning {
             if Date() >= deadline {
                 process.terminate()
@@ -153,6 +153,10 @@ public enum ACPModelProbe {
         let home = EngineHostCredentials.hostHomeDirectory()
         switch engine {
         case AgentEngineID.claude:
+            if FileManager.default.isExecutableFile(atPath: "/usr/bin/claude-code-acp")
+                || FileManager.default.isExecutableFile(atPath: "/usr/local/bin/claude-code-acp") {
+                return ["claude-code-acp"]
+            }
             return ["npx", "-y", "@zed-industries/claude-code-acp@0.16.2"]
         case AgentEngineID.codex:
             return ["npx", "-y", "@agentclientprotocol/codex-acp"]
