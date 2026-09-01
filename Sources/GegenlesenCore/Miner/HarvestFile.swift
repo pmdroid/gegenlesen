@@ -24,6 +24,7 @@ public struct HarvestBundle: Sendable, Equatable {
 
 public enum HarvestIngestError: Error, Sendable, Equatable {
     case missingHarvestFile
+    case parseFailed(String)
 }
 
 public enum HarvestFile: Sendable {
@@ -38,6 +39,32 @@ public enum HarvestFile: Sendable {
             rules: decoded.rules?.map(\.draft) ?? [],
             notes: decoded.notes?.map(\.draft) ?? []
         )
+    }
+
+    public static func parseFailureMessage(_ error: Error) -> String {
+        guard let decoding = error as? DecodingError else {
+            return String(describing: error)
+        }
+        switch decoding {
+        case .dataCorrupted(let context),
+             .keyNotFound(_, let context),
+             .typeMismatch(_, let context),
+             .valueNotFound(_, let context):
+            let path = context.codingPath.map(\.stringValue).filter { !$0.isEmpty }.joined(separator: ".")
+            if path.isEmpty { return context.debugDescription }
+            return "\(path): \(context.debugDescription)"
+        @unknown default:
+            return String(describing: error)
+        }
+    }
+
+    static func mapSeverity(_ raw: String) -> Severity? {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "info", "low": return .info
+        case "warning", "warn", "medium": return .warning
+        case "error", "high": return .error
+        default: return nil
+        }
     }
 
     public static func dropUncited(_ bundle: HarvestBundle) -> HarvestBundle {
@@ -114,6 +141,24 @@ public enum HarvestFile: Sendable {
         enum CodingKeys: String, CodingKey {
             case title, severity, kind, languages, payload, instruction, body, evidence, examples
             case pathGlobs = "path_globs"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            title = try container.decode(String.self, forKey: .title)
+            if let raw = try? container.decode(String.self, forKey: .severity) {
+                severity = HarvestFile.mapSeverity(raw)
+            } else {
+                severity = nil
+            }
+            kind = try container.decodeIfPresent(RuleKind.self, forKey: .kind)
+            languages = try container.decodeIfPresent([String].self, forKey: .languages)
+            pathGlobs = try container.decodeIfPresent([String].self, forKey: .pathGlobs)
+            payload = try container.decodeIfPresent(RulePayload.self, forKey: .payload)
+            instruction = try container.decodeIfPresent(String.self, forKey: .instruction)
+            body = try container.decodeIfPresent(String.self, forKey: .body)
+            evidence = try container.decodeIfPresent([RuleExample].self, forKey: .evidence)
+            examples = try container.decodeIfPresent([RuleExample].self, forKey: .examples)
         }
 
         var draft: MinedRuleDraft {

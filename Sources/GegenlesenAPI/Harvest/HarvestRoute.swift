@@ -6,6 +6,7 @@ enum HarvestRoute {
     static func register(_ app: Application) {
         app.post("api", "harvest", use: create)
         app.post("api", "harvest", ":id", "ingest", use: ingest)
+        app.post("api", "jobs", ":id", "harvest", "ingest", use: ingest)
     }
 
     static func create(_ req: Request) async throws -> Response {
@@ -73,7 +74,9 @@ enum HarvestRoute {
                 on: req
             )
         } catch HarvestIngestError.missingHarvestFile {
-            throw APIError.notFound()
+            throw APIError.unprocessable("no harvest.json")
+        } catch HarvestIngestError.parseFailed(let detail) {
+            throw APIError.unprocessable("harvest_parse_failed", details: ["message": detail])
         }
     }
 

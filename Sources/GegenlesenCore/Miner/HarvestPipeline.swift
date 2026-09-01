@@ -71,14 +71,35 @@ public struct HarvestPipeline: Sendable {
                     }
                 )
                 try await store.updateJobContainers(jobID: jobID, containerName: result.containerName)
-                let harvestURL = workspaceURL.appendingPathComponent(".gegenlesen/harvest.json")
-                if let data = try? Data(contentsOf: harvestURL),
-                   let parsed = try? HarvestFile.parse(data) {
-                    bundle = parsed
-                } else {
+                if result.failed {
                     let message = result.errorMessage ?? "miner_failed"
                     try await store.appendEvent(jobID: jobID, level: .error, message: message)
                     try await failHarvest(jobID: jobID, message: message)
+                    return
+                }
+                let harvestURL = workspaceURL.appendingPathComponent(".gegenlesen/harvest.json")
+                guard let data = try? Data(contentsOf: harvestURL) else {
+                    let detail = "missing harvest.json"
+                    try await store.appendEvent(
+                        jobID: jobID,
+                        level: .error,
+                        message: "harvest_parse_failed",
+                        payloadJSON: Self.jsonObject(["message": detail])
+                    )
+                    try await failHarvest(jobID: jobID, message: "harvest_parse_failed")
+                    return
+                }
+                do {
+                    bundle = try HarvestFile.parse(data)
+                } catch {
+                    let detail = HarvestFile.parseFailureMessage(error)
+                    try await store.appendEvent(
+                        jobID: jobID,
+                        level: .error,
+                        message: "harvest_parse_failed",
+                        payloadJSON: Self.jsonObject(["message": detail])
+                    )
+                    try await failHarvest(jobID: jobID, message: "harvest_parse_failed")
                     return
                 }
             }
@@ -141,10 +162,16 @@ public struct HarvestPipeline: Sendable {
     public func ingestExistingHarvest(jobID: JobID) async throws -> (rules: Int, notes: Int) {
         let workspaceURL = store.blobs.workspaceURL(jobID: jobID.rawValue)
         let harvestURL = workspaceURL.appendingPathComponent(".gegenlesen/harvest.json")
-        guard let data = try? Data(contentsOf: harvestURL),
-              let parsed = try? HarvestFile.parse(data)
+        guard FileManager.default.isReadableFile(atPath: harvestURL.path),
+              let data = try? Data(contentsOf: harvestURL)
         else {
             throw HarvestIngestError.missingHarvestFile
+        }
+        let parsed: HarvestBundle
+        do {
+            parsed = try HarvestFile.parse(data)
+        } catch {
+            throw HarvestIngestError.parseFailed(HarvestFile.parseFailureMessage(error))
         }
         let bundle = HarvestFile.cap(HarvestFile.dropUncited(parsed))
         let counts = try await persist(bundle, jobID: jobID, now: Date(), judged: false)
@@ -517,7 +544,7 @@ public struct HarvestPipeline: Sendable {
         Note body at most \(HarvestFile.maxNoteBodyChars) characters.
 
         JSON only:
-        {"rules":[{"title","severity","kind":"semantic","languages":["*"],"path_globs":["**/*"],"instruction","body","evidence":[{"path","excerpt"}]}],"notes":[{"title","body","evidence":[{"path","excerpt"}]}]}
+        {"rules":[{"title","severity":"info|warning|error","kind":"semantic","languages":["*"],"path_globs":["**/*"],"instruction","body","evidence":[{"path","excerpt"}]}],"notes":[{"title","body","evidence":[{"path","excerpt"}]}]}
 
         At most 8 rules and 5 notes.
         """
