@@ -17,11 +17,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DATA="${GEGENLESEN_DATA_DIR:-${HOME}/gegenlesen-data}"
 CONFIG="${GEGENLESEN_CONFIG_DIR:-${HOME}/gegenlesen-config}"
 HOST_HOME="${GEGENLESEN_HOST_HOME_MOUNT:-/host-home}"
-IMAGE="${GEGENLESEN_IMAGE:-ghcr.io/pmdroid/gegenlesen:0.1.22}"
+IMAGE="${GEGENLESEN_IMAGE:-ghcr.io/pmdroid/gegenlesen:0.1.23}"
 PUBLISH_BIND="${GEGENLESEN_PUBLISH_BIND:-0.0.0.0}"
 PORT="${GEGENLESEN_PORT:-8080}"
 NAME="${GEGENLESEN_CONTAINER_NAME:-gegenlesen}"
-RUNNER_TAG="${GEGENLESEN_RUNNER_TAG:-0.1.22}"
+RUNNER_TAG="${GEGENLESEN_RUNNER_TAG:-0.1.23}"
 REGISTRY="${GEGENLESEN_REGISTRY:-ghcr.io/pmdroid/gegenlesen}"
 
 HOST_NETWORK=0
