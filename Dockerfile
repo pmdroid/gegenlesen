@@ -34,6 +34,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4 \
     libsqlite3-0 \
     libxml2 \
+    nodejs \
+    npm \
     tini \
     tzdata \
     zlib1g \
@@ -48,10 +50,6 @@ RUN missing="$(ldd /usr/local/bin/GegenlesenAPI | awk '/not found/ {print}')" \
       exit 1; \
     fi
 COPY --from=frontend /src/frontend/dist /app/frontend/dist
-COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
-COPY --from=frontend /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=frontend /usr/local/bin/npx /usr/local/bin/npx
-COPY --from=frontend /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY rules /app/rules
 COPY schemas /app/schemas
 COPY docker/opencode-runner /app/docker/opencode-runner
