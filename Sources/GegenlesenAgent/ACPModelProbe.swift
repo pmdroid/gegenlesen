@@ -81,10 +81,31 @@ public enum ACPModelProbe {
         process.standardOutput = stdout
         process.standardError = stderr
 
+        let outLock = NSLock()
+        let errLock = NSLock()
+        var outData = Data()
+        var errData = Data()
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else { return }
+            outLock.lock()
+            outData.append(chunk)
+            outLock.unlock()
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else { return }
+            errLock.lock()
+            errData.append(chunk)
+            errLock.unlock()
+        }
+
         try process.run()
         let deadline = ContinuousClock.now + .seconds(25)
         while process.isRunning {
             if ContinuousClock.now >= deadline {
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
                 process.terminate()
                 throw ACPModelProbeError.probeFailed("ACP model probe timed out")
             }
@@ -92,8 +113,15 @@ public enum ACPModelProbe {
         }
         process.waitUntilExit()
 
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        outLock.lock()
+        outData.append(stdout.fileHandleForReading.readDataToEndOfFile())
+        outLock.unlock()
+        errLock.lock()
+        errData.append(stderr.fileHandleForReading.readDataToEndOfFile())
+        errLock.unlock()
+
         guard process.terminationStatus == 0 else {
             let err = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
             throw ACPModelProbeError.probeFailed(err?.isEmpty == false ? err! : "exit \(process.terminationStatus)")

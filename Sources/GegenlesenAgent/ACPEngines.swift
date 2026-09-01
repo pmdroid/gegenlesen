@@ -34,7 +34,7 @@ public enum ACPEngines: Sendable {
             return ["ANTHROPIC_MODEL": model]
         case AgentEngineID.codex:
             let baseModel = codexBaseModel(from: model)
-            let config = #"{"model":"\#(baseModel)","sandbox":"disabled"}"#
+            let config = codexConfigJSON(baseModel: baseModel)
             return [
                 "NO_BROWSER": "1",
                 "INITIAL_AGENT_MODE": "agent-full-access",
@@ -78,5 +78,18 @@ public enum ACPEngines: Sendable {
     static func codexBaseModel(from model: String) -> String {
         guard let bracket = model.firstIndex(of: "[") else { return model }
         return String(model[..<bracket])
+    }
+
+    static func codexConfigJSON(baseModel: String) -> String {
+        let payload: [String: String] = [
+            "model": baseModel,
+            "sandbox": "disabled",
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            return #"{"model":"","sandbox":"disabled"}"#
+        }
+        return json
     }
 }

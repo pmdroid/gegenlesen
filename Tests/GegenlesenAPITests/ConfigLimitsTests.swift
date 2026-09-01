@@ -91,4 +91,22 @@ struct ConfigLimitsTests {
         ])
         #expect(empty.limits.mineTimeoutSec == 3600)
     }
+
+    @Test
+    func providerEnvForwardsGrokKeys() {
+        let env = GegenlesenConfig.example.providerEnv(from: [
+            "XAI_API_KEY": "xai-test",
+            "GROK_API_KEY": "grok-test",
+        ])
+        #expect(env["XAI_API_KEY"] == "xai-test")
+        #expect(env["GROK_API_KEY"] == "grok-test")
+    }
+
+    @Test
+    func mineEngineEnvOverrideIgnoresNonOpenCode() {
+        let config = GegenlesenConfig.example.applyingEnvironmentOverrides([
+            "GEGENLESEN_MINE_ENGINE": "claude",
+        ])
+        #expect(config.engineProfiles.mine.engine == "opencode")
+    }
 }

@@ -81,8 +81,8 @@ enum SettingsRoute {
             if let mine = profiles.mine {
                 if let engine = mine.engine {
                     let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard AgentEngineID.isKnown(trimmed) else {
-                        throw APIError.unprocessable("unknown mine engine: \(trimmed)")
+                    guard trimmed == AgentEngineID.opencode else {
+                        throw APIError.unprocessable("mine engine must be opencode")
                     }
                     next.engineProfiles.mine.engine = trimmed
                 }
@@ -97,8 +97,8 @@ enum SettingsRoute {
             if let learn = profiles.learn {
                 if let engine = learn.engine {
                     let trimmed = engine.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard AgentEngineID.isKnown(trimmed) else {
-                        throw APIError.unprocessable("unknown learn engine: \(trimmed)")
+                    guard trimmed == AgentEngineID.opencode else {
+                        throw APIError.unprocessable("learn engine must be opencode")
                     }
                     next.engineProfiles.learn.engine = trimmed
                 }

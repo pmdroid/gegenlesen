@@ -91,6 +91,16 @@ struct CodexCursorACPContractTests {
     }
 
     @Test
+    func codexConfigEscapesModelName() {
+        let config = ACPEngines.codexConfigJSON(baseModel: #"gpt-5","sandbox":"enabled"#)
+        #expect(config.contains(#""model":"gpt-5\",\"sandbox\":\"enabled""#))
+        let data = config.data(using: .utf8)!
+        let parsed = try! JSONSerialization.jsonObject(with: data) as! [String: String]
+        #expect(parsed["model"] == #"gpt-5","sandbox":"enabled"#)
+        #expect(parsed["sandbox"] == "disabled")
+    }
+
+    @Test
     func grokSlotUsesACPRunnerInGrokImage() throws {
         let invocation = OpenCodeInvocation(
             docker: NoopDocker(),

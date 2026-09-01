@@ -441,6 +441,8 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             "CODEX_API_KEY",
             "CURSOR_API_KEY",
             "CURSOR_AUTH_TOKEN",
+            "XAI_API_KEY",
+            "GROK_API_KEY",
         ] {
             if let value = environment[key], !value.isEmpty {
                 env[key] = value
@@ -540,13 +542,19 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             next.engineImages[AgentEngineID.grok] = value
         }
         if let value = environment["GEGENLESEN_MINE_ENGINE"], !value.isEmpty {
-            next.engineProfiles.mine.engine = value
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == AgentEngineID.opencode {
+                next.engineProfiles.mine.engine = trimmed
+            }
         }
         if let value = environment["GEGENLESEN_MINE_MODEL"], !value.isEmpty {
             next.engineProfiles.mine.model = value
         }
         if let value = environment["GEGENLESEN_LEARN_ENGINE"], !value.isEmpty {
-            next.engineProfiles.learn.engine = value
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == AgentEngineID.opencode {
+                next.engineProfiles.learn.engine = trimmed
+            }
         }
         if let value = environment["GEGENLESEN_LEARN_MODEL"], !value.isEmpty {
             next.engineProfiles.learn.model = value
