@@ -109,7 +109,7 @@ public enum ACPModelProbe {
         errReader.start()
 
         try process.run()
-        let deadline = Date().addingTimeInterval(25)
+        let deadline = Date().addingTimeInterval(90)
         while process.isRunning {
             if Date() >= deadline {
                 process.terminate()
