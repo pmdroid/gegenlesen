@@ -25,7 +25,7 @@ struct ClaudeACPContractTests {
         let args = request.dockerCLIArguments()
         #expect(request.image == "gegenlesen/claude-runner:0.1.0")
         #expect(args.contains("acp-runner"))
-        #expect(args.contains("claude-code-acp"))
+        #expect(args.contains("claude-agent-acp"))
         #expect(args.contains("/workspace/.gegenlesen/findings-model_a.json"))
         #expect(args.contains("/workspace/.gegenlesen/prompt-model_a.md"))
         #expect(request.env["ANTHROPIC_MODEL"] == "claude-sonnet-4-5")

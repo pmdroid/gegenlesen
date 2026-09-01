@@ -194,13 +194,23 @@ public enum ACPModelProbe {
         let home = EngineHostCredentials.hostHomeDirectory()
         switch engine {
         case AgentEngineID.claude:
-            if FileManager.default.isExecutableFile(atPath: "/usr/bin/claude-code-acp")
-                || FileManager.default.isExecutableFile(atPath: "/usr/local/bin/claude-code-acp") {
-                return ["claude-code-acp"]
+            for path in [
+                "/usr/local/bin/claude-agent-acp",
+                "/usr/bin/claude-agent-acp",
+                "/usr/local/bin/claude-code-acp",
+                "/usr/bin/claude-code-acp",
+            ] where FileManager.default.isExecutableFile(atPath: path) {
+                return [URL(fileURLWithPath: path).lastPathComponent]
             }
-            return ["npx", "-y", "@zed-industries/claude-code-acp@0.16.2"]
+            return ["npx", "-y", "@agentclientprotocol/claude-agent-acp@0.72.0"]
         case AgentEngineID.codex:
-            return ["npx", "-y", "@agentclientprotocol/codex-acp"]
+            for path in [
+                "/usr/local/bin/codex-acp",
+                "/usr/bin/codex-acp",
+            ] where FileManager.default.isExecutableFile(atPath: path) {
+                return ["codex-acp"]
+            }
+            return ["npx", "-y", "@agentclientprotocol/codex-acp@1.8.0"]
         case AgentEngineID.cursorAgent:
             if let agent = EngineAgentPaths.cursorAgent(home: home) {
                 return [agent, "acp"]

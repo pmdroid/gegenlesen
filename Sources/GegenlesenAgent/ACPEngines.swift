@@ -16,7 +16,7 @@ public enum ACPEngines: Sendable {
     public static func agentCommand(engine: String, model: String) -> [String] {
         switch engine {
         case AgentEngineID.claude:
-            return ["claude-code-acp"]
+            return ["claude-agent-acp"]
         case AgentEngineID.codex:
             return ["codex-acp"]
         case AgentEngineID.cursorAgent:
