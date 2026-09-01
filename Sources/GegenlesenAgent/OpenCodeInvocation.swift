@@ -300,58 +300,20 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         model: String,
         incremental: Bool = false
     ) throws -> DockerRequest {
-        let outputPath = "/workspace/.gegenlesen/findings-\(slot.rawValue).json"
-        let promptFile = "/workspace/.gegenlesen/prompt-\(slot.rawValue).md"
-        let timeoutSec = max(1, Int(agentTimeout.components.seconds))
-        let agentCommand = ACPEngines.agentCommand(engine: engine, model: model)
-        guard !agentCommand.isEmpty else {
-            throw AgentEngineError.unknownEngine(engine)
-        }
-        var argv = [
-            "acp-runner",
-            "--prompt-file", promptFile,
-            "--message", "Investigate the change thoroughly, then write findings as instructed.",
-            "--output", "findings",
-            "--output-path", outputPath,
-            "--timeout-sec", "\(timeoutSec)",
-            "--",
-        ]
-        argv.append(contentsOf: agentCommand)
-        var env = ACPEngines.agentEnv(engine: engine, model: model)
-        env["NODE_NO_WARNINGS"] = "1"
-        let runnerImage = engineImages[engine] ?? image
-        let resolvedProviderEnv = EngineHostCredentials.enrichedProviderEnv(
-            engine: engine,
-            providerEnv: providerEnv
-        )
-        let isolation = EngineHostCredentials.engineIsolation(
-            engine: engine,
-            providerEnv: resolvedProviderEnv
-        )
-        var request = AgentSandbox.dockerRequest(
-            name: Self.containerName(jobID: jobID, slot: slot),
-            payload: AgentContainerPayload(
-                image: runnerImage,
-                argv: argv,
-                env: env,
-                tmpfs: isolation.tmpfs,
-                binds: isolation.credentialBinds
-            ),
-            workspace: workspace,
-            providerEnv: resolvedProviderEnv,
-            cpus: cpus,
-            memory: memory,
-            timeout: agentTimeout
-        )
         _ = incremental
-        if let writer = transcriptWriter {
-            let redactor = SecretRedactor()
-            let livePhase = slot == .modelA ? "review_a" : "review_b"
-            request.onStdout = { data in
-                writer(jobID, livePhase, redactor.redact(data))
-            }
-        }
-        return request
+        return try acpPromptDockerRequest(
+            name: Self.containerName(jobID: jobID, slot: slot),
+            workspace: workspace,
+            engine: engine,
+            model: model,
+            output: "findings",
+            outputPath: "/workspace/.gegenlesen/findings-\(slot.rawValue).json",
+            promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
+            message: "Investigate the change thoroughly, then write findings as instructed.",
+            timeout: agentTimeout,
+            jobID: jobID,
+            livePhase: slot == .modelA ? "review_a" : "review_b"
+        )
     }
 
     public func acpJudgeDockerRequest(
@@ -360,9 +322,79 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         engine: String,
         model: String
     ) throws -> DockerRequest {
-        let outputPath = "/workspace/.gegenlesen/judge.json"
-        let promptFile = "/workspace/.gegenlesen/prompt-judge.md"
-        let timeoutSec = max(1, Int(judgeTimeout.components.seconds))
+        try acpPromptDockerRequest(
+            name: ReviewContainers.judge(jobID),
+            workspace: workspace,
+            engine: engine,
+            model: model,
+            output: "judge",
+            outputPath: "/workspace/.gegenlesen/judge.json",
+            promptFile: "/workspace/.gegenlesen/prompt-judge.md",
+            message: "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
+            timeout: judgeTimeout,
+            jobID: jobID,
+            livePhase: "judge"
+        )
+    }
+
+    public func acpMinerDockerRequest(
+        jobID: JobID,
+        workspace: URL,
+        engine: String,
+        model: String,
+        output: String,
+        outputPath: String
+    ) throws -> DockerRequest {
+        try acpPromptDockerRequest(
+            name: ReviewContainers.miner(jobID),
+            workspace: workspace,
+            engine: engine,
+            model: model,
+            output: output,
+            outputPath: outputPath,
+            promptFile: "/workspace/.gegenlesen/prompt.md",
+            message: "Mine candidate rules as instructed.",
+            timeout: agentTimeout,
+            jobID: jobID,
+            livePhase: "mine"
+        )
+    }
+
+    public func acpSuggestionJudgeDockerRequest(
+        jobID: JobID,
+        workspace: URL,
+        engine: String,
+        model: String
+    ) throws -> DockerRequest {
+        try acpPromptDockerRequest(
+            name: ReviewContainers.suggestionJudge(jobID),
+            workspace: workspace,
+            engine: engine,
+            model: model,
+            output: "suggestion_judge",
+            outputPath: "/workspace/.gegenlesen/suggestion-judge.json",
+            promptFile: "/workspace/.gegenlesen/prompt-suggestion-judge.md",
+            message: "Judge the suggestions as instructed.",
+            timeout: judgeTimeout,
+            jobID: jobID,
+            livePhase: "suggestion_judge"
+        )
+    }
+
+    private func acpPromptDockerRequest(
+        name: String,
+        workspace: URL,
+        engine: String,
+        model: String,
+        output: String,
+        outputPath: String,
+        promptFile: String,
+        message: String,
+        timeout: Duration,
+        jobID: JobID,
+        livePhase: String
+    ) throws -> DockerRequest {
+        let timeoutSec = max(1, Int(timeout.components.seconds))
         let agentCommand = ACPEngines.agentCommand(engine: engine, model: model)
         guard !agentCommand.isEmpty else {
             throw AgentEngineError.unknownEngine(engine)
@@ -370,8 +402,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var argv = [
             "acp-runner",
             "--prompt-file", promptFile,
-            "--message", "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
-            "--output", "judge",
+            "--message", message,
+            "--output", output,
             "--output-path", outputPath,
             "--timeout-sec", "\(timeoutSec)",
             "--",
@@ -389,7 +421,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             providerEnv: resolvedProviderEnv
         )
         var request = AgentSandbox.dockerRequest(
-            name: ReviewContainers.judge(jobID),
+            name: name,
             payload: AgentContainerPayload(
                 image: runnerImage,
                 argv: argv,
@@ -401,15 +433,31 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             providerEnv: resolvedProviderEnv,
             cpus: cpus,
             memory: memory,
-            timeout: judgeTimeout
+            timeout: timeout
         )
         if let writer = transcriptWriter {
             let redactor = SecretRedactor()
             request.onStdout = { data in
-                writer(jobID, "judge", redactor.redact(data))
+                writer(jobID, livePhase, redactor.redact(data))
             }
         }
         return request
+    }
+
+    public static func minerACPOutput(workspace: Workspace) -> (kind: String, path: String) {
+        func exists(_ relative: String) -> Bool {
+            FileManager.default.fileExists(atPath: workspace.root.appendingPathComponent(relative).path)
+        }
+        if exists(".gegenlesen/harvest-scan.json") {
+            return ("harvest", "/workspace/.gegenlesen/harvest.json")
+        }
+        if exists("job/findings.json") || exists("job/feedback.json") {
+            return ("mine", "/workspace/.gegenlesen/mined-rules.json")
+        }
+        if exists(".gegenlesen/architecture-draft.md") {
+            return ("architecture", "/workspace/.gegenlesen/architecture-draft.md")
+        }
+        return ("mine", "/workspace/.gegenlesen/mined-rules.json")
     }
 
     public func reviewDockerRequest(
@@ -556,11 +604,20 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
         let dockerRequest: DockerRequest
         do {
-            dockerRequest = try suggestionJudgeDockerRequest(
-                jobID: job.id,
-                workspace: workspace.root,
-                model: job.judgeModelID
-            )
+            if ACPEngines.usesACP(job.judgeEngine) {
+                dockerRequest = try acpSuggestionJudgeDockerRequest(
+                    jobID: job.id,
+                    workspace: workspace.root,
+                    engine: job.judgeEngine,
+                    model: job.judgeModelID
+                )
+            } else {
+                dockerRequest = try suggestionJudgeDockerRequest(
+                    jobID: job.id,
+                    workspace: workspace.root,
+                    model: job.judgeModelID
+                )
+            }
         } catch {
             return SuggestionJudgeRunResult(
                 outcome: .failed,
@@ -629,14 +686,15 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         model: String,
         isCancelled: (@Sendable () async -> Bool)? = nil
     ) async -> MinerRunResult {
-        guard engine == AgentEngineID.opencode else {
+        let name = ReviewContainers.miner(jobID)
+        let usesACP = ACPEngines.usesACP(engine)
+        guard usesACP || engine == AgentEngineID.opencode else {
             return MinerRunResult(
-                containerName: ReviewContainers.miner(jobID),
+                containerName: name,
                 failed: true,
-                errorMessage: "mine_engine_requires_opencode"
+                errorMessage: "unknown_engine"
             )
         }
-        let name = ReviewContainers.miner(jobID)
         do {
             try await prepareRunnerConfig?(jobID, nil)
             if let runner = docker as? DockerRunner {
@@ -654,16 +712,28 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
         let dockerRequest: DockerRequest
         do {
-            dockerRequest = try minerDockerRequest(
-                jobID: jobID,
-                workspace: workspace.root,
-                engine: engine,
-                model: model,
-                extraFiles: Self.minerFilePaths(workspace: workspace),
-                defaultAgent: FileManager.default.fileExists(
-                    atPath: workspace.root.appendingPathComponent(".gegenlesen/harvest-scan.json").path
-                ) ? "harvester" : "miner"
-            )
+            if usesACP {
+                let output = Self.minerACPOutput(workspace: workspace)
+                dockerRequest = try acpMinerDockerRequest(
+                    jobID: jobID,
+                    workspace: workspace.root,
+                    engine: engine,
+                    model: model,
+                    output: output.kind,
+                    outputPath: output.path
+                )
+            } else {
+                dockerRequest = try minerDockerRequest(
+                    jobID: jobID,
+                    workspace: workspace.root,
+                    engine: engine,
+                    model: model,
+                    extraFiles: Self.minerFilePaths(workspace: workspace),
+                    defaultAgent: FileManager.default.fileExists(
+                        atPath: workspace.root.appendingPathComponent(".gegenlesen/harvest-scan.json").path
+                    ) ? "harvester" : "miner"
+                )
+            }
         } catch {
             return MinerRunResult(containerName: name, failed: true, errorMessage: String(describing: error))
         }

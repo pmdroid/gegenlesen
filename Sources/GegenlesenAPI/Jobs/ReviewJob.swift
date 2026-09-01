@@ -228,6 +228,9 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         maxChunks: config.embeddings.maxChunks
                     ).run(jobID: params.corpusJobID)
                 } else {
+                let profile = params.spec.source == .job
+                    ? config.engineProfiles.learn
+                    : config.engineProfiles.mine
                 try await MineCorpusPipeline(
                     store: store,
                     skipAgent: skipAgent,
@@ -253,8 +256,8 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         transcriptWriter: writeJobTranscript(store: store),
                         prepareRunnerConfig: prepareRunner
                     )),
-                    engine: config.engineProfiles.mine.engine,
-                    model: config.engineProfiles.mine.model,
+                    engine: profile.engine,
+                    model: profile.model,
                     embedder: embedder,
                     maxChunks: config.embeddings.maxChunks
                 ).run(jobID: params.corpusJobID, spec: params.spec)

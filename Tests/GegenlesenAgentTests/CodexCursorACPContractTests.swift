@@ -128,4 +128,59 @@ struct CodexCursorACPContractTests {
         #expect(request.env["GROK_MODEL"] == "grok-4.6")
         #expect(request.env["GROK_ACP_MODEL"] == "grok-4.6")
     }
+
+    @Test
+    func cursorMinerUsesACPRunnerInCursorImage() throws {
+        let invocation = OpenCodeInvocation(
+            docker: NoopDocker(),
+            image: "gegenlesen/opencode-runner:0.1.0",
+            engineImages: [
+                AgentEngineID.cursorAgent: "gegenlesen/cursor-runner:0.1.0",
+            ],
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
+        )
+        let request = try invocation.acpMinerDockerRequest(
+            jobID: JobID("job-cursor-mine"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            engine: AgentEngineID.cursorAgent,
+            model: "composer-2.5",
+            output: "mine",
+            outputPath: "/workspace/.gegenlesen/mined-rules.json"
+        )
+        let args = request.dockerCLIArguments()
+        #expect(request.image == "gegenlesen/cursor-runner:0.1.0")
+        #expect(args.contains("acp-runner"))
+        #expect(args.contains("agent"))
+        #expect(args.contains("acp"))
+        #expect(args.contains("mine"))
+        #expect(args.contains("/workspace/.gegenlesen/mined-rules.json"))
+        #expect(args.contains("/workspace/.gegenlesen/prompt.md"))
+        #expect(request.env["CURSOR_ACP_MODEL"] == "composer-2.5")
+    }
+
+    @Test
+    func grokSuggestionJudgeUsesACPRunner() throws {
+        let invocation = OpenCodeInvocation(
+            docker: NoopDocker(),
+            image: "gegenlesen/opencode-runner:0.1.0",
+            engineImages: [
+                AgentEngineID.grok: "gegenlesen/grok-runner:0.1.0",
+            ],
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config"),
+            judgeTimeout: .seconds(300)
+        )
+        let request = try invocation.acpSuggestionJudgeDockerRequest(
+            jobID: JobID("job-grok-sug"),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            engine: AgentEngineID.grok,
+            model: "grok-4.6"
+        )
+        let args = request.dockerCLIArguments()
+        #expect(request.image == "gegenlesen/grok-runner:0.1.0")
+        #expect(args.contains("acp-runner"))
+        #expect(args.contains("suggestion_judge"))
+        #expect(args.contains("/workspace/.gegenlesen/suggestion-judge.json"))
+        #expect(args.contains("/workspace/.gegenlesen/prompt-suggestion-judge.md"))
+        #expect(request.env["GROK_ACP_MODEL"] == "grok-4.6")
+    }
 }

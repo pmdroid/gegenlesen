@@ -353,4 +353,87 @@ struct SettingsRouteTests {
             #expect(app.gegenlesenJobs.config.scannerImage == "")
         }
     }
+
+    @Test
+    func putPersistsMineAndLearnACPEngines() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gegenlesen-mine-learn-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let file = tmp.appendingPathComponent("gegenlesen.json")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        try await withGegenlesenApp(configFileURL: file, mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: nil,
+                        judgeModel: nil,
+                        engineProfiles: EngineProfilesUpdate(
+                            mine: EngineProfileUpdate(engine: "cursor-agent", model: "composer-2.5"),
+                            learn: EngineProfileUpdate(engine: "codex", model: "gpt-5.6-codex")
+                        ),
+                        openrouterApiKey: nil
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+                let settings = try res.content.decode(SettingsDTO.self)
+                #expect(settings.engineProfiles.mine.engine == "cursor-agent")
+                #expect(settings.engineProfiles.mine.model == "composer-2.5")
+                #expect(settings.engineProfiles.learn.engine == "codex")
+                #expect(settings.engineProfiles.learn.model == "gpt-5.6-codex")
+            }
+            #expect(app.gegenlesenJobs.config.engineProfiles.mine.engine == "cursor-agent")
+            #expect(app.gegenlesenJobs.config.engineProfiles.learn.engine == "codex")
+            let saved = try JSONDecoder().decode(GegenlesenConfig.self, from: Data(contentsOf: file))
+            #expect(saved.engineProfiles.mine.engine == "cursor-agent")
+            #expect(saved.engineProfiles.learn.engine == "codex")
+        }
+    }
+
+    @Test
+    func putRejectsUnknownMineEngine() async throws {
+        try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: nil,
+                        judgeModel: nil,
+                        engineProfiles: EngineProfilesUpdate(
+                            mine: EngineProfileUpdate(engine: "unknown-engine", model: nil)
+                        ),
+                        openrouterApiKey: nil
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .unprocessableEntity)
+            }
+        }
+    }
+
+    @Test
+    func putRejectsBlankLearnModel() async throws {
+        try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(SettingsUpdate(
+                        models: nil,
+                        judgeModel: nil,
+                        engineProfiles: EngineProfilesUpdate(
+                            learn: EngineProfileUpdate(engine: "opencode", model: "   ")
+                        ),
+                        openrouterApiKey: nil
+                    ))
+                }
+            ) { res async throws in
+                #expect(res.status == .unprocessableEntity)
+            }
+        }
+    }
 }

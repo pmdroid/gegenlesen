@@ -54,8 +54,8 @@ export const ENGINE_AUTH: Record<EngineId, EngineAuthInfo> = {
   },
   "cursor-agent": {
     envVars: ["CURSOR_API_KEY", "CURSOR_AUTH_TOKEN"],
-    cliPaths: ["~/.cursor/cli-config.json", "~/.cursor/sdk/auth.json"],
-    cliSetup: "CLI login: run agent login on the host (stored in ~/.cursor/sdk/auth.json).",
+    cliPaths: ["~/.cursor/cli-config.json", "~/.cursor/sdk/auth.json", "~/.config/cursor/auth.json"],
+    cliSetup: "CLI login: run agent login on the host (token in ~/.config/cursor/auth.json).",
     apiSetup: "API key: create one at cursor.com/settings and set CURSOR_API_KEY on the host.",
     inContainer: "Mount ~/.cursor into the API container at $GEGENLESEN_HOST_HOME/.cursor. Keys pass through env.",
   },

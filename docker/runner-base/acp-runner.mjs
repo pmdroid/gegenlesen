@@ -33,11 +33,12 @@ function parseArgs(argv) {
   args.command = argv.slice(i);
   if (args.command.length === 0) {
     throw new Error(
-      "usage: acp-runner.mjs [--prompt-file path] [--prompt-uri uri] [--message text] [--transcript path] [--timeout-sec n] [--output findings|judge] [--output-path path] [--validation-errors path] -- command args...",
+      "usage: acp-runner.mjs [--prompt-file path] [--prompt-uri uri] [--message text] [--transcript path] [--timeout-sec n] [--output findings|judge|mine|harvest|suggestion_judge|architecture] [--output-path path] [--validation-errors path] -- command args...",
     );
   }
-  if (args.output !== "findings" && args.output !== "judge") {
-    throw new Error(`--output must be findings or judge, got ${args.output}`);
+  const outputKinds = new Set(["findings", "judge", "mine", "harvest", "suggestion_judge", "architecture"]);
+  if (!outputKinds.has(args.output)) {
+    throw new Error(`--output must be findings, judge, mine, harvest, suggestion_judge, or architecture, got ${args.output}`);
   }
   if (!Number.isFinite(args.timeoutSec) || args.timeoutSec <= 0) {
     throw new Error(`--timeout-sec must be a positive number, got ${args.timeoutSec}`);
@@ -88,6 +89,27 @@ function validateResultFile() {
     const errors = [{ path: args.outputPath, message: `missing output file: ${error.message}` }];
     writeValidationErrors(errors);
     return 4;
+  }
+  if (args.output === "architecture") {
+    if (!raw.trim()) {
+      const errors = [{ path: args.outputPath, message: "empty output file" }];
+      writeValidationErrors(errors);
+      return 4;
+    }
+    status(`accepted ${args.output} at ${args.outputPath}`);
+    return 0;
+  }
+  if (args.output !== "findings" && args.output !== "judge") {
+    try {
+      JSON.parse(raw);
+    } catch (error) {
+      const errors = [{ path: "$", message: `invalid json: ${error.message}` }];
+      writeValidationErrors(errors);
+      status(`json parse failed for ${args.output}`);
+      return 5;
+    }
+    status(`accepted ${args.output} at ${args.outputPath}`);
+    return 0;
   }
   const errors = validateOutput(args.output, raw);
   if (errors.length > 0) {

@@ -109,6 +109,13 @@ public enum EngineHostCredentials {
                 binds.append(bind)
                 tmpfs.removeAll { $0.hasPrefix("/home/gegenlesen/.cursor:") }
             }
+            if let bind = fileBind(
+                home: home,
+                relative: ".config/cursor/auth.json",
+                dest: "/home/gegenlesen/.config/cursor/auth.json"
+            ) {
+                binds.append(bind)
+            }
         case AgentEngineID.grok:
             if let bind = directoryBind(
                 home: home,
@@ -173,10 +180,13 @@ public enum EngineHostCredentials {
         let auth = readJSONObject(home: home, relative: ".cursor/sdk/auth.json")
         let sdkLogin = nonEmpty(auth?["apiKey"] as? String) != nil
             || nonEmpty(auth?["accessToken"] as? String) != nil
+        let configAuth = readJSONObject(home: home, relative: ".config/cursor/auth.json")
+        let configLogin = configAuth?.isEmpty == false
         let cliConfig = home.appendingPathComponent(".cursor/cli-config.json").path
         let hasCliConfig = FileManager.default.isReadableFile(atPath: cliConfig)
         let cliLogin = sdkLogin
             || hasCliConfig
+            || configLogin
             || EngineAgentPaths.cursorAgent(environment: environment, home: home) != nil
         return EngineAuthStatus(apiKey: apiKey, cliLogin: cliLogin)
     }

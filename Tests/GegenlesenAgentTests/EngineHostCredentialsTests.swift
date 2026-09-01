@@ -100,6 +100,29 @@ struct EngineHostCredentialsTests {
     }
 
     @Test
+    func mountsCursorConfigAuthJsonWhenPresent() throws {
+        let home = try tempHome()
+        try writeJSON(["accessToken": "tok"], at: home, relative: ".config/cursor/auth.json")
+
+        let status = EngineHostCredentials.probeEngine(
+            engine: AgentEngineID.cursorAgent,
+            home: home,
+            providerEnv: [:]
+        )
+        #expect(status.cliLogin)
+        #expect(status.configured)
+
+        let isolation = EngineHostCredentials.engineIsolation(
+            engine: AgentEngineID.cursorAgent,
+            homeDirectory: home,
+            providerEnv: [:]
+        )
+        #expect(isolation.credentialBinds.contains(where: {
+            $0.dest == "/home/gegenlesen/.config/cursor/auth.json"
+        }))
+    }
+
+    @Test
     func cursorAcceptsEnvKeyOrSdkLogin() throws {
         let home = try tempHome()
         try writeJSON(["apiKey": "ck-test"], at: home, relative: ".cursor/sdk/auth.json")
