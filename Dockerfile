@@ -21,8 +21,10 @@ COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
 COPY Tests ./Tests
 RUN swift build -c release --static-swift-stdlib --product GegenlesenAPI
+RUN swift build -c release --static-swift-stdlib --product gegenlesen
 RUN BIN="$(swift build -c release --product GegenlesenAPI --show-bin-path)" \
-    && install -m 0755 "$BIN/GegenlesenAPI" /usr/local/bin/GegenlesenAPI
+    && install -m 0755 "$BIN/GegenlesenAPI" /usr/local/bin/GegenlesenAPI \
+    && install -m 0755 "$BIN/gegenlesen" /usr/local/bin/gegenlesen
 
 FROM debian:bookworm-slim
 # git depends on libcurl-gnutls. Swift/Foundation links OpenSSL libcurl4.
@@ -63,13 +65,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     /usr/local/bin/grok --version
 WORKDIR /app
 COPY --from=build /usr/local/bin/GegenlesenAPI /usr/local/bin/GegenlesenAPI
-RUN missing="$(ldd /usr/local/bin/GegenlesenAPI | awk '/not found/ {print}')" \
-    && if [ -n "$missing" ]; then \
-      echo "GegenlesenAPI has unresolved shared libraries:" >&2; \
-      echo "$missing" >&2; \
-      ldd /usr/local/bin/GegenlesenAPI >&2; \
-      exit 1; \
-    fi
+COPY --from=build /usr/local/bin/gegenlesen /usr/local/bin/gegenlesen
+RUN for bin in /usr/local/bin/GegenlesenAPI /usr/local/bin/gegenlesen; do \
+      missing="$(ldd "$bin" | awk '/not found/ {print}')"; \
+      if [ -n "$missing" ]; then \
+        echo "$bin has unresolved shared libraries:" >&2; \
+        echo "$missing" >&2; \
+        ldd "$bin" >&2; \
+        exit 1; \
+      fi; \
+    done
 COPY --from=frontend /src/frontend/dist /app/frontend/dist
 COPY rules /app/rules
 COPY schemas /app/schemas

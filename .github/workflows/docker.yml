@@ -137,6 +137,52 @@ jobs:
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.API_IMAGE }}@sha256:%s ' *)
 
+  # Static-stdlib Linux CLI tarballs attached to the tag's GitHub release.
+  # Darwin tarballs are built and notarized on a Mac (scripts/release-darwin.sh).
+  cli-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            suffix: linux-x64
+          - runner: ubuntu-24.04-arm
+            suffix: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build gegenlesen (static Swift stdlib)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src swift:6.2-bookworm bash -ec '
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+              libarchive-dev libsqlite3-dev pkg-config zlib1g-dev >/dev/null
+            swift build -c release --static-swift-stdlib --product gegenlesen
+            BIN="$(swift build -c release --product gegenlesen --show-bin-path)"
+            install -m 0755 "$BIN/gegenlesen" /src/gegenlesen
+          '
+
+      - name: Package
+        run: |
+          name="gegenlesen-${GITHUB_REF_NAME}-${{ matrix.suffix }}"
+          tar czf "${name}.tar.gz" gegenlesen
+          shasum -a 256 "${name}.tar.gz" > "SHA256SUMS-${{ matrix.suffix }}-${GITHUB_REF_NAME}"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "gegenlesen-${GITHUB_REF_NAME}-${{ matrix.suffix }}.tar.gz" \
+            "SHA256SUMS-${{ matrix.suffix }}-${GITHUB_REF_NAME}" \
+            --clobber
+
   runner:
     runs-on: ubuntu-latest
     steps:

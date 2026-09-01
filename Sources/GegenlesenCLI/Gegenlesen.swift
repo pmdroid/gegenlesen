@@ -84,7 +84,7 @@ struct Pack: ParsableCommand {
     func run() throws {
         let packed = try packCWD(baseRef: baseRef)
         if packed.droppedBundle {
-            fputs("pack: dropped history.bundle (over size limit)\n", stderr)
+            FileHandle.standardError.write(Data("pack: dropped history.bundle (over size limit)\n".utf8))
         }
         if let output {
             try packed.archive.write(to: URL(fileURLWithPath: output))
