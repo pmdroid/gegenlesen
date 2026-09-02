@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { mapSessionUpdate } from "./lib/transcript.mjs";
+import { liveTranscriptLine, mapSessionUpdate } from "./lib/transcript.mjs";
 import { validateOutput } from "./lib/validate.mjs";
 import { readWorkspaceTextFile, writeWorkspaceTextFile, WORKSPACE_ROOT } from "./lib/workspace-fs.mjs";
 import { WorkspaceTerminalManager } from "./lib/workspace-terminal.mjs";
@@ -268,11 +268,11 @@ function handleIncoming(message) {
     return;
   }
   if (message.method === "session/update") {
-    const mapped = mapSessionUpdate(message.params?.update);
+    const update = message.params?.update ?? message.params;
+    const mapped = mapSessionUpdate(update);
     if (mapped) record({ dir: "job_log", event: "session_update", ...mapped });
-    if (message.params?.update?.sessionUpdate === "agent_message_chunk" && message.params.update.content?.type === "text") {
-      process.stderr.write(message.params.update.content.text);
-    }
+    const live = liveTranscriptLine(mapped);
+    if (live) process.stdout.write(`${JSON.stringify(live)}\n`);
     return;
   }
   if (message.method === "fs/read_text_file") {
