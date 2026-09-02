@@ -48,7 +48,8 @@ public enum AgentSandbox {
         providerEnv: [String: String],
         cpus: String,
         memory: String,
-        timeout: Duration
+        timeout: Duration,
+        ulimitNproc: String? = nil
     ) -> DockerRequest {
         var env = payload.env
         env["HOME"] = "/home/gegenlesen"
@@ -75,7 +76,7 @@ public enum AgentSandbox {
             pidsLimit: 256,
             capDropAll: true,
             noNewPrivileges: true,
-            ulimitNproc: "256:256",
+            ulimitNproc: ulimitNproc,
             ulimitNofile: "1024:1024",
             timeout: timeout,
             injectProviderKeys: true,

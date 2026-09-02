@@ -28,4 +28,30 @@ struct DockerPathTests {
             #expect(resolved == binary.path)
         }
     }
+
+    @Test
+    func dockerCLIArgumentsOmitNprocUnlessSet() {
+        let base = DockerRequest(
+            name: "c",
+            image: "img",
+            pidsLimit: 256,
+            ulimitNofile: "1024:1024"
+        )
+        let args = base.dockerCLIArguments()
+        #expect(args.contains("--pids-limit"))
+        #expect(args.contains("256"))
+        #expect(args.contains("nofile=1024:1024"))
+        #expect(!args.contains { $0.contains("nproc=") })
+
+        let capped = DockerRequest(
+            name: "c",
+            image: "img",
+            pidsLimit: 256,
+            ulimitNproc: "256:256",
+            ulimitNofile: "1024:1024"
+        )
+        let cappedArgs = capped.dockerCLIArguments()
+        #expect(cappedArgs.contains("nproc=256:256"))
+        #expect(cappedArgs.contains("--pids-limit"))
+    }
 }

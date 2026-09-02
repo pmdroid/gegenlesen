@@ -25,6 +25,12 @@ struct ReviewPipelineAgentTests {
                 payloadJSON: nil
             ) == .reviewerFailed
         )
+        #expect(
+            ReviewFailureClass.classify(
+                errorMessage: ReviewFailureClass.containerStartFailed.rawValue,
+                payloadJSON: #"{"message":"exec /usr/local/bin/entrypoint.sh: resource temporarily unavailable","stderr":"exec /usr/local/bin/entrypoint.sh: resource temporarily unavailable"}"#
+            ) == .containerStartFailed
+        )
         #expect(ReviewFailureClass.providerAuthHTTPStatus(in: #"HTTP 403 {"code":403}"#) == 403)
         #expect(
             ReviewFailureClass.providerAuthHTTPStatus(
@@ -94,6 +100,31 @@ struct ReviewPipelineAgentTests {
                 #expect(failed.payloadJSON?.contains("reviewer_no_findings_file") == true)
                 let timings = try #require(after.timings)
                 #expect(timings.reviewMS != nil)
+            }
+        }
+    }
+
+    @Test
+    func containerStartFailedKeepsStderrOnJobEvent() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: ContainerStartFailedReviewer()
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == ReviewFailureClass.containerStartFailed.rawValue)
+                let events = try await store.events(jobID: job.id)
+                let failed = try #require(events.first { $0.message == "review_failed" })
+                #expect(failed.payloadJSON?.contains("container_start_failed") == true)
+                #expect(failed.payloadJSON?.contains("resource temporarily unavailable") == true)
             }
         }
     }
@@ -413,6 +444,26 @@ struct ProviderAuthReviewer: ReviewerRunning {
                 "message": "User not found.",
                 "provider": "openrouter",
                 "status": 401,
+            ]),
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+struct ContainerStartFailedReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        let detail = "exec /usr/local/bin/entrypoint.sh: resource temporarily unavailable"
+        return AgentReviewResult(
+            findings: [],
+            validFileCount: 0,
+            failed: true,
+            errorMessage: ReviewFailureClass.containerStartFailed.rawValue,
+            payloadJSON: JobEvent.payloadJSON([
+                "error_class": ReviewFailureClass.containerStartFailed.rawValue,
+                "message": detail,
+                "stderr": detail,
             ]),
             containerNameA: ReviewContainers.slot(request.job.id, .modelA),
             containerNameB: ReviewContainers.slot(request.job.id, .modelB),
