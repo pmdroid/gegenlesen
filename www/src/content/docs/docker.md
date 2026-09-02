@@ -28,6 +28,8 @@ Ledger **Setup** probes CLI login files under the host home (`~/.claude`, `~/.co
 
 `scripts/docker-run.sh` adds mounts only for paths that exist. Provider API keys can still be passed with `-e ANTHROPIC_API_KEY=…` etc.
 
+Do not turn on Docker userns-remap to contain runner process counts. Remap maps container uid 1000 to a host subuid, so those credential binds (and anything the runner writes into them) land as the remapped owner. That needs a daemon restart and a re-chown of `~/.claude`, `~/.codex`, `~/.cursor`, `~/.grok` before the host CLIs work again. Process containment is `--pids-limit`; `GEGENLESEN_DOCKER_NPROC` is opt-in and unsafe on a shared host uid.
+
 ## Compose (Linux)
 
 ```bash
