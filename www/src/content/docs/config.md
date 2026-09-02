@@ -23,6 +23,9 @@ Override the path with `GEGENLESEN_CONFIG`. GET `/api/settings` never returns th
 | `GEGENLESEN_LEARN_ENGINE` / `GEGENLESEN_LEARN_MODEL` | Job Learn and architecture card slot |
 | `GEGENLESEN_LEARN_INTERVAL_MINUTES` | Sweep. `0` disables |
 | `GEGENLESEN_DOCKER` | `docker` binary |
+| `GEGENLESEN_DOCKER_CPUS` | Runner `--cpus`. Default `2` |
+| `GEGENLESEN_DOCKER_MEMORY` | Runner `--memory`. Default `4g` |
+| `GEGENLESEN_DOCKER_NPROC` | Optional `--ulimit nproc=` (per-uid, not container-scoped). Default unset. `--pids-limit 256` is the container cap. Only set this with a dedicated service uid, or with Docker userns-remap — remap needs a daemon restart and a re-chown of bind-mounted `~/.claude`, `~/.codex`, `~/.cursor`, `~/.grok` |
 | `GEGENLESEN_OPENCODE_IMAGE` | Runner image. From source: `gegenlesen/opencode-runner:0.1.0`. Docker image default: `ghcr.io/pmdroid/gegenlesen:runner-main` |
 | `GEGENLESEN_SCANNER_IMAGE` | Scanner image. From source: `gegenlesen/scanner:0.1.0`. Docker image default: `ghcr.io/pmdroid/gegenlesen:scanner-main`. Empty skips the scanner container. |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `CODEX_API_KEY` | ACP engine keys forwarded into runner containers |

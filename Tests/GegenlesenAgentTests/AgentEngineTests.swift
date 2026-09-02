@@ -49,8 +49,13 @@ struct AgentEngineTests {
         #expect(request.pidsLimit == 256)
         #expect(request.user == "1000:1000")
         #expect(request.network == "gegenlesen-egress")
-        #expect(request.ulimitNproc == "256:256")
+        #expect(request.ulimitNproc == nil)
         #expect(request.ulimitNofile == "1024:1024")
+        let args = request.dockerCLIArguments()
+        #expect(args.contains("--pids-limit"))
+        #expect(args.contains("256"))
+        #expect(args.contains("nofile=1024:1024"))
+        #expect(!args.contains { $0.contains("nproc=") })
         #expect(request.env["HOME"] == "/home/gegenlesen")
         #expect(request.env["ENGINE_FLAG"] == "1")
         #expect(request.tmpfs.first == "/tmp:rw,nosuid,nodev,uid=1000,gid=1000,size=512m")
@@ -60,17 +65,37 @@ struct AgentEngineTests {
     }
 
     @Test
+    func sandboxNprocIsOptIn() {
+        let request = AgentSandbox.dockerRequest(
+            name: "gegenlesen-test",
+            payload: AgentContainerPayload(image: "img", argv: ["true"]),
+            workspace: URL(fileURLWithPath: "/tmp/ws"),
+            providerEnv: [:],
+            cpus: "2",
+            memory: "4g",
+            timeout: .seconds(60),
+            ulimitNproc: "256:256"
+        )
+        let args = request.dockerCLIArguments()
+        #expect(request.ulimitNproc == "256:256")
+        #expect(args.contains("nproc=256:256"))
+        #expect(request.pidsLimit == 256)
+    }
+
+    @Test
     func engineInvocationMatchesDirectConstruction() throws {
         let engine = try AgentEngineRegistry.default.engine(id: AgentEngineRegistry.defaultEngineID)
         let invocation = try #require(engine.makeInvocation(AgentEngineConfiguration(
             docker: NoopDocker(),
             image: "gegenlesen/opencode-runner:0.1.0",
-            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config"),
+            nproc: nil
         )) as? OpenCodeInvocation)
         let direct = OpenCodeInvocation(
             docker: NoopDocker(),
             image: "gegenlesen/opencode-runner:0.1.0",
-            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config")
+            runnerConfig: URL(fileURLWithPath: "/tmp/runner-config"),
+            nproc: nil
         )
         let fromEngine = try invocation.reviewDockerRequest(
             jobID: JobID("job-1"),

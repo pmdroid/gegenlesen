@@ -37,12 +37,16 @@ public struct JobEvent: Sendable, Equatable {
 
 public enum ReviewFailureClass: String, Sendable, Equatable {
     case providerAuth = "provider_auth"
+    case containerStartFailed = "container_start_failed"
     case noFindingsFile = "no_findings_file"
     case reviewerFailed = "reviewer_failed"
 
     public static func classify(errorMessage: String?, payloadJSON: String?) -> ReviewFailureClass {
         if looksLikeProviderAuth(errorMessage) || looksLikeProviderAuth(payloadJSON) {
             return .providerAuth
+        }
+        if containsToken("container_start_failed", errorMessage) || containsToken("container_start_failed", payloadJSON) {
+            return .containerStartFailed
         }
         if containsNoFindingsFile(errorMessage) || containsNoFindingsFile(payloadJSON) {
             return .noFindingsFile
@@ -74,7 +78,11 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
     }
 
     private static func containsNoFindingsFile(_ text: String?) -> Bool {
-        text?.contains("no_findings_file") == true
+        containsToken("no_findings_file", text)
+    }
+
+    private static func containsToken(_ token: String, _ text: String?) -> Bool {
+        text?.contains(token) == true
     }
 
     private static func looksLikeProviderAuth(_ text: String?) -> Bool {

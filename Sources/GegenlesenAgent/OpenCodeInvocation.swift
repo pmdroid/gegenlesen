@@ -8,6 +8,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public var runnerConfig: URL
     public var cpus: String
     public var memory: String
+    public var nproc: String?
     public var agentTimeout: Duration
     public var judgeTimeout: Duration
     public var providerEnv: [String: String]
@@ -22,6 +23,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         runnerConfig: URL,
         cpus: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_CPUS"] ?? "2",
         memory: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_MEMORY"] ?? "4g",
+        nproc: String? = nil,
         agentTimeout: Duration = .seconds(900),
         judgeTimeout: Duration = .seconds(300),
         providerEnv: [String: String] = [:],
@@ -35,6 +37,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         self.runnerConfig = runnerConfig
         self.cpus = cpus
         self.memory = memory
+        self.nproc = nproc
         self.agentTimeout = agentTimeout
         self.judgeTimeout = judgeTimeout
         self.providerEnv = providerEnv
@@ -150,7 +153,12 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         if request.newWork && valid == 0 {
             persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
             persistAgentCopies(workspace: request.workspace, jobID: jobID)
-            let errorMessage = "reviewer_no_findings_file"
+            let startFailed = [resultA, resultB].contains {
+                $0.validationError == ReviewFailureClass.containerStartFailed.rawValue
+            }
+            let errorMessage = startFailed
+                ? ReviewFailureClass.containerStartFailed.rawValue
+                : "reviewer_no_findings_file"
             return AgentReviewResult(
                 findings: findings,
                 validFileCount: valid,
@@ -158,7 +166,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 errorMessage: errorMessage,
                 payloadJSON: Self.reviewEventPayload(
                     errorMessage: errorMessage,
-                    transcripts: [resultA.transcript, resultB.transcript]
+                    transcripts: [resultA.transcript, resultB.transcript],
+                    stderr: [resultA.stderrLine, resultB.stderrLine].compactMap { $0 }.first
                 ),
                 containerNameA: nameA,
                 containerNameB: nameB,
@@ -225,8 +234,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         )
     }
 
-    static func reviewEventPayload(errorMessage: String, transcripts: [Data]) -> String? {
+    static func reviewEventPayload(errorMessage: String, transcripts: [Data], stderr: String? = nil) -> String? {
         var object: [String: Any] = ["message": errorMessage]
+        if let stderr, !stderr.isEmpty {
+            object["stderr"] = stderr
+            if errorMessage == ReviewFailureClass.containerStartFailed.rawValue {
+                object["message"] = stderr
+            }
+        }
         let text = transcripts.compactMap { String(data: $0, encoding: .utf8) }.joined(separator: "\n")
         if let parsed = openRouterError(in: text) {
             object["provider"] = "openrouter"
@@ -239,6 +254,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             payloadJSON: encoded
         ).rawValue
         return JobEvent.payloadJSON(object)
+    }
+
+    static func firstNonEmptyLine(_ text: String) -> String? {
+        for raw in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !line.isEmpty { return line }
+        }
+        return nil
     }
 
     static func openRouterError(in text: String) -> (status: Int, body: String)? {
@@ -433,7 +456,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             providerEnv: resolvedProviderEnv,
             cpus: cpus,
             memory: memory,
-            timeout: timeout
+            timeout: timeout,
+            ulimitNproc: nproc
         )
         if let writer = transcriptWriter {
             let redactor = SecretRedactor()
@@ -810,7 +834,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             providerEnv: providerEnv,
             cpus: cpus,
             memory: memory,
-            timeout: timeout
+            timeout: timeout,
+            ulimitNproc: nproc
         )
         if let jobID, let livePhase, let writer = transcriptWriter {
             let redactor = SecretRedactor()
@@ -827,6 +852,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var transcript: Data
         var providerAuth: Bool
         var validationError: String?
+        var stderrLine: String?
     }
 
     private func appendRetryNotice(workspace: Workspace, slot: ReviewerSlot, errors: String) throws {
@@ -854,7 +880,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             valid: false,
             transcript: Data(),
             providerAuth: false,
-            validationError: "reviewer_no_findings_file"
+            validationError: "reviewer_no_findings_file",
+            stderrLine: nil
         )
         for attempt in 1...2 {
             let outcome = await executeSlotAttempt(
@@ -870,7 +897,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: outcome.valid,
                 transcript: combinedTranscript,
                 providerAuth: outcome.providerAuth,
-                validationError: outcome.validationError
+                validationError: outcome.validationError,
+                stderrLine: outcome.stderrLine
             )
             if outcome.valid || outcome.providerAuth {
                 return lastOutcome
@@ -897,7 +925,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: Data(),
                 providerAuth: false,
-                validationError: "cancelled"
+                validationError: "cancelled",
+                stderrLine: nil
             )
         }
         let dockerRequest: DockerRequest
@@ -926,16 +955,27 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: Data(),
                 providerAuth: false,
-                validationError: String(describing: error)
+                validationError: String(describing: error),
+                stderrLine: nil
             )
         }
         var transcript = Data()
         var providerAuth = false
+        var startFailed = false
+        var stderrLine: String?
         do {
             let result = try await docker.run(dockerRequest)
-            transcript.append(SecretRedactor().redact(Data(result.outputText.utf8)))
+            let redactor = SecretRedactor()
+            transcript.append(redactor.redact(Data(result.outputText.utf8)))
+            stderrLine = Self.firstNonEmptyLine(
+                redactor.redact(String(data: result.stderr, encoding: .utf8) ?? "")
+            )
+            let stdoutEmpty = (String(data: result.stdout, encoding: .utf8) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
             if result.exitCode != 0 || result.timedOut {
                 providerAuth = DockerRunner.providerAuthStatus(in: result) != nil
+                startFailed = stdoutEmpty && stderrLine != nil
             }
         } catch {
             let body = SecretRedactor().redact(String(describing: error))
@@ -952,7 +992,10 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: transcript,
                 providerAuth: providerAuth,
-                validationError: "reviewer_no_findings_file"
+                validationError: startFailed
+                    ? ReviewFailureClass.containerStartFailed.rawValue
+                    : "reviewer_no_findings_file",
+                stderrLine: stderrLine
             )
         }
         do {
@@ -968,7 +1011,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: true,
                 transcript: transcript,
                 providerAuth: false,
-                validationError: nil
+                validationError: nil,
+                stderrLine: stderrLine
             )
         } catch {
             return SlotOutcome(
@@ -976,7 +1020,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: transcript,
                 providerAuth: providerAuth,
-                validationError: String(describing: error)
+                validationError: String(describing: error),
+                stderrLine: stderrLine
             )
         }
     }

@@ -48,6 +48,7 @@ struct OpenCodeInvocationTests {
         #expect(args.contains("--cpus"))
         #expect(args.contains("--memory"))
         #expect(args.contains("256"))
+        #expect(!args.contains { $0.contains("nproc=") })
         #expect(args.contains("ALL"))
         #expect(args.contains("no-new-privileges"))
         #expect(args.contains("opencode"))
@@ -483,12 +484,78 @@ struct OpenCodeInvocationTests {
             )
             #expect(result.failed == true)
             #expect(result.validFileCount == 0)
-            #expect(result.errorMessage == "reviewer_no_findings_file")
+            #expect(result.errorMessage == ReviewFailureClass.containerStartFailed.rawValue)
             #expect(result.errorMessage != ReviewFailureClass.providerAuth.rawValue)
-            #expect(result.payloadJSON?.contains("no_findings_file") == true)
+            #expect(result.payloadJSON?.contains("container_start_failed") == true)
+            #expect(result.payloadJSON?.contains("docker not wired") == true)
             #expect(result.payloadJSON?.contains("provider_auth") != true)
             let requests = await docker.requests
             #expect(requests.count == 4)
+        }
+    }
+
+    @Test
+    func missingFindingsOnZeroExitStayNoFindingsFile() async throws {
+        try await withTempDir("invoke-none-zero") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 0))
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == true)
+            #expect(result.errorMessage == "reviewer_no_findings_file")
+            #expect(result.payloadJSON?.contains("no_findings_file") == true)
+            #expect(result.payloadJSON?.contains("container_start_failed") != true)
+        }
+    }
+
+    @Test
+    func missingFindingsWithStdoutStayNoFindingsFile() async throws {
+        try await withTempDir("invoke-none-stdout") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = RecordingDocker(
+                result: DockerResult(
+                    exitCode: 1,
+                    stdout: Data("agent thought\n".utf8),
+                    stderr: Data("model crashed\n".utf8)
+                )
+            )
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == true)
+            #expect(result.errorMessage == "reviewer_no_findings_file")
+            #expect(result.payloadJSON?.contains("no_findings_file") == true)
+            #expect(result.payloadJSON?.contains("model crashed") == true)
+            #expect(result.payloadJSON?.contains("container_start_failed") != true)
         }
     }
 

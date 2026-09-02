@@ -14,6 +14,7 @@ public struct AgentEngineConfiguration: Sendable {
     public var runnerConfig: URL
     public var cpus: String
     public var memory: String
+    public var nproc: String?
     public var agentTimeout: Duration
     public var judgeTimeout: Duration
     public var providerEnv: [String: String]
@@ -28,6 +29,12 @@ public struct AgentEngineConfiguration: Sendable {
         runnerConfig: URL,
         cpus: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_CPUS"] ?? "2",
         memory: String = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_MEMORY"] ?? "4g",
+        nproc: String? = {
+            let value = ProcessInfo.processInfo.environment["GEGENLESEN_DOCKER_NPROC"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }(),
         agentTimeout: Duration = .seconds(900),
         judgeTimeout: Duration = .seconds(300),
         providerEnv: [String: String] = [:],
@@ -41,6 +48,7 @@ public struct AgentEngineConfiguration: Sendable {
         self.runnerConfig = runnerConfig
         self.cpus = cpus
         self.memory = memory
+        self.nproc = nproc
         self.agentTimeout = agentTimeout
         self.judgeTimeout = judgeTimeout
         self.providerEnv = providerEnv
@@ -70,6 +78,7 @@ public struct OpenCodeEngine: AgentEngine {
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
+            nproc: configuration.nproc,
             agentTimeout: configuration.agentTimeout,
             judgeTimeout: configuration.judgeTimeout,
             providerEnv: configuration.providerEnv,
@@ -95,6 +104,7 @@ public struct ClaudeEngine: AgentEngine {
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
+            nproc: configuration.nproc,
             agentTimeout: configuration.agentTimeout,
             judgeTimeout: configuration.judgeTimeout,
             providerEnv: configuration.providerEnv,
@@ -120,6 +130,7 @@ public struct CodexEngine: AgentEngine {
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
+            nproc: configuration.nproc,
             agentTimeout: configuration.agentTimeout,
             judgeTimeout: configuration.judgeTimeout,
             providerEnv: configuration.providerEnv,
@@ -145,6 +156,7 @@ public struct CursorEngine: AgentEngine {
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
+            nproc: configuration.nproc,
             agentTimeout: configuration.agentTimeout,
             judgeTimeout: configuration.judgeTimeout,
             providerEnv: configuration.providerEnv,
@@ -170,6 +182,7 @@ public struct GrokEngine: AgentEngine {
             runnerConfig: configuration.runnerConfig,
             cpus: configuration.cpus,
             memory: configuration.memory,
+            nproc: configuration.nproc,
             agentTimeout: configuration.agentTimeout,
             judgeTimeout: configuration.judgeTimeout,
             providerEnv: configuration.providerEnv,
