@@ -560,7 +560,7 @@ struct OpenCodeInvocationTests {
     }
 
     @Test
-    func providerAuthOnFirstSlotSkipsSecondReviewer() async throws {
+    func providerAuthStartsBothSlots() async throws {
         try await withTempDir("invoke-auth") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
             let docker = RecordingDocker(
@@ -594,8 +594,38 @@ struct OpenCodeInvocationTests {
             #expect(result.payloadJSON?.contains("openrouter") == true)
             #expect(result.payloadJSON?.contains("provider_auth") == true)
             let requests = await docker.requests
-            #expect(requests.count == 1)
-            #expect(requests[0].name.hasSuffix("-a"))
+            #expect(requests.count >= 1)
+            let names = Set(requests.map(\.name))
+            #expect(names.contains { $0.hasSuffix("-a") } || names.contains { $0.hasSuffix("-b") })
+        }
+    }
+
+    @Test
+    func providerAuthKillsTheOtherSlot() async throws {
+        try await withTempDir("invoke-auth-kill") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = AuthCancelsSiblingDocker()
+            let invocation = OpenCodeInvocation(
+                docker: docker,
+                image: "gegenlesen/opencode-runner:0.1.0",
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
+            )
+            let job = sampleJob()
+            let result = await invocation.run(
+                AgentReviewRequest(
+                    job: job,
+                    workspace: Workspace(root: root),
+                    files: [
+                        JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift),
+                    ],
+                    rules: [],
+                    newWork: true
+                )
+            )
+            #expect(result.failed == true)
+            #expect(result.errorMessage == ReviewFailureClass.providerAuth.rawValue)
+            let snapshot = docker.snapshot()
+            #expect(snapshot.killed.contains { $0.hasSuffix("-b") })
         }
     }
 
@@ -648,6 +678,66 @@ struct OpenCodeInvocationTests {
             let requests = await docker.requests
             #expect(requests.count == 2)
         }
+    }
+}
+
+final class AuthCancelsSiblingDocker: DockerExecuting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var hanging: CheckedContinuation<DockerResult, Never>?
+    private var stopped = false
+    private var requests: [DockerRequest] = []
+    private var killed: [String] = []
+
+    func snapshot() -> (requests: [DockerRequest], killed: [String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (requests, killed)
+    }
+
+    func run(_ request: DockerRequest) async throws -> DockerResult {
+        remember(request)
+        if request.name.hasSuffix("-a") {
+            return DockerResult(
+                exitCode: 1,
+                stdout: Data(#"HTTP 401 {"error":{"message":"User not found.","code":401}}"#.utf8)
+            )
+        }
+        return await withCheckedContinuation { cont in
+            parkB(cont)
+        }
+    }
+
+    func kill(containerName: String) async {
+        releaseB(containerName)?.resume(returning: DockerResult(exitCode: 143))
+    }
+
+    func removeAll(prefix: String) async {}
+
+    private func remember(_ request: DockerRequest) {
+        lock.lock()
+        requests.append(request)
+        lock.unlock()
+    }
+
+    private func parkB(_ cont: CheckedContinuation<DockerResult, Never>) {
+        lock.lock()
+        if stopped {
+            lock.unlock()
+            cont.resume(returning: DockerResult(exitCode: 143))
+            return
+        }
+        hanging = cont
+        lock.unlock()
+    }
+
+    private func releaseB(_ containerName: String) -> CheckedContinuation<DockerResult, Never>? {
+        lock.lock()
+        killed.append(containerName)
+        stopped = true
+        let wait = hanging
+        hanging = nil
+        lock.unlock()
+        return wait
     }
 }
 
