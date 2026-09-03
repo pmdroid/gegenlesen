@@ -91,40 +91,64 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
 
         let known = Set(request.rules.map(\.id))
-        let resultA = await runSlot(
-            request,
-            slot: .modelA,
-            engine: request.job.reviewerAEngine,
-            model: request.job.reviewerAModelID,
-            known: known
-        )
-        if resultA.providerAuth {
-            persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript])
-            persistAgentCopies(workspace: request.workspace, jobID: jobID)
-            let errorMessage = ReviewFailureClass.providerAuth.rawValue
-            return AgentReviewResult(
-                findings: resultA.findings,
-                validFileCount: resultA.valid ? 1 : 0,
-                failed: true,
-                errorMessage: errorMessage,
-                payloadJSON: Self.reviewEventPayload(
-                    errorMessage: errorMessage,
-                    transcripts: [resultA.transcript]
-                ),
-                containerNameA: nameA,
-                containerNameB: nameB,
-                containerName: judgeName
-            )
+        let stop = SiblingStop()
+        let gated = requestStoppingWith(request, stop)
+        var slotA: SlotOutcome?
+        var slotB: SlotOutcome?
+        await withTaskGroup(of: (ReviewerSlot, SlotOutcome).self) { group in
+            group.addTask {
+                (
+                    .modelA,
+                    await self.runSlot(
+                        gated,
+                        slot: .modelA,
+                        engine: gated.job.reviewerAEngine,
+                        model: gated.job.reviewerAModelID,
+                        known: known
+                    )
+                )
+            }
+            group.addTask {
+                (
+                    .modelB,
+                    await self.runSlot(
+                        gated,
+                        slot: .modelB,
+                        engine: gated.job.reviewerBEngine,
+                        model: gated.job.reviewerBModelID,
+                        known: known
+                    )
+                )
+            }
+            for await (slot, outcome) in group {
+                if slot == .modelA {
+                    slotA = outcome
+                } else {
+                    slotB = outcome
+                }
+                if outcome.providerAuth {
+                    stop.stop()
+                    await self.docker.kill(containerName: slot == .modelA ? nameB : nameA)
+                }
+            }
         }
-
-        let resultB = await runSlot(
-            request,
-            slot: .modelB,
-            engine: request.job.reviewerBEngine,
-            model: request.job.reviewerBModelID,
-            known: known
+        let resultA = slotA ?? SlotOutcome(
+            findings: [],
+            valid: false,
+            transcript: Data(),
+            providerAuth: false,
+            validationError: "reviewer_no_findings_file",
+            stderrLine: nil
         )
-        if resultB.providerAuth {
+        let resultB = slotB ?? SlotOutcome(
+            findings: [],
+            valid: false,
+            transcript: Data(),
+            providerAuth: false,
+            validationError: "reviewer_no_findings_file",
+            stderrLine: nil
+        )
+        if resultA.providerAuth || resultB.providerAuth {
             persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
             persistAgentCopies(workspace: request.workspace, jobID: jobID)
             let errorMessage = ReviewFailureClass.providerAuth.rawValue
@@ -903,6 +927,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             if outcome.valid || outcome.providerAuth {
                 return lastOutcome
             }
+            if await request.isCancelled?() == true {
+                return lastOutcome
+            }
             if attempt == 1, let error = outcome.validationError {
                 try? appendRetryNotice(workspace: request.workspace, slot: slot, errors: error)
                 continue
@@ -982,6 +1009,16 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             transcript.append(Data(body.utf8))
             providerAuth = Self.isProviderAuth(transcript)
         }
+        if await request.isCancelled?() == true {
+            return SlotOutcome(
+                findings: [],
+                valid: false,
+                transcript: transcript,
+                providerAuth: false,
+                validationError: "cancelled",
+                stderrLine: stderrLine
+            )
+        }
 
         let url = FindingsParser.findingsURL(workspace: request.workspace, slot: slot)
         let shared = request.workspace.root.appendingPathComponent(".gegenlesen/findings.json")
@@ -1023,6 +1060,33 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 validationError: String(describing: error),
                 stderrLine: stderrLine
             )
+        }
+    }
+
+    private func requestStoppingWith(_ request: AgentReviewRequest, _ stop: SiblingStop) -> AgentReviewRequest {
+        var next = request
+        let parent = request.isCancelled
+        next.isCancelled = {
+            if stop.isStopped { return true }
+            return await parent?() == true
+        }
+        return next
+    }
+
+    private final class SiblingStop: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopped = false
+
+        func stop() {
+            lock.lock()
+            stopped = true
+            lock.unlock()
+        }
+
+        var isStopped: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return stopped
         }
     }
 
