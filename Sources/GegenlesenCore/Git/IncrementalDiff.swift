@@ -31,7 +31,8 @@ public enum IncrementalDiff: Sendable {
             jobID: jobID,
             parentHeadSHA: parentHeadSHA,
             parentFiles: parentFiles,
-            parentWorkspace: parentWorkspace
+            parentWorkspace: parentWorkspace,
+            deadline: deadline
         )
     }
 
@@ -125,7 +126,8 @@ public enum IncrementalDiff: Sendable {
         jobID: JobID,
         parentHeadSHA: String,
         parentFiles: [JobFile],
-        parentWorkspace: URL?
+        parentWorkspace: URL?,
+        deadline: Date
     ) throws -> ChangeSet {
         let ws = Workspace(root: workspace)
         let parentByPath = Dictionary(uniqueKeysWithValues: parentFiles.map { ($0.path, $0) })
@@ -260,10 +262,11 @@ public enum IncrementalDiff: Sendable {
             )
         }
 
-        let patch = buildPatch(
+        let patch = try buildPatch(
             files: files,
             child: workspace,
-            parent: parentWorkspace
+            parent: parentWorkspace,
+            deadline: deadline
         )
         try writePatch(Data(patch.utf8), blobs: blobs, jobID: jobID, workspace: workspace)
         return ChangeSet(
@@ -275,32 +278,45 @@ public enum IncrementalDiff: Sendable {
         )
     }
 
-    private static func buildPatch(files: [JobFile], child: URL, parent: URL?) -> String {
+    static let maxUnixDiffBytes = 1_048_576
+
+    private static func buildPatch(files: [JobFile], child: URL, parent: URL?, deadline: Date) throws -> String {
         var parts: [String] = []
         let childWS = Workspace(root: child)
         let parentWS = parent.map { Workspace(root: $0) }
         let parentAlive = parent.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         for file in files.sorted(by: { $0.path < $1.path }) {
+            if Date() >= deadline {
+                throw IdentifyError.timeout
+            }
             let newURL = childWS.resolveForRead(file.path)
             let oldPath = file.oldPath ?? file.path
             let oldURL = parentAlive ? parentWS?.resolveForRead(oldPath) : nil
             switch file.status {
             case .deleted:
-                parts.append(unixDiff(old: oldURL, new: nil, path: file.path, oldPath: oldPath))
+                parts.append(unixDiff(old: oldURL, new: nil, path: file.path, oldPath: oldPath, deadline: deadline))
             case .added:
-                parts.append(unixDiff(old: nil, new: newURL, path: file.path, oldPath: file.path))
+                parts.append(unixDiff(old: nil, new: newURL, path: file.path, oldPath: file.path, deadline: deadline))
             case .modified, .renamed:
                 if parentAlive, oldURL != nil {
-                    parts.append(unixDiff(old: oldURL, new: newURL, path: file.path, oldPath: oldPath))
+                    parts.append(unixDiff(old: oldURL, new: newURL, path: file.path, oldPath: oldPath, deadline: deadline))
                 } else {
-                    parts.append(unixDiff(old: nil, new: newURL, path: file.path, oldPath: file.path))
+                    parts.append(unixDiff(old: nil, new: newURL, path: file.path, oldPath: file.path, deadline: deadline))
                 }
             }
         }
         return parts.filter { !$0.isEmpty }.joined()
     }
 
-    private static func unixDiff(old: URL?, new: URL?, path: String, oldPath: String) -> String {
+    private static func unixDiff(old: URL?, new: URL?, path: String, oldPath: String, deadline: Date) -> String {
+        if Date() >= deadline {
+            return ""
+        }
+        let oldBytes = fileSize(old)
+        let newBytes = fileSize(new)
+        if oldBytes > maxUnixDiffBytes || newBytes > maxUnixDiffBytes {
+            return ""
+        }
         let oldArg = old?.path ?? "/dev/null"
         let newArg = new?.path ?? "/dev/null"
         let oldLabel = old == nil ? "/dev/null" : "a/\(oldPath)"
@@ -315,12 +331,51 @@ public enum IncrementalDiff: Sendable {
         process.standardInput = FileHandle.nullDevice
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return fallbackDiff(old: old, new: new, path: path)
         }
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        let remaining = deadline.timeIntervalSinceNow
+        if remaining <= 0 {
+            process.terminate()
+            process.waitUntilExit()
+            return ""
+        }
+        let watchdog = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        watchdog.schedule(deadline: .now() + remaining)
+        watchdog.setEventHandler {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        watchdog.resume()
+        let handle = stdout.fileHandleForReading
+        var data = Data()
+        var truncated = false
+        while data.count < maxUnixDiffBytes {
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                break
+            }
+            let room = maxUnixDiffBytes - data.count
+            if chunk.count > room {
+                data.append(chunk.prefix(room))
+                truncated = true
+                process.terminate()
+                break
+            }
+            data.append(chunk)
+        }
+        watchdog.cancel()
+        process.waitUntilExit()
+        if truncated {
+            return ""
+        }
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private static func fileSize(_ url: URL?) -> Int {
+        guard let url else { return 0 }
+        return (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
     }
 
     private static func fallbackDiff(old: URL?, new: URL?, path: String) -> String {
