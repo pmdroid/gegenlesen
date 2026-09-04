@@ -365,6 +365,113 @@ struct IncrementalDiffTests {
             #expect(interdiff.files.contains { $0.path == "a.txt" })
         }
     }
+
+    @Test
+    func hashInterdiffDrainsUnixDiffLargerThanPipeBuffer() throws {
+        try withTempDir("inc-pipe") { dir in
+            let parent = dir.appendingPathComponent("parent")
+            let child = dir.appendingPathComponent("child")
+            let oldBody = String(repeating: "a", count: 80_000) + "\nold\n"
+            let newBody = String(repeating: "a", count: 80_000) + "\nnew\n"
+            try writeFile("big.txt", oldBody, in: parent)
+            try writeFile("big.txt", newBody, in: child)
+            try writeFile(
+                ".gegenlesen/diff.patch",
+                """
+                diff --git a/big.txt b/big.txt
+                --- a/big.txt
+                +++ b/big.txt
+                @@ -1 +1 @@
+                -old
+                +new
+                """,
+                in: child
+            )
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: child,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: child,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                parentFiles: [
+                    JobFile(
+                        jobID: JobID.generate(),
+                        path: "big.txt",
+                        sha256: ContentHash.sha256(Data(oldBody.utf8)),
+                        status: .modified
+                    ),
+                ],
+                parentWorkspace: parent,
+                timeout: .seconds(10)
+            )
+            #expect(interdiff.source == .hashInterdiff)
+            #expect(interdiff.files.contains { $0.path == "big.txt" && $0.status == .modified })
+            let patch = try String(contentsOf: blobs.patchURL(jobID: jobID.rawValue), encoding: .utf8)
+            #expect(patch.contains("--- a/big.txt"))
+            #expect(patch.contains("+++ b/big.txt"))
+            #expect(patch.contains("+new"))
+        }
+    }
+
+    @Test
+    func hashInterdiffSkipsUnixDiffOverSizeCap() throws {
+        try withTempDir("inc-cap") { dir in
+            let parent = dir.appendingPathComponent("parent")
+            let child = dir.appendingPathComponent("child")
+            let oldBody = String(repeating: "x", count: IncrementalDiff.maxUnixDiffBytes + 32) + "old\n"
+            let newBody = String(repeating: "x", count: IncrementalDiff.maxUnixDiffBytes + 32) + "new\n"
+            try writeFile("huge.txt", oldBody, in: parent)
+            try writeFile("huge.txt", newBody, in: child)
+            try writeFile(
+                ".gegenlesen/diff.patch",
+                """
+                diff --git a/huge.txt b/huge.txt
+                --- a/huge.txt
+                +++ b/huge.txt
+                @@ -1 +1 @@
+                -old
+                +new
+                """,
+                in: child
+            )
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            try blobs.ensureLayout()
+            let jobID = JobID.generate()
+            let identified = try ChangeSetIdentifier(
+                workspace: child,
+                blobs: blobs,
+                jobID: jobID
+            ).identify()
+            let interdiff = try IncrementalDiff.compute(
+                identified: identified,
+                workspace: child,
+                blobs: blobs,
+                jobID: jobID,
+                parentHeadSHA: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                parentFiles: [
+                    JobFile(
+                        jobID: JobID.generate(),
+                        path: "huge.txt",
+                        sha256: ContentHash.sha256(Data(oldBody.utf8)),
+                        status: .modified
+                    ),
+                ],
+                parentWorkspace: parent,
+                timeout: .seconds(10)
+            )
+            #expect(interdiff.files.contains { $0.path == "huge.txt" && $0.status == .modified })
+            let patch = try String(contentsOf: blobs.patchURL(jobID: jobID.rawValue), encoding: .utf8)
+            #expect(!patch.contains(String(repeating: "x", count: 100)))
+        }
+    }
 }
 
 private func revParse(_ repo: URL) throws -> String {
