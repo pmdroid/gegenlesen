@@ -43,12 +43,25 @@ public enum JudgeHandoff: Sendable {
     }
 
     public static func inputFile(from candidates: [Finding], workspace: Workspace) -> JudgeInputFile {
-        JudgeInputFile(
+        inputFile(from: candidates, merged: [], workspace: workspace)
+    }
+
+    public static func inputFile(
+        from candidates: [Finding],
+        merged: [MergedFinding],
+        workspace: Workspace
+    ) -> JudgeInputFile {
+        var detailByID: [String: MergedFinding] = [:]
+        for group in merged {
+            detailByID[group.finding.id.rawValue] = group
+        }
+        return JudgeInputFile(
             candidates: candidates.prefix(200).map { finding in
                 let path = finding.filePath ?? ""
                 let start = finding.startLine ?? 1
                 let end = finding.endLine ?? start
                 let snippet = finding.snippet ?? ""
+                let detail = detailByID[finding.id.rawValue]
                 return JudgeCandidate(
                     id: finding.id,
                     ruleID: finding.ruleID,
@@ -67,7 +80,9 @@ public enum JudgeHandoff: Sendable {
                         startLine: start,
                         endLine: end,
                         workspace: workspace
-                    )
+                    ),
+                    sources: detail?.sources.map(\.rawValue),
+                    agreement: detail?.agreement.rawValue
                 )
             }
         )

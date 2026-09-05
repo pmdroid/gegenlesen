@@ -429,6 +429,84 @@ struct ReviewPipelineAgentTests {
             }
         }
     }
+
+    @Test
+    func crossSlotDuplicatesMergeBeforeJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let judge = JudgeInputRecordingJudge()
+                let pipeline = ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: BothSlotsSameDefectReviewer(),
+                    judge: judge
+                )
+                try await pipeline.run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                let findings = try await store.findings(jobID: job.id)
+                let kept = findings.filter { $0.judgeVerdict == .keep }
+                #expect(kept.count == 1)
+                let drops = findings.filter { $0.judgeVerdict == .drop }
+                #expect(drops.count == 1)
+                #expect(drops[0].judgeRationale?.contains("duplicate of") == true)
+                #expect(drops[0].judgeRationale?.contains("model_a + model_b") == true)
+                let input = try #require(judge.input)
+                #expect(input.candidates.count == 1)
+                #expect(input.candidates[0].sources == ["model_a", "model_b"])
+                #expect(input.candidates[0].agreement == "agreed")
+            }
+        }
+    }
+}
+
+struct BothSlotsSameDefectReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        func make(_ slot: ReviewerSlot) -> Finding {
+            Finding(
+                id: FindingID.generate(),
+                jobID: request.job.id,
+                phase: .agent,
+                reviewerSlot: slot,
+                severity: .warning,
+                title: "CacheDescribe can run with a disabled description cache",
+                message: "The describe path silently tolerates a disabled cache.",
+                filePath: "Sources/A.swift",
+                startLine: 1,
+                endLine: 1,
+                snippet: "print(2)",
+                confidence: slot == .modelA ? 0.8 : 0.6,
+                createdAt: Date()
+            )
+        }
+        return AgentReviewResult(
+            findings: [make(.modelA), make(.modelB)],
+            validFileCount: 2,
+            failed: false,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
+}
+
+final class JudgeInputRecordingJudge: JudgeRunning, @unchecked Sendable {
+    var input: JudgeInputFile?
+
+    func run(_ request: JudgeRequest) async -> JudgeRunResult {
+        let url = request.workspace.root.appendingPathComponent(".gegenlesen/judge-input.json")
+        if let data = try? Data(contentsOf: url) {
+            input = try? JSONDecoder().decode(JudgeInputFile.self, from: data)
+        }
+        return JudgeRunResult(
+            outcome: .verdicts(JudgeFile(verdicts: [])),
+            containerName: ReviewContainers.judge(request.job.id)
+        )
+    }
 }
 
 struct ProviderAuthReviewer: ReviewerRunning {

@@ -57,6 +57,10 @@ public struct JudgeCandidate: Codable, Sendable, Equatable {
     public var phase: FindingPhase
     public var evidenceOK: Bool
     public var actualSlice: String
+    /// Reviewer slots that raised this defect; set only after cross-slot merge.
+    public var sources: [String]?
+    /// "agreed" when more than one slot raised it, else "unique".
+    public var agreement: String?
 
     public init(
         id: FindingID,
@@ -71,7 +75,9 @@ public struct JudgeCandidate: Codable, Sendable, Equatable {
         rationale: String? = nil,
         phase: FindingPhase,
         evidenceOK: Bool,
-        actualSlice: String
+        actualSlice: String,
+        sources: [String]? = nil,
+        agreement: String? = nil
     ) {
         self.id = id
         self.ruleID = ruleID
@@ -86,6 +92,8 @@ public struct JudgeCandidate: Codable, Sendable, Equatable {
         self.phase = phase
         self.evidenceOK = evidenceOK
         self.actualSlice = actualSlice
+        self.sources = sources
+        self.agreement = agreement
     }
 
     enum CodingKeys: String, CodingKey {
@@ -98,6 +106,7 @@ public struct JudgeCandidate: Codable, Sendable, Equatable {
         case snippet, rationale, phase
         case evidenceOK = "evidence_ok"
         case actualSlice = "actual_slice"
+        case sources, agreement
     }
 }
 
