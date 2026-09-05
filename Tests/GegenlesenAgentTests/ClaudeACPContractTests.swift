@@ -69,9 +69,13 @@ struct ClaudeACPContractTests {
             #expect(result.findings[0].title == "Leaked secret")
             let requests = await docker.requests
             #expect(requests.count == 2)
-            #expect(requests[0].image == "gegenlesen/claude-runner:0.1.0")
-            #expect(requests[0].argv.contains("acp-runner"))
-            #expect(requests[1].argv.contains("opencode"))
+            // Slots run concurrently; the fake records completion order, so
+            // select by container name instead of position.
+            let slotA = try #require(requests.first { $0.name.hasSuffix("-a") })
+            let slotB = try #require(requests.first { $0.name.hasSuffix("-b") })
+            #expect(slotA.image == "gegenlesen/claude-runner:0.1.0")
+            #expect(slotA.argv.contains("acp-runner"))
+            #expect(slotB.argv.contains("opencode"))
         }
     }
 }
