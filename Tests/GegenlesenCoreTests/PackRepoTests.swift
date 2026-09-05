@@ -32,9 +32,15 @@ struct PackRepoTests {
 
             let head = try RepoPacker.resolveHead(cwd: repo)
             let base = try RepoPacker.resolveBase(cwd: repo, ref: "HEAD^")
-            let packed = try RepoPacker.pack(cwd: repo, base: base, head: head)
+            let packed = try RepoPacker.pack(
+                cwd: repo,
+                base: base.sha,
+                head: head,
+                baseSource: base.source
+            )
             #expect(packed.head == head)
-            #expect(packed.base == base)
+            #expect(packed.base == base.sha)
+            #expect(packed.baseSource == "explicit_ref:HEAD^")
             #expect(!packed.droppedBundle)
 
             let archive = dir.appendingPathComponent("tiny.tar.gz")
@@ -86,6 +92,64 @@ struct PackRepoTests {
     }
 
     @Test
+    func resolveBaseFetchesAndPrefersRemoteTracking() throws {
+        try withTempDir("gegenlesen-pack-stale-origin") { dir in
+            let origin = dir.appendingPathComponent("origin")
+            try FileManager.default.createDirectory(at: origin, withIntermediateDirectories: true)
+            try git(["init"], cwd: origin)
+            try writeFile("f0.txt", "zero\n", in: origin)
+            try git(["add", "f0.txt"], cwd: origin)
+            try git(["commit", "-m", "c0"], cwd: origin)
+
+            let work = dir.appendingPathComponent("work")
+            try git(["clone", origin.path, work.path], cwd: dir)
+
+            // Advance origin/main without the clone knowing about it.
+            try writeFile("f1.txt", "one\n", in: origin)
+            try git(["add", "f1.txt"], cwd: origin)
+            try git(["commit", "-m", "c1"], cwd: origin)
+
+            // Branch the feature on the new origin/main, then rewind the
+            // clone's remote-tracking ref to simulate a stale worktree.
+            try git(["fetch", "origin"], cwd: work)
+            try git(["checkout", "-b", "feature", "origin/main"], cwd: work)
+            try writeFile("f2.txt", "two\n", in: work)
+            try git(["add", "f2.txt"], cwd: work)
+            try git(["commit", "-m", "c2"], cwd: work)
+            let stale = try gitOutput(["rev-parse", "main"], cwd: work)
+            try git(["update-ref", "refs/remotes/origin/main", stale], cwd: work)
+
+            let resolved = try RepoPacker.resolveBase(cwd: work, ref: nil)
+            let fresh = try gitOutput(["rev-parse", "origin/main"], cwd: work)
+            #expect(resolved.sha == fresh)
+            #expect(resolved.source == "merge_base:origin/main")
+        }
+    }
+
+    @Test
+    func resolveBaseWithoutRemoteStillResolves() throws {
+        try withTempDir("gegenlesen-pack-no-remote") { dir in
+            let repo = dir.appendingPathComponent("tiny-repo")
+            try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+            try git(["init"], cwd: repo)
+            try writeFile("README.md", "v1\n", in: repo)
+            try git(["add", "README.md"], cwd: repo)
+            try git(["commit", "-m", "v1"], cwd: repo)
+            try writeFile("README.md", "v2\n", in: repo)
+            try git(["add", "README.md"], cwd: repo)
+            try git(["commit", "-m", "v2"], cwd: repo)
+
+            let explicit = try RepoPacker.resolveBase(cwd: repo, ref: "main")
+            #expect(explicit.source == "explicit_ref:main")
+            let mainSHA = try gitOutput(["rev-parse", "main"], cwd: repo)
+            #expect(explicit.sha == mainSHA)
+
+            let guessed = try RepoPacker.resolveBase(cwd: repo, ref: nil)
+            #expect(guessed.source == "merge_base:main")
+        }
+    }
+
+    @Test
     func dropsOversizedBundle() throws {
         try withTempDir("gegenlesen-pack-bundle-cap") { dir in
             let repo = dir.appendingPathComponent("tiny-repo")
@@ -100,7 +164,7 @@ struct PackRepoTests {
 
             let head = try RepoPacker.resolveHead(cwd: repo)
             let base = try RepoPacker.resolveBase(cwd: repo, ref: "HEAD^")
-            let packed = try RepoPacker.pack(cwd: repo, base: base, head: head, maxBundleBytes: 1)
+            let packed = try RepoPacker.pack(cwd: repo, base: base.sha, head: head, maxBundleBytes: 1)
             #expect(packed.droppedBundle)
 
             let archive = dir.appendingPathComponent("tiny.tar.gz")
@@ -113,5 +177,15 @@ struct PackRepoTests {
                 )
             )
         }
+    }
+
+    /// git helper that returns stdout.
+    private func gitOutput(_ arguments: [String], cwd: URL) throws -> String {
+        let result = try runIsolated(executable: "/usr/bin/git", arguments: [
+            "-c", "safe.directory=*",
+        ] + arguments, cwd: cwd)
+        #expect(result.status == 0)
+        return String(data: result.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }

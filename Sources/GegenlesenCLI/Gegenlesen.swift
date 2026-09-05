@@ -361,7 +361,17 @@ func packCWD(baseRef: String?) throws -> RepoPackResult {
     do {
         let head = try RepoPacker.resolveHead(cwd: cwd)
         let base = try RepoPacker.resolveBase(cwd: cwd, ref: baseRef)
-        return try RepoPacker.pack(cwd: cwd, base: base, head: head)
+        let result = try RepoPacker.pack(cwd: cwd, base: base.sha, head: head, baseSource: base.source)
+        // A 292-file pack for a 2-file commit should be visible at pack time,
+        // not reconstructed by the operator afterwards.
+        if let packFiles = PackSignals.diffFileCount(workspace: cwd, from: base.sha, to: head, timeout: .seconds(30)),
+           let headOwn = PackSignals.headOwnFileCount(workspace: cwd, head: head, timeout: .seconds(30)),
+           PackSignals.isWide(packFiles: packFiles, headOwnFiles: headOwn) {
+            FileHandle.standardError.write(Data(
+                "warning: wide pack: \(packFiles) files vs \(headOwn) in \(head)^; base \(base.sha) chosen by \(base.source)\n".utf8
+            ))
+        }
+        return result
     } catch let error as RepoPackError {
         throw CLIError(error.description)
     }
