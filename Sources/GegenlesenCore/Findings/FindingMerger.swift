@@ -35,33 +35,37 @@ public struct MergedFinding: Sendable, Equatable {
 /// range never merge.
 public enum FindingMerger: Sendable {
     public static func mergeAcrossSlots(_ findings: [Finding]) -> [MergedFinding] {
-        var groups: [MergedFinding] = []
+        var groups: [(members: [Finding], sources: [ReviewerSlot])] = []
         for finding in findings {
-            if let index = groups.lastIndex(where: { sameDefect($0.finding, finding) }) {
-                var group = groups[index]
-                group.duplicates.append(finding)
-                if !group.sources.contains(finding.reviewerSlot ?? .modelA) {
-                    group.sources.append(finding.reviewerSlot ?? .modelA)
-                    group.sources.sort { $0.rawValue < $1.rawValue }
+            if let index = groups.lastIndex(where: { group in
+                group.members.contains { sameDefect($0, finding) }
+            }) {
+                groups[index].members.append(finding)
+                if let slot = finding.reviewerSlot, !groups[index].sources.contains(slot) {
+                    groups[index].sources.append(slot)
+                    groups[index].sources.sort { $0.rawValue < $1.rawValue }
                 }
-                if isBetterRepresentative(finding, than: group.finding) {
-                    group.finding = finding
-                }
-                groups[index] = group
+            } else if let slot = finding.reviewerSlot {
+                groups.append((members: [finding], sources: [slot]))
             } else {
-                groups.append(
-                    MergedFinding(
-                        finding: finding,
-                        sources: [finding.reviewerSlot ?? .modelA],
-                        agreement: .unique
-                    )
-                )
+                groups.append((members: [finding], sources: []))
             }
         }
         return groups.map { group in
-            var next = group
-            next.agreement = next.sources.count > 1 ? .agreed : .unique
-            return next
+            // Pick the representative after grouping so it is never part of
+            // its own duplicates, regardless of input order.
+            let representative = group.members.reduce(group.members[0]) {
+                isBetterRepresentative($1, than: $0) ? $1 : $0
+            }
+            let duplicates = group.members.filter { $0.id != representative.id }
+            let sources = group.members.compactMap(\.reviewerSlot)
+            let distinct = Array(Set(sources)).sorted { $0.rawValue < $1.rawValue }
+            return MergedFinding(
+                finding: representative,
+                sources: distinct,
+                agreement: distinct.count > 1 ? .agreed : .unique,
+                duplicates: duplicates
+            )
         }
     }
 

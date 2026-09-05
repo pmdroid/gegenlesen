@@ -99,4 +99,21 @@ struct FindingMergerTests {
         #expect(dropped.judgeRationale?.contains("duplicate of \(a.id.rawValue)") == true)
         #expect(dropped.judgeRationale?.contains("model_a + model_b") == true)
     }
+
+    @Test
+    func duplicateFirstStillDropsTheDuplicateNotTheRepresentative() throws {
+        // Store reads are unordered; when the weaker finding arrives first,
+        // the stronger one must become the representative without ending up
+        // in its own duplicates.
+        let weak = finding(slot: .modelB, confidence: 0.6)
+        let strong = finding(slot: .modelA, confidence: 0.8)
+        let groups = FindingMerger.mergeAcrossSlots([weak, strong])
+        #expect(groups.count == 1)
+        #expect(groups[0].finding.id == strong.id)
+        #expect(groups[0].agreement == .agreed)
+        let drops = FindingMerger.stampDuplicates(groups)
+        #expect(drops.count == 1)
+        #expect(drops[0].id == weak.id)
+        #expect(drops[0].judgeVerdict == .drop)
+    }
 }
