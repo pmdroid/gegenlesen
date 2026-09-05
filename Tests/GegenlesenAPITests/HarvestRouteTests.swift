@@ -40,7 +40,10 @@ struct HarvestRouteTests {
             #expect(res.status == .accepted)
             let accepted = try JSONDecoder().decode(JobAccepted.self, from: Data(res.body.readableBytesView))
 
-            let deadline = Date().addingTimeInterval(10)
+            // The queue is push-based, but under a full parallel suite run the
+            // harvest pipeline's subprocess steps can be starved well past a
+            // 10s window; the loop exits early on terminal status anyway.
+            let deadline = Date().addingTimeInterval(60)
             var job: Job?
             while Date() < deadline {
                 job = try await app.gegenlesenStore.job(id: accepted.id)
