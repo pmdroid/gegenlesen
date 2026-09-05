@@ -730,5 +730,5 @@ private func packedTinyRepo(origin: String? = "git@github.com:gegenlesen/tiny.gi
 
     let head = try RepoPacker.resolveHead(cwd: repo)
     let base = try RepoPacker.resolveBase(cwd: repo, ref: "HEAD^")
-    return try RepoPacker.pack(cwd: repo, base: base, head: head).archive
+    return try RepoPacker.pack(cwd: repo, base: base.sha, head: head).archive
 }

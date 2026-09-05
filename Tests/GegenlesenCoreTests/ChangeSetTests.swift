@@ -223,6 +223,132 @@ struct ChangeSetTests {
             #expect(try String(contentsOf: workspace.appendingPathComponent("new.txt")) == "hello\n")
         }
     }
+    @Test
+    func staleOriginMainResolvesToFreshBaseAfterFetch() throws {
+        try withTempDir("gegenlesen-id-stale-origin") { dir in
+            let origin = dir.appendingPathComponent("origin")
+            try FileManager.default.createDirectory(at: origin, withIntermediateDirectories: true)
+            try git(["init"], cwd: origin)
+            try writeFile("f0.txt", "zero\n", in: origin)
+            try git(["add", "f0.txt"], cwd: origin)
+            try git(["commit", "-m", "c0"], cwd: origin)
+
+            let work = dir.appendingPathComponent("work")
+            try git(["clone", origin.path, work.path], cwd: dir)
+
+            // Advance origin/main without the clone knowing about it.
+            try writeFile("f1.txt", "one\n", in: origin)
+            try git(["add", "f1.txt"], cwd: origin)
+            try git(["commit", "-m", "c1"], cwd: origin)
+            let freshMain = try gitRevParse("main", cwd: origin)
+
+            // Branch the feature on the new main, then rewind the clone's
+            // remote-tracking ref to simulate a stale worktree.
+            try git(["fetch", "origin"], cwd: work)
+            try git(["checkout", "-b", "feature", "origin/main"], cwd: work)
+            try writeFile("f2.txt", "two\n", in: work)
+            try git(["add", "f2.txt"], cwd: work)
+            try git(["commit", "-m", "c2"], cwd: work)
+            let stale = try gitRevParse("main", cwd: work)
+            try git(["update-ref", "refs/remotes/origin/main", stale], cwd: work)
+
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            let changeSet = try ChangeSetIdentifier(
+                workspace: work,
+                blobs: blobs,
+                jobID: JobID("job-stale")
+            ).identify()
+
+            #expect(changeSet.baseSHA == freshMain)
+            #expect(changeSet.baseSource == "merge_base:origin/main")
+            #expect(changeSet.files.contains { $0.path == "f2.txt" && $0.status == .added })
+            #expect(!changeSet.files.contains { $0.path == "f1.txt" })
+        }
+    }
+
+    @Test
+    func explicitBaseRefWinsOverGuess() throws {
+        try withTempDir("gegenlesen-id-base-ref") { dir in
+            let repo = dir.appendingPathComponent("repo")
+            try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+            try git(["init"], cwd: repo)
+            try writeFile("f0.txt", "zero\n", in: repo)
+            try git(["add", "f0.txt"], cwd: repo)
+            try git(["commit", "-m", "c0"], cwd: repo)
+            try git(["branch", "release-1"], cwd: repo)
+            let releaseOne = try gitRevParse("release-1", cwd: repo)
+            try writeFile("f1.txt", "one\n", in: repo)
+            try git(["add", "f1.txt"], cwd: repo)
+            try git(["commit", "-m", "c1"], cwd: repo)
+            try git(["checkout", "-b", "feature"], cwd: repo)
+            try writeFile("f2.txt", "two\n", in: repo)
+            try git(["add", "f2.txt"], cwd: repo)
+            try git(["commit", "-m", "c2"], cwd: repo)
+
+            let blobs = BlobStore(root: dir.appendingPathComponent("var"))
+            let changeSet = try ChangeSetIdentifier(
+                workspace: repo,
+                blobs: blobs,
+                jobID: JobID("job-base-ref"),
+                meta: IdentifyMeta(baseRef: "release-1")
+            ).identify()
+
+            #expect(changeSet.baseSHA == releaseOne)
+            #expect(changeSet.baseSource == "base_ref:release-1")
+            #expect(changeSet.files.contains { $0.path == "f1.txt" })
+        }
+    }
+
+    @Test
+    func widePackSignalFiresForGuessedAncientBase() throws {
+        #expect(PackSignals.isWide(packFiles: 292, headOwnFiles: 2))
+        #expect(PackSignals.isWide(packFiles: 30, headOwnFiles: 2))
+        #expect(!PackSignals.isWide(packFiles: 20, headOwnFiles: 2))
+        #expect(!PackSignals.isWide(packFiles: 2, headOwnFiles: 2))
+        #expect(!PackSignals.isWide(packFiles: 292, headOwnFiles: nil))
+
+        try withTempDir("gegenlesen-id-wide-pack") { dir in
+            let repo = dir.appendingPathComponent("repo")
+            try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+            try git(["init"], cwd: repo)
+            try writeFile("f0.txt", "zero\n", in: repo)
+            try git(["add", "f0.txt"], cwd: repo)
+            try git(["commit", "-m", "c0"], cwd: repo)
+            let base = try gitRevParse("main", cwd: repo)
+            try writeFile("f1.txt", "one\n", in: repo)
+            try git(["add", "f1.txt"], cwd: repo)
+            try git(["commit", "-m", "c1"], cwd: repo)
+            let head = try gitRevParse("main", cwd: repo)
+
+            let jobID = JobID("job-wide")
+            let wide = ChangeSet(
+                baseSHA: base,
+                headSHA: head,
+                patchRelativePath: "blobs/patches/\(jobID.rawValue).patch",
+                files: (0..<40).map { index in
+                    JobFile(jobID: jobID, path: "f\(index).txt", status: .added, language: .other)
+                },
+                source: .git,
+                baseSource: "merge_base:origin/main"
+            )
+            let signal = try #require(PackSignals.evaluate(changeSet: wide, workspace: repo, timeout: .seconds(30)))
+            #expect(signal.packFiles == 40)
+            #expect(signal.headOwnFiles == 1)
+            #expect(signal.base == base)
+            #expect(signal.baseSource == "merge_base:origin/main")
+
+            let narrow = ChangeSet(
+                baseSHA: base,
+                headSHA: head,
+                patchRelativePath: "blobs/patches/\(jobID.rawValue).patch",
+                files: [
+                    JobFile(jobID: jobID, path: "f1.txt", status: .added, language: .other),
+                ],
+                source: .git
+            )
+            #expect(PackSignals.evaluate(changeSet: narrow, workspace: repo, timeout: .seconds(30)) == nil)
+        }
+    }
 }
 
 private func gitRevParse(_ rev: String, cwd: URL) throws -> String {

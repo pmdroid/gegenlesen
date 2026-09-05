@@ -132,6 +132,23 @@ public struct ReviewPipeline: Sendable {
                 timeout: identifyTimeout
             )
             var changeSet = try identifier.identify()
+            if let wide = PackSignals.evaluate(
+                changeSet: changeSet,
+                workspace: workspaceURL,
+                timeout: identifyTimeout
+            ) {
+                try await store.appendEvent(
+                    jobID: jobID,
+                    level: .warning,
+                    message: "wide_pack_base",
+                    payloadJSON: JobEvent.payloadJSON([
+                        "base": wide.base,
+                        "base_source": wide.baseSource ?? "unknown",
+                        "pack_files": wide.packFiles,
+                        "head_own_files": wide.headOwnFiles,
+                    ])
+                )
+            }
             let job = try await store.job(id: jobID)
             if job?.scope == .incremental {
                 incrementalScope = true
