@@ -11,6 +11,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public var nproc: String?
     public var agentTimeout: Duration
     public var judgeTimeout: Duration
+    /// Delay before the second reviewer attempt after a retriable provider
+    /// error (quota/throttle). Validation failures still retry immediately.
+    public var slotRetryBackoff: Duration
     public var providerEnv: [String: String]
     public var schemasDirectory: URL?
     public var transcriptWriter: (@Sendable (JobID, String, Data) -> Void)?
@@ -26,6 +29,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         nproc: String? = nil,
         agentTimeout: Duration = .seconds(900),
         judgeTimeout: Duration = .seconds(300),
+        slotRetryBackoff: Duration = .seconds(30),
         providerEnv: [String: String] = [:],
         schemasDirectory: URL? = nil,
         transcriptWriter: (@Sendable (JobID, String, Data) -> Void)? = nil,
@@ -40,6 +44,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         self.nproc = nproc
         self.agentTimeout = agentTimeout
         self.judgeTimeout = judgeTimeout
+        self.slotRetryBackoff = slotRetryBackoff
         self.providerEnv = providerEnv
         self.schemasDirectory = schemasDirectory
         self.transcriptWriter = transcriptWriter
@@ -304,6 +309,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
     static func isProviderAuth(_ transcript: Data) -> Bool {
         ReviewFailureClass.providerAuthHTTPStatus(in: String(data: transcript, encoding: .utf8)) != nil
+    }
+
+    static func isProviderRateLimited(transcript: Data, stderr: String?) -> Bool {
+        if ReviewFailureClass.providerRateLimitMarker(in: String(data: transcript, encoding: .utf8)) != nil {
+            return true
+        }
+        return stderr != nil && ReviewFailureClass.providerRateLimitMarker(in: stderr) != nil
     }
 
     public static func containerName(jobID: JobID, slot: ReviewerSlot) -> String {
@@ -931,6 +943,17 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 return lastOutcome
             }
             if attempt == 1, let error = outcome.validationError {
+                // A throttled provider did not fail validation; wait for
+                // capacity instead of re-prompting with a failure notice.
+                if error == ReviewFailureClass.providerRateLimited.rawValue {
+                    if slotRetryBackoff > .zero {
+                        try? await Task.sleep(for: slotRetryBackoff)
+                    }
+                    if await request.isCancelled?() == true {
+                        return lastOutcome
+                    }
+                    continue
+                }
                 try? appendRetryNotice(workspace: request.workspace, slot: slot, errors: error)
                 continue
             }
@@ -989,14 +1012,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var transcript = Data()
         var providerAuth = false
         var startFailed = false
+        var rateLimited = false
         var stderrLine: String?
         do {
             let result = try await docker.run(dockerRequest)
             let redactor = SecretRedactor()
             transcript.append(redactor.redact(Data(result.outputText.utf8)))
-            stderrLine = Self.firstNonEmptyLine(
-                redactor.redact(String(data: result.stderr, encoding: .utf8) ?? "")
-            )
+            let stderrText = redactor.redact(String(data: result.stderr, encoding: .utf8) ?? "")
+            stderrLine = Self.firstNonEmptyLine(stderrText)
             let stdoutEmpty = (String(data: result.stdout, encoding: .utf8) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .isEmpty
@@ -1004,10 +1027,12 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 providerAuth = DockerRunner.providerAuthStatus(in: result) != nil
                 startFailed = stdoutEmpty && stderrLine != nil
             }
+            rateLimited = Self.isProviderRateLimited(transcript: transcript, stderr: stderrText)
         } catch {
             let body = SecretRedactor().redact(String(describing: error))
             transcript.append(Data(body.utf8))
             providerAuth = Self.isProviderAuth(transcript)
+            rateLimited = Self.isProviderRateLimited(transcript: transcript, stderr: nil)
         }
         if await request.isCancelled?() == true {
             return SlotOutcome(
@@ -1029,9 +1054,11 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: transcript,
                 providerAuth: providerAuth,
-                validationError: startFailed
-                    ? ReviewFailureClass.containerStartFailed.rawValue
-                    : "reviewer_no_findings_file",
+                validationError: rateLimited
+                    ? ReviewFailureClass.providerRateLimited.rawValue
+                    : startFailed
+                        ? ReviewFailureClass.containerStartFailed.rawValue
+                        : "reviewer_no_findings_file",
                 stderrLine: stderrLine
             )
         }

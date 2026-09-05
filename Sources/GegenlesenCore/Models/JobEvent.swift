@@ -37,6 +37,7 @@ public struct JobEvent: Sendable, Equatable {
 
 public enum ReviewFailureClass: String, Sendable, Equatable {
     case providerAuth = "provider_auth"
+    case providerRateLimited = "provider_rate_limited"
     case containerStartFailed = "container_start_failed"
     case noFindingsFile = "no_findings_file"
     case reviewerFailed = "reviewer_failed"
@@ -45,6 +46,9 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
         if looksLikeProviderAuth(errorMessage) || looksLikeProviderAuth(payloadJSON) {
             return .providerAuth
         }
+        if providerRateLimitMarker(in: errorMessage) != nil || providerRateLimitMarker(in: payloadJSON) != nil {
+            return .providerRateLimited
+        }
         if containsToken("container_start_failed", errorMessage) || containsToken("container_start_failed", payloadJSON) {
             return .containerStartFailed
         }
@@ -52,6 +56,30 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
             return .noFindingsFile
         }
         return .reviewerFailed
+    }
+
+    /// Quota/throttle errors from the provider, e.g.
+    /// `Error: RetriableError: [resource_exhausted]` in a reviewer transcript.
+    /// Tokens are specific so code quoted from the repo under review cannot
+    /// trip them (a bare 429 or "rate limit" in source would).
+    public static func providerRateLimitMarker(in text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        let lowered = text.lowercased()
+        for marker in ["provider_rate_limited", "resource_exhausted", "retriableerror", "rate_limit_exceeded"] {
+            if lowered.contains(marker) {
+                return marker
+            }
+        }
+        return providerAuthHTTPStatus429(in: text)
+    }
+
+    private static func providerAuthHTTPStatus429(in text: String) -> String? {
+        for marker in ["\"status\":429", "\"status\": 429", "\"statusCode\":429", "\"statusCode\": 429", "HTTP 429"] {
+            if text.contains(marker) {
+                return marker
+            }
+        }
+        return nil
     }
 
     /// 401/403 from OpenCode/OpenRouter HTTP or `opencode run` stdout/stderr. Not a host LLM call.
