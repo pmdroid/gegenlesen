@@ -493,14 +493,21 @@ public struct ReviewPipeline: Sendable {
 
         let commandIDs = JudgeMerge.commandRuleIDs(from: rules)
         let stored = try await store.findings(jobID: jobID)
-        let mechanical = JudgeHandoff.stampMechanical(stored, commandRuleIDs: commandIDs)
+        let stamped = JudgeHandoff.stampMechanical(stored, commandRuleIDs: commandIDs)
+        let groups = FindingMerger.mergeAcrossSlots(stamped)
+        let duplicateDrops = FindingMerger.stampDuplicates(groups)
+        var mechanical = stamped
+        if !duplicateDrops.isEmpty {
+            let dropByID = Dictionary(uniqueKeysWithValues: duplicateDrops.map { ($0.id, $0) })
+            mechanical = mechanical.map { dropByID[$0.id] ?? $0 }
+        }
         let candidates = JudgeHandoff.prepareCandidates(
-            stored,
+            groups.map(\.finding),
             commandRuleIDs: commandIDs,
             workspace: workspace
         )
         JudgeHandoff.persistAgentBlob(workspace: workspace, blobs: store.blobs, jobID: jobID)
-        let input = JudgeHandoff.inputFile(from: candidates, workspace: workspace)
+        let input = JudgeHandoff.inputFile(from: candidates, merged: groups, workspace: workspace)
         let wroteInput: Bool
         do {
             try JudgeHandoff.writeInput(input, workspace: workspace, blobs: store.blobs, jobID: jobID)
