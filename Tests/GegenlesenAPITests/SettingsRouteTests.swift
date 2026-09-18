@@ -7,6 +7,30 @@ import VaporTesting
 @Suite
 struct SettingsRouteTests {
     @Test
+    func putPersistsJevEnabled() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("gegenlesen-jev-settings-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let file = tmp.appendingPathComponent("gegenlesen.json")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        try await withGegenlesenApp(configFileURL: file, mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
+            try await app.testing().test(
+                .PUT,
+                "/api/settings",
+                beforeRequest: { req async throws in
+                    try req.content.encode(["jev": ["enabled": true]])
+                }
+            ) { res async throws in
+                #expect(res.status == .ok)
+                #expect(try res.content.decode(SettingsDTO.self).jev.enabled)
+            }
+            #expect(app.gegenlesenJobs.config.jev.enabled)
+            #expect(try JSONDecoder().decode(GegenlesenConfig.self, from: Data(contentsOf: file)).jev.enabled)
+        }
+    }
+
+    @Test
     func putRejectsAppetiteOutOfRange() async throws {
         try await withGegenlesenApp(mutate: { $0.openrouterApiKey = "sk-or-test" }) { app in
             try await app.testing().test(
