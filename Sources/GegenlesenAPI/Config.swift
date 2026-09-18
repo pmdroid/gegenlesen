@@ -760,6 +760,10 @@ struct LimitsSettingsUpdate: Content, Sendable, Equatable {
     }
 }
 
+struct JevSettingsUpdate: Content, Sendable, Equatable {
+    var enabled: Bool?
+}
+
 struct EngineProfileUpdate: Content, Sendable, Equatable {
     var engine: String?
     var model: String?
@@ -796,6 +800,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
     var engineProfiles: EngineProfilesUpdate? = nil
     var openrouterApiKey: String?
     var scannerImage: String? = nil
+    var jev: JevSettingsUpdate? = nil
     var risk: RiskSettingsUpdate? = nil
     var limits: LimitsSettingsUpdate? = nil
 
@@ -807,6 +812,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
         case engineProfiles = "engine_profiles"
         case openrouterApiKey = "openrouter_api_key"
         case scannerImage = "scanner_image"
+        case jev
         case risk
         case limits
     }
