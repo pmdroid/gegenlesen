@@ -16,13 +16,14 @@ struct JevFindingJudgeTests {
             """.utf8
         )
         let judge = JevFindingJudge(
-            apiKey: "typesafe-test",
-            model: "jev-latest",
+            apiKey: "openrouter-test",
+            model: "~typesafe/jev-latest",
             minConfidence: 0.9,
             timeout: 4,
-            endpoint: URL(string: "https://example.test/v1/systemone")!,
-            send: { _ in
-                (body, HTTPURLResponse(url: URL(string: "https://example.test")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            send: { request in
+                #expect(request.url == URL(string: "https://openrouter.ai/api/alpha/decisions"))
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer openrouter-test")
+                return (body, HTTPURLResponse(url: URL(string: "https://example.test")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             }
         )
         let outcome = await judge.run(JudgeInputFile(candidates: [candidate()]))
