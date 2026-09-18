@@ -160,6 +160,13 @@ export interface EngineModel {
   description?: string;
 }
 
+export interface JevConfig {
+  enabled: boolean;
+  model: string;
+  min_confidence: number;
+  timeout_sec: number;
+}
+
 export interface SettingsDTO {
   bind: string;
   port: number;
@@ -170,6 +177,7 @@ export interface SettingsDTO {
   engine_profiles: EngineProfiles;
   opencode_image: string;
   scanner_image?: string;
+  jev: JevConfig;
   limits: Limits;
   openrouter_configured: boolean;
   engine_auth?: Record<string, EngineAuthStatus>;
@@ -187,6 +195,9 @@ export interface SettingsUpdate {
   };
   openrouter_api_key?: string;
   scanner_image?: string;
+  jev?: {
+    enabled?: boolean;
+  };
   risk?: {
     mode?: RiskMode;
     appetite?: number;

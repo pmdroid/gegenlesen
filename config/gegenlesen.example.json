@@ -17,6 +17,12 @@
     "max_chunks": 20000,
     "retrieve_k": 12
   },
+  "jev": {
+    "enabled": false,
+    "model": "~typesafe/jev-latest",
+    "min_confidence": 0.9,
+    "timeout_sec": 4
+  },
   "opencode_image": "gegenlesen/opencode-runner:0.1.0",
   "engine_images": {
     "opencode": "gegenlesen/opencode-runner:0.1.0",

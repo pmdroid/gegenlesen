@@ -10,6 +10,7 @@ public struct ReviewPipeline: Sendable {
     public var scanner: (any ScannerRunning)?
     public var reviewer: (any ReviewerRunning)?
     public var judge: (any JudgeRunning)?
+    public var fastJudge: (any FastJudgeRunning)?
     public var ruleTokenBudget: Int
     public var retrieveK: Int
     public var maxChunks: Int
@@ -31,6 +32,7 @@ public struct ReviewPipeline: Sendable {
         scanner: (any ScannerRunning)? = nil,
         reviewer: (any ReviewerRunning)? = nil,
         judge: (any JudgeRunning)? = nil,
+        fastJudge: (any FastJudgeRunning)? = nil,
         ruleTokenBudget: Int = 6000,
         retrieveK: Int = 12,
         maxChunks: Int = 20_000,
@@ -51,6 +53,7 @@ public struct ReviewPipeline: Sendable {
         self.scanner = scanner
         self.reviewer = reviewer
         self.judge = judge
+        self.fastJudge = fastJudge
         self.ruleTokenBudget = ruleTokenBudget
         self.retrieveK = retrieveK
         self.maxChunks = maxChunks
@@ -518,12 +521,33 @@ public struct ReviewPipeline: Sendable {
             let dropByID = Dictionary(uniqueKeysWithValues: duplicateDrops.map { ($0.id, $0) })
             mechanical = mechanical.map { dropByID[$0.id] ?? $0 }
         }
-        let candidates = JudgeHandoff.prepareCandidates(
+        var candidates = JudgeHandoff.prepareCandidates(
             groups.map(\.finding),
             commandRuleIDs: commandIDs,
             workspace: workspace
         )
         JudgeHandoff.persistAgentBlob(workspace: workspace, blobs: store.blobs, jobID: jobID)
+        if !candidates.isEmpty, let fastJudge {
+            let fastInput = JudgeHandoff.inputFile(from: candidates, merged: groups, workspace: workspace)
+            let fastOutcome = await fastJudge.run(fastInput)
+            if case .verdicts = fastOutcome {
+                let judged = JudgeMerge.merge(candidates: candidates, judge: fastOutcome)
+                let dropped = judged.filter { $0.judgeVerdict == .drop }
+                candidates = judged.filter { $0.judgeVerdict != .drop }
+                if !dropped.isEmpty {
+                    let dropByID = Dictionary(uniqueKeysWithValues: dropped.map { ($0.id, $0) })
+                    mechanical = mechanical.map { dropByID[$0.id] ?? $0 }
+                    try await store.appendEvent(
+                        jobID: jobID,
+                        level: .info,
+                        message: "fast_judge_dropped",
+                        payloadJSON: JobEvent.payloadJSON(["count": dropped.count])
+                    )
+                }
+            } else {
+                try await store.appendEvent(jobID: jobID, level: .warning, message: "fast_judge_unavailable")
+            }
+        }
         let input = JudgeHandoff.inputFile(from: candidates, merged: groups, workspace: workspace)
         let wroteInput: Bool
         do {
@@ -534,7 +558,8 @@ public struct ReviewPipeline: Sendable {
         }
 
         if candidates.isEmpty {
-            try await store.updateFindings(mechanical)
+            let labeled = try await applyOperatorSuppressions(mechanical, jobID: jobID)
+            try await store.updateFindings(labeled)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .reviewOK(validFindingCount: 0)

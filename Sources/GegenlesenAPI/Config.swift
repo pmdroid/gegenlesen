@@ -125,6 +125,49 @@ struct EmbeddingsConfig: Content, Sendable, Equatable {
     }
 }
 
+struct JevConfig: Content, Sendable, Equatable {
+    var enabled: Bool
+    var model: String
+    var minConfidence: Double
+    var timeoutSec: Int
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, model
+        case minConfidence = "min_confidence"
+        case timeoutSec = "timeout_sec"
+    }
+
+    static let v1 = JevConfig(
+        enabled: false,
+        model: "~typesafe/jev-latest",
+        minConfidence: 0.9,
+        timeoutSec: 4
+    )
+
+    init(
+        enabled: Bool = JevConfig.v1.enabled,
+        model: String = JevConfig.v1.model,
+        minConfidence: Double = JevConfig.v1.minConfidence,
+        timeoutSec: Int = JevConfig.v1.timeoutSec
+    ) {
+        self.enabled = enabled
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.model = trimmed.isEmpty ? JevConfig.v1.model : trimmed
+        self.minConfidence = min(max(minConfidence, 0), 1)
+        self.timeoutSec = min(max(timeoutSec, 1), 30)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? Self.v1.enabled,
+            model: try container.decodeIfPresent(String.self, forKey: .model) ?? Self.v1.model,
+            minConfidence: try container.decodeIfPresent(Double.self, forKey: .minConfidence) ?? Self.v1.minConfidence,
+            timeoutSec: try container.decodeIfPresent(Int.self, forKey: .timeoutSec) ?? Self.v1.timeoutSec
+        )
+    }
+}
+
 struct Limits: Content, Sendable, Equatable {
     var archiveBytes: Int
     var queuedArchiveBytes: Int
@@ -239,6 +282,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
     var engineProfiles: EngineProfiles
     var scannerImage: String
     var embeddings: EmbeddingsConfig
+    var jev: JevConfig
     var limits: Limits
     var risk: RiskConfig
     /// Persisted in config/gegenlesen.json. Never returned by GET /api/settings.
@@ -256,6 +300,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         case engineProfiles = "engine_profiles"
         case scannerImage = "scanner_image"
         case embeddings
+        case jev
         case limits
         case risk
         case openrouterApiKey = "openrouter_api_key"
@@ -274,6 +319,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         engineProfiles: EngineProfiles? = nil,
         scannerImage: String = "gegenlesen/scanner:0.1.0",
         embeddings: EmbeddingsConfig = .v1,
+        jev: JevConfig = .v1,
         limits: Limits,
         risk: RiskConfig = .v1,
         openrouterApiKey: String? = nil
@@ -290,6 +336,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         self.engineProfiles = engineProfiles ?? .default(minerModel: self.minerModel)
         self.scannerImage = scannerImage
         self.embeddings = embeddings
+        self.jev = jev
         self.limits = limits
         self.risk = risk
         self.openrouterApiKey = openrouterApiKey
@@ -318,6 +365,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             ?? .default(minerModel: minerModel)
         scannerImage = try container.decodeIfPresent(String.self, forKey: .scannerImage) ?? "gegenlesen/scanner:0.1.0"
         embeddings = try container.decodeIfPresent(EmbeddingsConfig.self, forKey: .embeddings) ?? .v1
+        jev = try container.decodeIfPresent(JevConfig.self, forKey: .jev) ?? .v1
         limits = try container.decode(Limits.self, forKey: .limits)
         risk = try container.decodeIfPresent(RiskConfig.self, forKey: .risk) ?? .v1
         openrouterApiKey = try container.decodeIfPresent(String.self, forKey: .openrouterApiKey)
@@ -339,6 +387,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         try container.encode(engineProfiles, forKey: .engineProfiles)
         try container.encode(scannerImage, forKey: .scannerImage)
         try container.encode(embeddings, forKey: .embeddings)
+        try container.encode(jev, forKey: .jev)
         try container.encode(limits, forKey: .limits)
         try container.encode(risk, forKey: .risk)
         if let openrouterApiKey, !openrouterApiKey.isEmpty {
@@ -462,6 +511,17 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         return false
     }
 
+    func openRouterAPIKey(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        let stored = openrouterApiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !stored.isEmpty {
+            return stored
+        }
+        let environmentKey = environment["OPENROUTER_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return environmentKey.isEmpty ? nil : environmentKey
+    }
+
     static let defaultClaudeRunnerImage = "gegenlesen/claude-runner:0.1.0"
     static let defaultCodexRunnerImage = "gegenlesen/codex-runner:0.1.0"
     static let defaultCursorRunnerImage = "gegenlesen/cursor-runner:0.1.0"
@@ -568,6 +628,18 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         if let value = environment["GEGENLESEN_EMBEDDING_MODEL"], !value.isEmpty {
             next.embeddings.model = value
         }
+        if let value = environment["GEGENLESEN_JEV_ENABLED"], !value.isEmpty {
+            next.jev.enabled = ["1", "true", "yes"].contains(value.lowercased())
+        }
+        if let value = environment["GEGENLESEN_JEV_MODEL"], !value.isEmpty {
+            next.jev.model = value
+        }
+        if let value = environment["GEGENLESEN_JEV_MIN_CONFIDENCE"], let confidence = Double(value) {
+            next.jev.minConfidence = min(max(confidence, 0), 1)
+        }
+        if let value = environment["GEGENLESEN_JEV_TIMEOUT_SEC"], let seconds = Int(value) {
+            next.jev.timeoutSec = min(max(seconds, 1), 30)
+        }
         if let value = environment["GEGENLESEN_RULE_TOKEN_BUDGET"], let budget = Int(value) {
             next.limits.ruleTokenBudget = budget
         }
@@ -620,6 +692,7 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
             opencodeImage: opencodeImage,
             scannerImage: scannerImage,
             limits: limits,
+            jev: jev,
             openrouterConfigured: isOpenRouterConfigured(environment: environment),
             engineAuth: engineAuthStatus(environment: environment),
             risk: risk
@@ -643,6 +716,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
     var opencodeImage: String
     var scannerImage: String
     var limits: Limits
+    var jev: JevConfig
     var openrouterConfigured: Bool
     var engineAuth: [String: EngineAuthStatus]
     var risk: RiskConfig
@@ -656,6 +730,7 @@ struct SettingsDTO: Content, Sendable, Equatable {
         case opencodeImage = "opencode_image"
         case scannerImage = "scanner_image"
         case limits
+        case jev
         case openrouterConfigured = "openrouter_configured"
         case engineAuth = "engine_auth"
         case risk
@@ -683,6 +758,10 @@ struct LimitsSettingsUpdate: Content, Sendable, Equatable {
         case learnIntervalMinutes = "learn_interval_minutes"
         case reviewStrictMode = "review_strict_mode"
     }
+}
+
+struct JevSettingsUpdate: Content, Sendable, Equatable {
+    var enabled: Bool?
 }
 
 struct EngineProfileUpdate: Content, Sendable, Equatable {
@@ -721,6 +800,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
     var engineProfiles: EngineProfilesUpdate? = nil
     var openrouterApiKey: String?
     var scannerImage: String? = nil
+    var jev: JevSettingsUpdate? = nil
     var risk: RiskSettingsUpdate? = nil
     var limits: LimitsSettingsUpdate? = nil
 
@@ -732,6 +812,7 @@ struct SettingsUpdate: Content, Sendable, Equatable {
         case engineProfiles = "engine_profiles"
         case openrouterApiKey = "openrouter_api_key"
         case scannerImage = "scanner_image"
+        case jev
         case risk
         case limits
     }

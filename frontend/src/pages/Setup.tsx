@@ -59,6 +59,7 @@ export function SetupPage() {
   const [appetite, setAppetite] = useState(1);
   const [riskMode, setRiskMode] = useState<RiskMode>("shadow");
   const [learnMinutes, setLearnMinutes] = useState(0);
+  const [jevEnabled, setJevEnabled] = useState(false);
 
   useEffect(() => {
     const data = settings.data;
@@ -77,6 +78,7 @@ export function SetupPage() {
     setAppetite(data.risk.appetite);
     setRiskMode(data.risk.mode);
     setLearnMinutes(data.limits.learn_interval_minutes ?? 0);
+    setJevEnabled(data.jev.enabled);
   }, [settings.data]);
 
   useEffect(() => {
@@ -144,6 +146,7 @@ export function SetupPage() {
         },
         openrouter_api_key: apiKey.trim() || undefined,
         scanner_image: scannerImage.trim(),
+        jev: { enabled: jevEnabled },
         risk: { mode: riskMode, appetite },
         limits: { learn_interval_minutes: learnMinutes },
       }),
@@ -395,6 +398,18 @@ export function SetupPage() {
           Harvest, learn, and architecture cards. Independent of the findings judge. A stronger
           model usually mines better rules, and costs more.
         </p>
+        <h2>fast review</h2>
+        <label>
+          <input
+            type="checkbox"
+            checked={jevEnabled}
+            onChange={(event) => setJevEnabled(event.target.checked)}
+          />
+          Use JEV to quickly reject unsupported, non-actionable findings
+          <span className="formhint">
+            Uses {settings.data?.jev.model ?? "~typesafe/jev-latest"} through your OpenRouter key before the full judge.
+          </span>
+        </label>
         <label>
           Scanner image
           <input

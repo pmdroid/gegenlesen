@@ -75,6 +75,12 @@ gegenlesen review  (CLI packs cwd, POST /api/jobs)
 
 Cheap checks run first. Both reviewers always run when there is new work. The judge defaults to keep. The host still drops a finding when the cited lines do not support it. Nothing auto-enables.
 
+## JEV fast gate
+
+JEV is a structured decision model, not a source-reading agent, so gegenlesen uses it to quickly review candidate findings before the full judge. It asks two independent questions for each candidate: whether the cited source supports the claimed defect and whether the finding is actionable. A candidate is dropped only when both answers reject it at the configured confidence; all other candidates continue to the full judge.
+
+JEV uses the configured OpenRouter API key. Enable it with `GEGENLESEN_JEV_ENABLED=1`. `GEGENLESEN_JEV_MODEL`, `GEGENLESEN_JEV_MIN_CONFIDENCE`, and `GEGENLESEN_JEV_TIMEOUT_SEC` override the matching `jev` configuration fields.
+
 ## Review scopes
 
 | Scope | What you upload | What gets reviewed |

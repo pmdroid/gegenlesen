@@ -144,6 +144,9 @@ enum SettingsRoute {
             }
             next.scannerImage = image
         }
+        if let jev = body.jev, let enabled = jev.enabled {
+            next.jev.enabled = enabled
+        }
         if let limits = body.limits {
             if let mine = limits.mineTimeoutSec {
                 next.limits.mineTimeoutSec = Limits.clampMineTimeout(mine)

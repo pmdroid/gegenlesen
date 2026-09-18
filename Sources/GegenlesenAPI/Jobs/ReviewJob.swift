@@ -162,6 +162,12 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                         : ScannerEngine(docker: docker, image: config.scannerImage),
                     reviewer: invocation,
                     judge: invocation,
+                    fastJudge: config.jev.enabled ? JevFindingJudge(
+                        apiKey: config.openRouterAPIKey() ?? "",
+                        model: config.jev.model,
+                        minConfidence: config.jev.minConfidence,
+                        timeout: TimeInterval(config.jev.timeoutSec)
+                    ) : nil,
                     ruleTokenBudget: config.limits.ruleTokenBudget,
                     retrieveK: config.embeddings.retrieveK,
                     maxChunks: config.embeddings.maxChunks,

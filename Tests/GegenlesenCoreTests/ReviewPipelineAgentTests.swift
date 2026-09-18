@@ -239,6 +239,85 @@ struct ReviewPipelineAgentTests {
     }
 
     @Test
+    func fastJudgeDropsFindingBeforeTheFullJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let judge = RecordingJudge()
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: FakeReviewer(),
+                    judge: judge,
+                    fastJudge: DropAllFastJudge()
+                ).run(jobID: job.id)
+                #expect(judge.ran == false)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.count == 1)
+                #expect(findings[0].judgeVerdict == .drop)
+                #expect(findings[0].judgeRationale == "fast judge rejected finding")
+            }
+        }
+    }
+
+    @Test
+    func fastJudgeEmptyPathAppliesOperatorSuppressions() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let fingerprint = "fast-gate-fingerprint"
+            let now = Date()
+            let prior = Job(
+                id: JobID.generate(),
+                createdAt: now,
+                updatedAt: now,
+                status: .succeeded,
+                scope: .full,
+                repository: "github.com/acme/app",
+                reviewerAModelID: "a",
+                reviewerBModelID: "b",
+                judgeModelID: "j"
+            )
+            try await store.insertJob(prior)
+            let priorFinding = Finding(
+                id: FindingID.generate(),
+                jobID: prior.id,
+                phase: .agent,
+                severity: .warning,
+                title: "prior",
+                message: "prior",
+                fingerprint: fingerprint,
+                createdAt: now
+            )
+            try await store.insertParsedFindings([priorFinding])
+            _ = try await store.applyFindingFeedback(
+                finding: priorFinding,
+                verdict: .disagree,
+                reaction: .thumbsDown,
+                comment: nil
+            )
+            try await withPackedRepo(dir: dir) { archive in
+                var job = queuedJob()
+                job.repository = "github.com/acme/app"
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: FingerprintedReviewer(fingerprint: fingerprint),
+                    judge: RecordingJudge(),
+                    fastJudge: DropAllFastJudge()
+                ).run(jobID: job.id)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.count == 1)
+                #expect(findings[0].judgeRationale == OperatorSuppression.dropReason)
+            }
+        }
+    }
+
+    @Test
     func hostForcedDropPersistsAndCountsSummary() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
@@ -591,6 +670,14 @@ final class RecordingJudge: JudgeRunning, @unchecked Sendable {
     }
 }
 
+struct DropAllFastJudge: FastJudgeRunning {
+    func run(_ input: JudgeInputFile) async -> JudgeOutcome {
+        .verdicts(JudgeFile(verdicts: input.candidates.map {
+            JudgeVerdictRow(findingID: $0.id, verdict: .drop, rationale: "fast judge rejected finding")
+        }))
+    }
+}
+
 struct KeepAllJudge: JudgeRunning {
     func run(_ request: JudgeRequest) async -> JudgeRunResult {
         JudgeRunResult(
@@ -651,6 +738,36 @@ struct FakeReviewer: ReviewerRunning {
             containerNameA: "gegenlesen-review-\(request.job.id.rawValue)-a",
             containerNameB: "gegenlesen-review-\(request.job.id.rawValue)-b",
             containerName: "gegenlesen-judge-\(request.job.id.rawValue)"
+        )
+    }
+}
+
+struct FingerprintedReviewer: ReviewerRunning {
+    let fingerprint: String
+
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        let finding = Finding(
+            id: FindingID.generate(),
+            jobID: request.job.id,
+            phase: .agent,
+            reviewerSlot: .modelA,
+            severity: .warning,
+            title: "fingerprinted",
+            message: "fingerprinted",
+            filePath: "Sources/A.swift",
+            startLine: 1,
+            endLine: 1,
+            snippet: "print(2)",
+            fingerprint: fingerprint,
+            createdAt: Date()
+        )
+        return AgentReviewResult(
+            findings: [finding],
+            validFileCount: 1,
+            failed: false,
+            containerNameA: ReviewContainers.slot(request.job.id, .modelA),
+            containerNameB: ReviewContainers.slot(request.job.id, .modelB),
+            containerName: ReviewContainers.judge(request.job.id)
         )
     }
 }
