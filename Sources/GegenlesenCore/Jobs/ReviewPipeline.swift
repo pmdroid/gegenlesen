@@ -558,7 +558,8 @@ public struct ReviewPipeline: Sendable {
         }
 
         if candidates.isEmpty {
-            try await store.updateFindings(mechanical)
+            let labeled = try await applyOperatorSuppressions(mechanical, jobID: jobID)
+            try await store.updateFindings(labeled)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .reviewOK(validFindingCount: 0)

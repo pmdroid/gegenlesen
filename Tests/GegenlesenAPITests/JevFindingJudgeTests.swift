@@ -62,7 +62,7 @@ struct JevFindingJudgeTests {
 
     private func candidate() -> JudgeCandidate {
         JudgeCandidate(
-            id: "fnd_jev",
+            id: FindingID("fnd_jev"),
             severity: .warning,
             title: "Claim",
             message: "The code fails.",
