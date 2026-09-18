@@ -139,7 +139,7 @@ struct JevConfig: Content, Sendable, Equatable {
 
     static let v1 = JevConfig(
         enabled: false,
-        model: "jev-latest",
+        model: "~typesafe/jev-latest",
         minConfidence: 0.9,
         timeoutSec: 4
     )
@@ -511,13 +511,15 @@ struct GegenlesenConfig: Content, Sendable, Equatable {
         return false
     }
 
-    func typesafeAPIKey(
+    func openRouterAPIKey(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
-        guard let key = environment["TYPESAFE_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
-            return nil
+        let stored = openrouterApiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !stored.isEmpty {
+            return stored
         }
-        return key
+        let environmentKey = environment["OPENROUTER_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return environmentKey.isEmpty ? nil : environmentKey
     }
 
     static let defaultClaudeRunnerImage = "gegenlesen/claude-runner:0.1.0"

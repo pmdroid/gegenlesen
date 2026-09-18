@@ -79,7 +79,7 @@ Cheap checks run first. Both reviewers always run when there is new work. The ju
 
 JEV is a structured decision model, not a source-reading agent, so gegenlesen uses it to quickly review candidate findings before the full judge. It asks two independent questions for each candidate: whether the cited source supports the claimed defect and whether the finding is actionable. A candidate is dropped only when both answers reject it at the configured confidence; all other candidates continue to the full judge.
 
-Set `TYPESAFE_API_KEY` and enable it with `GEGENLESEN_JEV_ENABLED=1`. `GEGENLESEN_JEV_MODEL`, `GEGENLESEN_JEV_MIN_CONFIDENCE`, and `GEGENLESEN_JEV_TIMEOUT_SEC` override the matching `jev` configuration fields.
+JEV uses the configured OpenRouter API key. Enable it with `GEGENLESEN_JEV_ENABLED=1`. `GEGENLESEN_JEV_MODEL`, `GEGENLESEN_JEV_MIN_CONFIDENCE`, and `GEGENLESEN_JEV_TIMEOUT_SEC` override the matching `jev` configuration fields.
 
 ## Review scopes
 

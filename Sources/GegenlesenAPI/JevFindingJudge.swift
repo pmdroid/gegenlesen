@@ -9,7 +9,7 @@ struct JevFindingJudge: FastJudgeRunning {
     let model: String
     let minConfidence: Double
     let timeout: TimeInterval
-    var endpoint = URL(string: "https://api.typesafe.ai/v1/systemone")!
+    var endpoint = URL(string: "https://openrouter.ai/api/alpha/decisions")!
     var send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { request in
         try await URLSession.shared.data(for: request)
     }
@@ -84,6 +84,9 @@ struct JevFindingJudge: FastJudgeRunning {
         request.timeoutInterval = timeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://gegenlesen.local", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("gegenlesen", forHTTPHeaderField: "X-Title")
         do {
             let (data, response) = try await send(request)
             guard let http = response as? HTTPURLResponse,
@@ -118,6 +121,14 @@ private struct JevResponse: Decodable {
 
     struct Answer: Decodable {
         var choice: String
-        var confidence: Double
+        var confidence: Double {
+            confidenceValue ?? probabilities?[choice] ?? 0
+        }
+        var confidenceValue: Double?
+        var probabilities: [String: Double]?
+
+        enum CodingKeys: String, CodingKey {
+            case choice, confidenceValue = "confidence", probabilities
+        }
     }
 }

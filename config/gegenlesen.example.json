@@ -19,7 +19,7 @@
   },
   "jev": {
     "enabled": false,
-    "model": "jev-latest",
+    "model": "~typesafe/jev-latest",
     "min_confidence": 0.9,
     "timeout_sec": 4
   },

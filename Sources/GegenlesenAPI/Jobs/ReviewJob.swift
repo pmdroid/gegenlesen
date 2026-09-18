@@ -163,7 +163,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     reviewer: invocation,
                     judge: invocation,
                     fastJudge: config.jev.enabled ? JevFindingJudge(
-                        apiKey: config.typesafeAPIKey() ?? "",
+                        apiKey: config.openRouterAPIKey() ?? "",
                         model: config.jev.model,
                         minConfidence: config.jev.minConfidence,
                         timeout: TimeInterval(config.jev.timeoutSec)

@@ -23,6 +23,8 @@ struct JevFindingJudgeTests {
             send: { request in
                 #expect(request.url == URL(string: "https://openrouter.ai/api/alpha/decisions"))
                 #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer openrouter-test")
+                let payload = try #require(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any])
+                #expect(payload["model"] as? String == "~typesafe/jev-latest")
                 return (body, HTTPURLResponse(url: URL(string: "https://example.test")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             }
         )
