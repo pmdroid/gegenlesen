@@ -44,6 +44,20 @@ struct ConfigLimitsTests {
     }
 
     @Test
+    func envConfiguresJevGate() {
+        let config = GegenlesenConfig.example.applyingEnvironmentOverrides([
+            "GEGENLESEN_JEV_ENABLED": "true",
+            "GEGENLESEN_JEV_MODEL": "jev-1.13",
+            "GEGENLESEN_JEV_MIN_CONFIDENCE": "0.93",
+            "GEGENLESEN_JEV_TIMEOUT_SEC": "6",
+        ])
+        #expect(config.jev.enabled)
+        #expect(config.jev.model == "jev-1.13")
+        #expect(config.jev.minConfidence == 0.93)
+        #expect(config.jev.timeoutSec == 6)
+    }
+
+    @Test
     func minerModelDefaultsToJudgeWhenOmitted() throws {
         let json = """
         {

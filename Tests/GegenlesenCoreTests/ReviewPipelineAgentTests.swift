@@ -239,6 +239,31 @@ struct ReviewPipelineAgentTests {
     }
 
     @Test
+    func fastJudgeDropsFindingBeforeTheFullJudge() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let judge = RecordingJudge()
+                try await ReviewPipeline(
+                    store: store,
+                    skipAgent: false,
+                    reviewer: FakeReviewer(),
+                    judge: judge,
+                    fastJudge: DropAllFastJudge()
+                ).run(jobID: job.id)
+                #expect(judge.ran == false)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.count == 1)
+                #expect(findings[0].judgeVerdict == .drop)
+                #expect(findings[0].judgeRationale == "fast judge rejected finding")
+            }
+        }
+    }
+
+    @Test
     func hostForcedDropPersistsAndCountsSummary() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
@@ -588,6 +613,14 @@ final class RecordingJudge: JudgeRunning, @unchecked Sendable {
     func run(_ request: JudgeRequest) async -> JudgeRunResult {
         ran = true
         return JudgeRunResult(outcome: .containerFailed, containerName: ReviewContainers.judge(request.job.id))
+    }
+}
+
+struct DropAllFastJudge: FastJudgeRunning {
+    func run(_ input: JudgeInputFile) async -> JudgeOutcome {
+        .verdicts(JudgeFile(verdicts: input.candidates.map {
+            JudgeVerdictRow(findingID: $0.id, verdict: .drop, rationale: "fast judge rejected finding")
+        }))
     }
 }
 
