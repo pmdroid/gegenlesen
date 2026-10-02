@@ -10,11 +10,11 @@ struct StoreTests {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
             let first = try await store.appliedMigrationIdentifiers()
-            #expect(first == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines, Migrations.v5ReviewDegraded])
+            #expect(first == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines, Migrations.v5ReviewDegraded, Migrations.v6ReviewDeadline])
 
             let reopened = try Store.open(dataDir: dir)
             let second = try await reopened.appliedMigrationIdentifiers()
-            #expect(second == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines, Migrations.v5ReviewDegraded])
+            #expect(second == [Migrations.v1Initial, Migrations.v2Repositories, Migrations.v3Risk, Migrations.v4SlotEngines, Migrations.v5ReviewDegraded, Migrations.v6ReviewDeadline])
         }
     }
 

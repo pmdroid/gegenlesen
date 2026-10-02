@@ -7,6 +7,8 @@ public enum Migrations {
     public static let v4SlotEngines = "v4_slot_engines"
     public static let v5ReviewDegraded = "v5_review_degraded"
 
+    public static let v6ReviewDeadline = "v6_review_deadline"
+
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration(v1Initial, migrate: migrateV1Initial)
@@ -14,6 +16,9 @@ public enum Migrations {
         migrator.registerMigration(v3Risk, migrate: migrateV3Risk)
         migrator.registerMigration(v4SlotEngines, migrate: migrateV4SlotEngines)
         migrator.registerMigration(v5ReviewDegraded, migrate: migrateV5ReviewDegraded)
+        migrator.registerMigration(v6ReviewDeadline) { db in
+            try db.execute(sql: "ALTER TABLE jobs ADD COLUMN deadline_at TEXT")
+        }
         return migrator
     }
 

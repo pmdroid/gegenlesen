@@ -23,7 +23,7 @@ extension Store {
             try db.execute(
                 sql: """
                     INSERT INTO jobs (
-                      id, created_at, updated_at, started_at, finished_at,
+                      id, created_at, updated_at, started_at, finished_at, deadline_at,
                       status, scope, parent_job_id, title, repository,
                       reviewer_a_engine, reviewer_a_model_id,
                       reviewer_b_engine, reviewer_b_model_id,
@@ -34,7 +34,7 @@ extension Store {
                       risk_verdict, risk_json,
                       review_degraded, review_degraded_slot, review_degraded_engine, review_degraded_error
                     ) VALUES (
-                      ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?,
                       ?, ?, ?, ?, ?,
                       ?, ?,
                       ?, ?,
@@ -48,6 +48,56 @@ extension Store {
                     """,
                 arguments: job.sqlArguments
             )
+        }
+    }
+
+    public func expireReview(id: JobID, now: Date = Date(), risk: RiskConfig = .v1) throws -> Bool {
+        guard let job = try job(id: id), !job.status.isTerminal else { return false }
+        _ = try finishJob(id: id, status: .failed, errorMessage: "review_deadline_exceeded", now: now)
+        try updateJobRisk(jobID: id, assessment: RiskAssessment(
+            verdict: .needsHuman,
+            mode: risk.mode,
+            score: 5,
+            appetite: risk.appetite,
+            reasons: [RiskReason(code: "review_deadline_exceeded", detail: "Review incomplete: time budget exhausted")]
+        ))
+        try appendEvent(jobID: id, level: .error, message: "review_deadline_exceeded")
+        return true
+    }
+
+    public func completeReview(
+        id: JobID,
+        event: JobStateMachine.Event,
+        assessment: RiskAssessment,
+        risk: RiskConfig
+    ) throws {
+        try write { db in
+            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM jobs WHERE id = ?", arguments: [id.rawValue]) else { return }
+            let current = Job(row: row)
+            guard !current.status.isTerminal else { return }
+            guard try JobStateMachine.transition(from: current.status, event) == .succeeded else {
+                throw JobStateMachine.IllegalTransition(from: current.status, event: event)
+            }
+            let now = Date()
+            let expired = current.deadlineAt.map { $0 <= now } ?? false
+            let finalAssessment = expired ? RiskAssessment(
+                verdict: .needsHuman, mode: risk.mode, score: 5, appetite: risk.appetite,
+                reasons: [RiskReason(code: "review_deadline_exceeded", detail: "Review incomplete: time budget exhausted")]
+            ) : assessment
+            let timestamp = ISO8601Dates.string(from: now)
+            try db.execute(
+                sql: "UPDATE jobs SET status = ?, finished_at = ?, updated_at = ?, risk_verdict = ?, risk_json = ?, error_message = ? WHERE id = ?",
+                arguments: [expired ? "failed" : "succeeded", timestamp, timestamp,
+                    finalAssessment.verdict.rawValue, RiskGate.encode(finalAssessment),
+                    expired ? "review_deadline_exceeded" : nil, id.rawValue]
+            )
+            let messages = expired ? ["review_deadline_exceeded"] : ["risk_\(assessment.verdict.rawValue)", "succeeded"]
+            for message in messages {
+                try db.execute(
+                    sql: "INSERT INTO job_events (job_id, ts, level, message) VALUES (?, ?, ?, ?)",
+                    arguments: [id.rawValue, timestamp, expired ? "error" : "info", message]
+                )
+            }
         }
     }
 
@@ -415,9 +465,14 @@ extension Store {
         baseSHA: String? = nil,
         headSHA: String? = nil,
         fileCount: Int? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        risk: RiskConfig = .v1
     ) throws -> Job {
-        try write { db in
+        if let job = try job(id: jobID), let deadline = job.deadlineAt, deadline <= Date(), !job.status.isTerminal {
+            _ = try expireReview(id: jobID, risk: risk)
+            return try self.job(id: jobID)!
+        }
+        return try write { db in
             guard let row = try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM jobs WHERE id = ?",
@@ -804,6 +859,7 @@ extension Job {
             ISO8601Dates.string(from: updatedAt),
             startedAt.map(ISO8601Dates.string(from:)),
             finishedAt.map(ISO8601Dates.string(from:)),
+            deadlineAt.map(ISO8601Dates.fractionalString(from:)),
             status.rawValue,
             scope.rawValue,
             parentJobID?.rawValue,
@@ -846,6 +902,7 @@ extension Job {
             updatedAt: ISO8601Dates.date(from: row.string("updated_at")) ?? Date(),
             startedAt: row.optionalString("started_at").flatMap(ISO8601Dates.date(from:)),
             finishedAt: row.optionalString("finished_at").flatMap(ISO8601Dates.date(from:)),
+            deadlineAt: row.optionalString("deadline_at").flatMap(ISO8601Dates.date(from:)),
             status: JobStatus(rawValue: row.string("status")) ?? .queued,
             scope: JobScope(rawValue: row.string("scope")) ?? .full,
             parentJobID: row.optionalString("parent_job_id").map { JobID($0) },

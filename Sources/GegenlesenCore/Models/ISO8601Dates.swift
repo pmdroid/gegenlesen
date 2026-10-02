@@ -7,6 +7,12 @@ public enum ISO8601Dates: Sendable {
         return formatter.string(from: date)
     }
 
+    public static func fractionalString(from date: Date) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return fractional.string(from: date)
+    }
+
     public static func date(from string: String) -> Date? {
         lock.lock()
         defer { lock.unlock() }

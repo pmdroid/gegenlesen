@@ -267,6 +267,19 @@ struct ChangeSetTests {
     }
 
     @Test
+    func gitOutputLargerThanPipeBufferCompletes() throws {
+        try withTempDir("gegenlesen-git-large-output") { dir in
+            try git(["init"], cwd: dir)
+            let contents = String(repeating: "source line\n", count: 50_000)
+            try writeFile("large.txt", contents, in: dir)
+            try git(["add", "large.txt"], cwd: dir)
+            try git(["commit", "-m", "large source"], cwd: dir)
+            let runner = GitRunner(workspace: dir, deadline: Date().addingTimeInterval(5))
+            #expect(try runner.run(["show", "HEAD:large.txt"]) == contents)
+        }
+    }
+
+    @Test
     func explicitBaseRefWinsOverGuess() throws {
         try withTempDir("gegenlesen-id-base-ref") { dir in
             let repo = dir.appendingPathComponent("repo")

@@ -594,13 +594,12 @@ struct GitRunner: Sendable {
 
     @discardableResult
     func run(_ arguments: [String]) throws -> String {
-        let remaining = deadline.timeIntervalSinceNow
+        try ReviewDeadline.check()
+        let remaining = ReviewDeadline.timeout(.seconds(deadline.timeIntervalSinceNow)).timeInterval
         if remaining <= 0 {
             throw IdentifyError.timeout
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         var gitArgs = [
             "-c", "user.name=gegenlesen",
             "-c", "user.email=gegenlesen@localhost",
@@ -617,33 +616,19 @@ struct GitRunner: Sendable {
         } else {
             gitArgs.append(contentsOf: arguments)
         }
-        process.arguments = gitArgs
-        process.currentDirectoryURL = workspace
-        process.environment = GitRunner.isolatedEnvironment(home: home.path)
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-        process.standardInput = FileHandle.nullDevice
-
-        try process.run()
-
-        let group = DispatchGroup()
-        group.enter()
-        process.terminationHandler = { _ in group.leave() }
-        let timeout = DispatchTime.now() + remaining
-        if group.wait(timeout: timeout) == .timedOut {
-            process.terminate()
+        let result: (stdout: Data, stderr: Data, status: Int32)
+        do {
+            result = try ReviewDeadline.$expiresAt.withValue(.now + .seconds(remaining)) {
+                try RepoPacker.run("/usr/bin/git", gitArgs, cwd: workspace, extraEnv: ["HOME": home.path])
+            }
+        } catch is ReviewDeadlineExceeded {
             throw IdentifyError.timeout
         }
-
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else {
+        let err = String(data: result.stderr, encoding: .utf8) ?? ""
+        guard result.status == 0 else {
             throw IdentifyError(errorMessage: err.isEmpty ? "git failed" : err)
         }
-        return String(data: data, encoding: .utf8) ?? ""
+        return String(data: result.stdout, encoding: .utf8) ?? ""
     }
 
     static func isolatedEnvironment(home: String = "/var/empty") -> [String: String] {

@@ -69,6 +69,7 @@ public struct ArchiveUnpacker: Sendable {
     public init() {}
 
     public func unpack(archive: URL, into workspace: URL) throws {
+        try ReviewDeadline.check()
         let gzip = try Self.sniff(archive)
         try walk(archive: archive, gzip: gzip, write: false, workspace: workspace)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
@@ -99,6 +100,7 @@ public struct ArchiveUnpacker: Sendable {
         var uncompressed: Int64 = 0
 
         while true {
+            try ReviewDeadline.check()
             let status = gegenlesen_archive_next_header(handle)
             if status == 0 {
                 break
@@ -236,6 +238,7 @@ public struct ArchiveUnpacker: Sendable {
     ) throws -> Int64 {
         var expanded: Int64 = 0
         while true {
+            try ReviewDeadline.check()
             var buf: UnsafeRawPointer?
             var size: Int = 0
             var offset: Int64 = 0
@@ -323,6 +326,7 @@ public struct ArchiveUnpacker: Sendable {
             return
         }
         for case let url as URL in enumerator {
+            try ReviewDeadline.check()
             try chownPath(url.path, uid: uid, gid: gid, required: required)
         }
     }
