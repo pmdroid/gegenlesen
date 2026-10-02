@@ -26,12 +26,23 @@ struct Review: AsyncParsableCommand {
     @Flag(name: .long, help: "Exit 1 unless the job succeeded with risk verdict auto_approve.")
     var requireAutoApprove = false
 
-    @Option(name: .long, help: "How long to wait for the job (seconds, or 45m / 2h). Default 30m.")
+    @Option(name: .long, help: "Total review time including packing and queueing (seconds, or 5m). Maximum and default 5m.")
     var timeout: String?
 
     func run() async throws {
+        let seconds = min(try pollTimeout(timeout, defaultSeconds: 300), ReviewDeadline.maximumSeconds)
+        let deadline = ContinuousClock.now + .seconds(seconds)
+        try await ReviewDeadline.$expiresAt.withValue(deadline) {
+            try await runReview()
+        }
+    }
+
+    private func runReview() async throws {
         let client = GegenlesenClient()
-        let packed = try packCWD(baseRef: baseRef)
+        let packDeadline = ContinuousClock.now + ReviewDeadline.timeout(.seconds(30), reserving: .seconds(1))
+        let packed = try ReviewDeadline.$expiresAt.withValue(packDeadline) {
+            try packCWD(baseRef: baseRef)
+        }
         let archive = packed.archive
         var meta: [String: Any] = [
             "scope": parent == nil ? "full" : "incremental",
@@ -46,8 +57,8 @@ struct Review: AsyncParsableCommand {
             meta["repository"] = repository
         }
         let accepted = try await client.createJob(archive: archive, meta: meta)
-        print(accepted.id)
-        let terminal = try await client.poll(id: accepted.id, timeout: try pollTimeout(timeout, defaultSeconds: 1800))
+        FileHandle.standardOutput.write(Data("\(accepted.id)\n".utf8))
+        let terminal = try await client.poll(id: accepted.id, timeout: 300, progress: true)
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
         } else {
@@ -110,7 +121,7 @@ struct Harvest: AsyncParsableCommand {
         let client = GegenlesenClient()
         let packed = try packCWD(baseRef: nil)
         let accepted = try await client.createHarvest(archive: packed.archive, repository: detectRepository())
-        print(accepted.id)
+        FileHandle.standardOutput.write(Data("\(accepted.id)\n".utf8))
         let terminal = try await client.poll(id: accepted.id, timeout: try pollTimeout(timeout, defaultSeconds: 3600))
         if let error = terminal.errorMessage, !error.isEmpty {
             print("\(terminal.status) \(error)")
@@ -336,7 +347,7 @@ func findScannerFixture() -> URL {
 func pollTimeout(_ raw: String?, defaultSeconds: TimeInterval) throws -> TimeInterval {
     let value = raw ?? ProcessInfo.processInfo.environment["GEGENLESEN_TIMEOUT"]
     guard let value, !value.isEmpty else { return defaultSeconds }
-    guard let seconds = parseDurationSeconds(value), seconds > 0 else {
+    guard let seconds = parseDurationSeconds(value), seconds.isFinite, seconds > 0 else {
         throw CLIError("invalid --timeout \(value) (use seconds, 45m, or 2h)")
     }
     return seconds
