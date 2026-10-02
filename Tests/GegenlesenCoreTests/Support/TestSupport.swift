@@ -77,7 +77,7 @@ func writeFile(_ relative: String, _ contents: String, in root: URL) throws {
 
 func bsdtarCreate(from source: URL, to archive: URL, format: String = "ustar") throws {
     let result = try runIsolated(
-        executable: "/usr/bin/bsdtar",
+        executable: ProcessInfo.processInfo.environment["BSDTAR"] ?? "/usr/bin/bsdtar",
         arguments: ["--format", format, "-cf", archive.path, "-C", source.path, "."],
         cwd: source
     )
@@ -89,7 +89,7 @@ func bsdtarCreate(from source: URL, to archive: URL, format: String = "ustar") t
 
 func gzipTarCreate(from source: URL, to archive: URL) throws {
     let result = try runIsolated(
-        executable: "/usr/bin/bsdtar",
+        executable: ProcessInfo.processInfo.environment["BSDTAR"] ?? "/usr/bin/bsdtar",
         arguments: ["-czf", archive.path, "-C", source.path, "."],
         cwd: source
     )
