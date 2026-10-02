@@ -35,7 +35,7 @@ Preconditions:
 
 - Uncommitted files are invisible. The helper fixture commits `v1` then `v2` so the pack has a diff.
 - Default CLI URL is `http://127.0.0.1:8080`. Forgetting `GEGENLESEN_URL` talks to whatever owns 8080 (OrbStack on this machine), not the verify instance.
-- Timeout flag only polls. The server still kills the miner at `limits.mine_timeout_sec`. Skip-agent reviews should finish in seconds.
+- The review timeout covers packing, upload, queueing, and execution, with a maximum of five minutes. Skip-agent reviews should finish in seconds.
 - `gegenlesen review --parent` needs a succeeded parent with SHAs and job files. The fixture helper does not pass `--parent`.
 - Do not start a second full `--with-agent` review of the same SHA.
 - Harvest is `gegenlesen harvest`, not this feature. Skip-agent harvest writes disabled drafts without a miner. `cli-review` runs harvest once per launch because reviews fail with `harvest_required` otherwise. That harvest job appears on `/`. Run `jobs-empty` before the first `cli-review`.

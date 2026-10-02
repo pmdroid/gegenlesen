@@ -26,7 +26,7 @@ export VERIFY_RUN=my-check
 
 Ready when `/api/health` answers. stdout prints the pid and `http://127.0.0.1:<port>`. Ledger is that origin (production path: `GegenlesenAPI` serves `frontend/dist`, not Vite on 5173).
 
-Default launch sets `GEGENLESEN_SKIP_AGENT=1` and writes a dummy OpenRouter key into the isolated config so Ledger skips the first-run `/setup` redirect. Reviewers A/B and the judge do not run. `gegenlesen review` still unpacks, identifies, runs deterministic checks, then succeeds with risk reason `reviewers_skipped`.
+Default launch sets `GEGENLESEN_SKIP_AGENT=1` and writes a dummy OpenRouter key into the isolated config so Ledger skips the first-run `/setup` redirect. It disables the scanner container and points embeddings at a closed loopback port. Reviewers A/B and the judge do not run. `gegenlesen review` still unpacks, identifies, runs deterministic checks, then succeeds with risk reason `reviewers_skipped`.
 
 Flags:
 
@@ -168,7 +168,7 @@ Undo Ledger mutations (delete the probe rule or note) through the UI or `drive.s
 .agents/skills/verify-gegenlesen/drive.sh cleanup
 ```
 
-`drive.sh` plus `browser.mjs`. Playwright is a skill-local npm dep and uses the installed Chrome (`channel: chrome`). `VERIFY_RUN` names the evidence dir. `VERIFY_HEADED=1` shows the browser.
+`drive.sh` plus `browser.mjs`. Playwright is a skill-local npm dep and uses installed Chrome on macOS and Playwright Chromium on Linux. `VERIFY_RUN` names the evidence dir. `VERIFY_HEADED=1` shows the browser.
 
 ## Gotchas
 
@@ -178,4 +178,4 @@ Undo Ledger mutations (delete the probe rule or note) through the UI or `drive.s
 - PUT `/api/settings` persists to `GEGENLESEN_CONFIG`. That is why launch uses an isolated file, not `config/gegenlesen.json`.
 - One agent job at a time. skip-agent jobs still occupy the queue while they unpack.
 - `frontend/dist` is gitignored. Launch builds it if `index.html` is missing.
-- Swift must be Xcode's (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`), not `/usr/bin/swift`. `drive.sh` sets that the same way `scripts/swift` does.
+- `scripts/swift` selects Xcode when available; Linux uses the installed Swift toolchain. Linux needs libarchive, `lsof`, and Playwright Chromium.

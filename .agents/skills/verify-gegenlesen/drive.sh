@@ -169,9 +169,12 @@ ensure_frontend() {
 ensure_bins() {
   (
     cd "$root"
-    export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
-    ./scripts/swift build --product GegenlesenAPI
-    ./scripts/swift build --product gegenlesen
+    local linker=()
+    if [[ -n "${VERIFY_LIBRARY_PATH:-}" ]]; then
+      linker=(-Xlinker "-L$VERIFY_LIBRARY_PATH")
+    fi
+    ./scripts/swift build "${linker[@]}" --product GegenlesenAPI
+    ./scripts/swift build "${linker[@]}" --product gegenlesen
   )
 }
 
@@ -186,13 +189,15 @@ write_config() {
   local port="$2"
   local data_dir="$3"
   local with_key="$4"
-  python3 - "$dest" "$port" "$data_dir" "$with_key" "$root/config/gegenlesen.example.json" <<'PY'
+  python3 - "$dest" "$port" "$data_dir" "$with_key" "$root/config/gegenlesen.example.json" "$5" <<'PY'
 import json, sys
 dest, port, data_dir, with_key, src = sys.argv[1:6]
 cfg = json.load(open(src))
 cfg["bind"] = "127.0.0.1"
 cfg["port"] = int(port)
 cfg["data_dir"] = data_dir
+if sys.argv[6] == "0":
+    cfg["scanner_image"] = ""
 if with_key == "1":
     cfg["openrouter_api_key"] = "sk-or-verify-not-a-real-key"
 json.dump(cfg, open(dest, "w"), indent=2)
@@ -230,9 +235,9 @@ cmd_launch() {
   mkdir -p "$data_dir" "$cache/config"
   config_path="$cache/config/gegenlesen.json"
   if [[ "$no_key" -eq 1 ]]; then
-    write_config "$config_path" "$port" "$data_dir" 0
+    write_config "$config_path" "$port" "$data_dir" 0 "$with_agent"
   else
-    write_config "$config_path" "$port" "$data_dir" 1
+    write_config "$config_path" "$port" "$data_dir" 1 "$with_agent"
   fi
   if [[ "$with_agent" -eq 1 ]]; then
     skip_agent=0
@@ -244,7 +249,6 @@ cmd_launch() {
   : >"$log"
   (
     cd "$root"
-    export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
     export GEGENLESEN_ROOT="$root"
     export GEGENLESEN_CONFIG="$config_path"
     export GEGENLESEN_DATA_DIR="$data_dir"
@@ -252,6 +256,7 @@ cmd_launch() {
     export GEGENLESEN_PORT="$port"
     if [[ "$skip_agent" -eq 1 ]]; then
       export GEGENLESEN_SKIP_AGENT=1
+      export GEGENLESEN_EMBEDDING_URL="http://127.0.0.1:9/embeddings"
     else
       unset GEGENLESEN_SKIP_AGENT || true
     fi
