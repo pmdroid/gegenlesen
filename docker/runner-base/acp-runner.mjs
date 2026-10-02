@@ -10,6 +10,7 @@ import { WorkspaceTerminalManager } from "./lib/workspace-terminal.mjs";
 function parseArgs(argv) {
   const args = {
     timeoutSec: 900,
+    setupTimeoutSec: 15,
     message: "Investigate the change thoroughly, then write findings as instructed.",
     output: "findings",
   };
@@ -25,6 +26,7 @@ function parseArgs(argv) {
     else if (arg === "--message") args.message = argv[++i];
     else if (arg === "--transcript") args.transcript = argv[++i];
     else if (arg === "--timeout-sec") args.timeoutSec = Number(argv[++i]);
+    else if (arg === "--setup-timeout-sec") args.setupTimeoutSec = Number(argv[++i]);
     else if (arg === "--output") args.output = argv[++i];
     else if (arg === "--output-path") args.outputPath = argv[++i];
     else if (arg === "--validation-errors") args.validationErrors = argv[++i];
@@ -42,6 +44,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.timeoutSec) || args.timeoutSec <= 0) {
     throw new Error(`--timeout-sec must be a positive number, got ${args.timeoutSec}`);
+  }
+  if (!Number.isFinite(args.setupTimeoutSec) || args.setupTimeoutSec <= 0) {
+    throw new Error("--setup-timeout-sec must be a positive number");
   }
   if (args.outputPath && !args.validationErrors) {
     args.validationErrors = join(dirname(args.outputPath), "validation_errors.json");
@@ -128,6 +133,7 @@ const child = spawn(args.command[0], args.command.slice(1), {
 let nextId = 1;
 const pending = new Map();
 let settled = false;
+const setupDeadline = performance.now() + Math.min(args.setupTimeoutSec, args.timeoutSec) * 1000;
 let sessionId = null;
 const terminals = new WorkspaceTerminalManager();
 
@@ -172,7 +178,15 @@ function send(message) {
 function request(method, params) {
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject, method });
+    if (method !== "session/prompt" && performance.now() >= setupDeadline) {
+      reject(new Error(`${method}: setup deadline exceeded`));
+      return;
+    }
+    const timer = method === "session/prompt" ? null : setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`${method}: setup deadline exceeded`));
+    }, Math.max(0, setupDeadline - performance.now()));
+    pending.set(id, { resolve, reject, method, timer });
     send({ jsonrpc: "2.0", id, method, params });
   });
 }
@@ -206,30 +220,34 @@ async function configureSession(session) {
   const modelId = codexModel || cursorModel || grokModel;
   if (!modelId) return;
 
-  const modelOption = (session.configOptions ?? session.models?.availableModels ?? []).find(
-    (entry) => entry?.category === "model" || entry?.configId === "model" || entry?.modelId === modelId,
+  const modelOption = (session.configOptions ?? []).find(
+    (entry) => entry?.category === "model" || (entry?.id ?? entry?.configId) === "model",
   );
-  if (modelOption?.configId) {
+  const configId = modelOption?.id ?? modelOption?.configId;
+  let result;
+  if (configId) {
     try {
-      await request("session/set_config_option", {
+      result = await request("session/set_config_option", {
         sessionId: session.sessionId,
-        configId: modelOption.configId,
+        configId,
         value: modelId,
       });
-      status(`session model set: ${modelId}`);
-      record({ dir: "job_log", event: "session_model_set", modelId });
-      return;
     } catch (error) {
       status(`session/set_config_option failed: ${error.message}`);
     }
   }
-  try {
-    await request("session/set_model", { sessionId: session.sessionId, modelId });
-    status(`session model set: ${modelId}`);
-    record({ dir: "job_log", event: "session_model_set", modelId });
-  } catch (error) {
-    status(`session/set_model failed: ${error.message}`);
+  if (result === undefined) {
+    result = await request("session/set_model", { sessionId: session.sessionId, modelId });
   }
+  const confirmedOption = result?.configOptions?.find(
+    (entry) => entry?.category === "model" || (entry?.id ?? entry?.configId) === configId,
+  );
+  const effectiveModelId = confirmedOption?.currentValue ?? result?.models?.currentModelId ?? null;
+  if (effectiveModelId !== null && effectiveModelId !== modelId) {
+    throw new Error(`requested model ${modelId}, agent confirmed ${effectiveModelId}`);
+  }
+  status(`session model acknowledged: ${modelId}${effectiveModelId ? ` (confirmed ${effectiveModelId})` : ""}`);
+  record({ dir: "job_log", event: "session_model_set", modelId, effectiveModelId });
 }
 
 function respondOk(id, result = null) {
@@ -245,6 +263,7 @@ function handleIncoming(message) {
     const entry = pending.get(message.id);
     if (!entry) return;
     pending.delete(message.id);
+    clearTimeout(entry.timer);
     if (message.error) entry.reject(new Error(`${entry.method}: ${JSON.stringify(message.error)}`));
     else entry.resolve(message.result);
     return;
@@ -368,7 +387,15 @@ child.stderr.on("data", (chunk) => {
 
 child.on("exit", (code, signal) => {
   record({ dir: "client", event: "agent-exit", code, signal });
-  if (!settled) finish(code === 0 ? 0 : 1, `agent exited early (code=${code} signal=${signal})`);
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timer);
+    entry.reject(new Error("agent exited before responding"));
+  }
+  pending.clear();
+  if (!settled) {
+    status(`agent exited early (code=${code} signal=${signal})`);
+    process.exit(1);
+  }
 });
 
 child.on("error", (error) => {

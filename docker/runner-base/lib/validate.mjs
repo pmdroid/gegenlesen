@@ -108,9 +108,7 @@ export function validateJudgeDocument(parsed) {
     push(errors, "$.verdicts", "required array");
     return errors;
   }
-  if (parsed.verdicts.length > 200) {
-    push(errors, "$.verdicts", "too many verdicts (max 200)");
-  }
+  const ids = new Set();
   parsed.verdicts.forEach((row, index) => {
     const base = `$.verdicts[${index}]`;
     if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -120,6 +118,10 @@ export function validateJudgeDocument(parsed) {
     rejectExtraKeys(errors, base, row, new Set(["finding_id", "verdict", "severity", "rationale"]));
     requireNonEmptyString(errors, base, "finding_id", row.finding_id, JUDGE_STRING_LIMITS.finding_id);
     requireNonEmptyString(errors, base, "rationale", row.rationale, JUDGE_STRING_LIMITS.rationale);
+    if (typeof row.rationale === "string" && !row.rationale.trim()) push(errors, `${base}.rationale`, "required explanation");
+    if (typeof row.finding_id === "string" && !row.finding_id.trim()) push(errors, `${base}.finding_id`, "required id");
+    if (ids.has(row.finding_id)) push(errors, `${base}.finding_id`, "duplicate id");
+    ids.add(row.finding_id);
     if (row.verdict === undefined || row.verdict === null || row.verdict === "") {
       push(errors, `${base}.verdict`, "required");
     } else if (!JUDGE_VERDICTS.has(row.verdict)) {
