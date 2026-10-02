@@ -106,7 +106,7 @@ public struct ReviewPipeline: Sendable {
         if existing.status.isTerminal { return }
 
         try await store.appendEvent(jobID: jobID, level: .info, message: "dequeued")
-        _ = try await store.apply(jobID: jobID, event: .dequeued)
+        _ = try await store.apply(jobID: jobID, event: .dequeued, risk: risk)
         if try await stopped(jobID) { return }
 
         var timings = JobTimings()
@@ -117,7 +117,7 @@ public struct ReviewPipeline: Sendable {
             try ArchiveUnpacker().unpack(archive: archive, into: workspaceURL)
             try await recordTiming(\.unpackMS, from: unpackStarted, jobID: jobID, timings: &timings)
             try await store.appendEvent(jobID: jobID, level: .info, message: "unpacked")
-            _ = try await store.apply(jobID: jobID, event: .unpackOK)
+            _ = try await store.apply(jobID: jobID, event: .unpackOK, risk: risk)
             try await fillRepositoryIfNeeded(jobID: jobID, workspace: workspaceURL)
         } catch {
             try ReviewDeadline.check()
@@ -125,7 +125,8 @@ public struct ReviewPipeline: Sendable {
             _ = try await store.apply(
                 jobID: jobID,
                 event: .unpackFailed(String(describing: error)),
-                errorMessage: String(describing: error)
+                errorMessage: String(describing: error),
+                risk: risk
             )
             try await store.appendEvent(
                 jobID: jobID,
@@ -201,14 +202,16 @@ public struct ReviewPipeline: Sendable {
                 event: .identifyOK,
                 baseSHA: changeSet.baseSHA,
                 headSHA: changeSet.headSHA,
-                fileCount: changeSet.files.count
+                fileCount: changeSet.files.count,
+                risk: risk
             )
         } catch let error as IdentifyError {
             try await recordTiming(\.identifyMS, from: identifyStarted, jobID: jobID, timings: &timings)
             _ = try await store.apply(
                 jobID: jobID,
                 event: .identifyFailed(error.errorMessage),
-                errorMessage: error.errorMessage
+                errorMessage: error.errorMessage,
+                risk: risk
             )
             try await store.appendEvent(
                 jobID: jobID,
@@ -223,7 +226,8 @@ public struct ReviewPipeline: Sendable {
             _ = try await store.apply(
                 jobID: jobID,
                 event: .identifyFailed("no_change_set"),
-                errorMessage: "no_change_set"
+                errorMessage: "no_change_set",
+                risk: risk
             )
             try await store.appendEvent(
                 jobID: jobID,
@@ -256,13 +260,14 @@ public struct ReviewPipeline: Sendable {
                 message: "selecting_rules",
                 payloadJSON: #"{"count":\#(rules.count)}"#
             )
-            _ = try await store.apply(jobID: jobID, event: .rulesOK)
+            _ = try await store.apply(jobID: jobID, event: .rulesOK, risk: risk)
         } catch {
             try ReviewDeadline.check()
             _ = try await store.apply(
                 jobID: jobID,
                 event: .rulesFailed("internal"),
-                errorMessage: "internal"
+                errorMessage: "internal",
+                risk: risk
             )
             try await store.appendEvent(
                 jobID: jobID,
@@ -319,7 +324,7 @@ public struct ReviewPipeline: Sendable {
         if result.timedOut {
             try await persistIncompleteDrafts(result.drafts, jobID: jobID)
             try await recordTiming(\.deterministicMS, from: deterministicStarted, jobID: jobID, timings: &timings)
-            _ = try await store.apply(jobID: jobID, event: .deterministicTimeout)
+            _ = try await store.apply(jobID: jobID, event: .deterministicTimeout, risk: risk)
             try await store.appendEvent(
                 jobID: jobID,
                 level: .error,
@@ -575,7 +580,8 @@ public struct ReviewPipeline: Sendable {
 
         _ = try await store.apply(
             jobID: jobID,
-            event: .reviewOK(validFindingCount: candidates.count)
+            event: .reviewOK(validFindingCount: candidates.count),
+            risk: risk
         )
         try await store.appendEvent(jobID: jobID, level: .info, message: "judging")
         if try await stopped(jobID) { return }
@@ -735,7 +741,8 @@ public struct ReviewPipeline: Sendable {
             _ = try await store.apply(
                 jobID: jobID,
                 event: .rulesFailed(message),
-                errorMessage: message
+                errorMessage: message,
+                risk: risk
             )
             try await store.appendEvent(jobID: jobID, level: .error, message: message)
             return true
@@ -897,11 +904,13 @@ public struct ReviewPipeline: Sendable {
         errorMessage: String,
         payloadJSON: String?
     ) async throws {
-        _ = try await store.apply(
+        let failed = try await store.apply(
             jobID: jobID,
             event: .reviewFailed(errorClass.rawValue),
-            errorMessage: errorClass.rawValue
+            errorMessage: errorClass.rawValue,
+            risk: risk
         )
+        guard failed.status == .failed, failed.errorMessage == errorClass.rawValue else { return }
         try await store.appendEvent(
             jobID: jobID,
             level: .error,
