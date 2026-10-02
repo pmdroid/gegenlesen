@@ -197,7 +197,7 @@ private func harvestTarGz() throws -> Data {
     let archive = FileManager.default.temporaryDirectory
         .appendingPathComponent("gegenlesen-harvest-\(UUID().uuidString).tar.gz")
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/bsdtar")
+    process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BSDTAR"] ?? "/usr/bin/bsdtar")
     process.arguments = ["-czf", archive.path, "-C", dir.path, "."]
     process.environment = ["PATH": "/usr/bin:/bin", "COPYFILE_DISABLE": "1"]
     try process.run()

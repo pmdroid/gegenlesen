@@ -124,6 +124,8 @@ struct JobListItem: Content {
     var createdAt: Date
     var startedAt: Date?
     var finishedAt: Date?
+    var deadlineAt: Date?
+    var timings: JobTimings?
     var errorMessage: String?
     var risk: RiskAssessment?
     var reviewDegraded: Bool
@@ -148,6 +150,8 @@ struct JobListItem: Content {
         case createdAt = "created_at"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
+        case deadlineAt = "deadline_at"
+        case timings
         case errorMessage = "error_message"
         case risk
         case reviewDegraded = "review_degraded"
@@ -177,6 +181,8 @@ struct JobListItem: Content {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeNilIfNeeded(startedAt, forKey: .startedAt)
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
+        try container.encodeNilIfNeeded(deadlineAt, forKey: .deadlineAt)
+        try container.encodeNilIfNeeded(timings, forKey: .timings)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
         try container.encodeNilIfNeeded(risk, forKey: .risk)
         try container.encode(reviewDegraded, forKey: .reviewDegraded)
@@ -206,6 +212,8 @@ struct JobListItem: Content {
             createdAt: job.createdAt,
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
+            deadlineAt: job.deadlineAt,
+            timings: job.timings,
             errorMessage: job.errorMessage,
             risk: job.risk,
             reviewDegraded: job.reviewDegraded,
@@ -236,6 +244,8 @@ struct JobDetail: Content {
     var createdAt: Date
     var startedAt: Date?
     var finishedAt: Date?
+    var deadlineAt: Date?
+    var timings: JobTimings?
     var errorMessage: String?
     var risk: RiskAssessment?
     var reviewDegraded: Bool
@@ -262,6 +272,8 @@ struct JobDetail: Content {
         case createdAt = "created_at"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
+        case deadlineAt = "deadline_at"
+        case timings
         case errorMessage = "error_message"
         case risk
         case reviewDegraded = "review_degraded"
@@ -292,6 +304,8 @@ struct JobDetail: Content {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeNilIfNeeded(startedAt, forKey: .startedAt)
         try container.encodeNilIfNeeded(finishedAt, forKey: .finishedAt)
+        try container.encodeNilIfNeeded(deadlineAt, forKey: .deadlineAt)
+        try container.encodeNilIfNeeded(timings, forKey: .timings)
         try container.encodeNilIfNeeded(errorMessage, forKey: .errorMessage)
         try container.encodeNilIfNeeded(risk, forKey: .risk)
         try container.encode(reviewDegraded, forKey: .reviewDegraded)
@@ -329,6 +343,8 @@ struct JobDetail: Content {
             createdAt: job.createdAt,
             startedAt: job.startedAt,
             finishedAt: job.finishedAt,
+            deadlineAt: job.deadlineAt,
+            timings: job.timings,
             errorMessage: job.errorMessage,
             risk: job.risk,
             reviewDegraded: job.reviewDegraded,

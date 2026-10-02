@@ -5,7 +5,7 @@ import Vapor
 
 enum JobsRoute {
     static func register(_ app: Application) {
-        app.post("api", "jobs", use: create)
+        app.on(.POST, "api", "jobs", body: .stream, use: create)
         app.get("api", "jobs", use: list)
         app.get("api", "repositories", use: repositories)
         app.get("api", "jobs", ":id", use: detail)
@@ -18,8 +18,34 @@ enum JobsRoute {
     }
 
     static func create(_ req: Request) async throws -> Response {
+        let receivedAt = Date()
+        var deadline = receivedAt.addingTimeInterval(ReviewDeadline.maximumSeconds)
+        if let raw = req.headers.first(name: "X-Gegenlesen-Deadline") {
+            guard let timestamp = Double(raw), timestamp.isFinite else {
+                throw APIError.badRequest("invalid review deadline")
+            }
+            deadline = min(deadline, Date(timeIntervalSince1970: timestamp))
+            guard deadline > receivedAt else { throw APIError.badRequest("review_deadline_exceeded") }
+        }
         let limits = req.application.gegenlesenConfig.limits
-        let parsed = try parseMultipart(req, archiveLimit: limits.archiveBytes)
+        let requestBody: ByteBuffer
+        do {
+            requestBody = try await ReviewDeadline.run(timeout: .seconds(max(0, deadline.timeIntervalSinceNow))) {
+                if let collected = req.body.data { return collected }
+                var collected = req.byteBufferAllocator.buffer(capacity: 0)
+                let limit = req.application.routes.defaultMaxBodySize.value
+                for try await var chunk in req.body {
+                    guard collected.readableBytes + chunk.readableBytes <= limit else {
+                        throw APIError.payloadTooLarge("request body exceeds limit")
+                    }
+                    collected.writeBuffer(&chunk)
+                }
+                return collected
+            }
+        } catch is ReviewDeadlineExceeded {
+            throw Abort(.requestTimeout, reason: "review_deadline_exceeded")
+        }
+        let parsed = try parseMultipart(req, body: requestBody, archiveLimit: limits.archiveBytes)
         let meta = try decodeMeta(parsed.meta)
 
         var parentHeadSHA: String?
@@ -56,6 +82,7 @@ enum JobsRoute {
             id: id,
             createdAt: now,
             updatedAt: now,
+            deadlineAt: deadline,
             status: .queued,
             scope: meta.scope,
             parentJobID: meta.parentJobID,
@@ -191,15 +218,7 @@ enum JobsRoute {
         }
         _ = try await req.application.gegenlesenStore.apply(jobID: job.id, event: .cancel)
         await req.application.gegenlesenJobs.cancel(job.id)
-        let docker = req.application.gegenlesenDocker
-        var names = Set(ReviewContainers.all(job.id))
-        if let name = job.containerName { names.insert(name) }
-        if let name = job.containerNameA { names.insert(name) }
-        if let name = job.containerNameB { names.insert(name) }
-        for name in names {
-            await docker.kill(containerName: name)
-        }
-        await docker.removeAll(prefix: ReviewContainers.commandPrefix(job.id))
+        await req.application.gegenlesenJobs.stopContainers(job)
         try await req.application.gegenlesenStore.appendEvent(jobID: job.id, level: .info, message: "cancelled")
         guard let updated = try await req.application.gegenlesenStore.job(id: job.id) else {
             throw APIError.notFound()
@@ -290,6 +309,7 @@ enum JobsRoute {
 
     private static func parseMultipart(
         _ req: Request,
+        body: ByteBuffer,
         archiveLimit: Int
     ) throws -> (archive: Data, filename: String, meta: Data, patch: Data?) {
         struct Parts: Content {
@@ -318,7 +338,11 @@ enum JobsRoute {
 
         let parts: Parts
         do {
-            parts = try req.content.decode(Parts.self)
+            guard let contentType = req.headers.contentType else {
+                throw APIError.badRequest("missing content type")
+            }
+            let decoder = try ContentConfiguration.global.requireDecoder(for: contentType)
+            parts = try decoder.decode(Parts.self, from: body, headers: req.headers)
         } catch {
             throw APIError.badRequest("missing archive/meta")
         }
