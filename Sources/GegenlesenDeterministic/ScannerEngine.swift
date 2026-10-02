@@ -61,12 +61,12 @@ public struct ScannerEngine: ScannerRunning {
                 ]
             )
         }
-        if await isCancelled?() == true {
-            return DeterministicRunResult(drafts: [], timedOut: false)
-        }
-        if result.timedOut {
+        let allowed = Set(files.map { PathGlob.normalize($0.path) })
+        let parsed = Self.parseJSONL(stdout: result.stdout, workspace: workspace, allowedPaths: allowed)
+        let cancelled = await isCancelled?() == true
+        if result.timedOut || Task.isCancelled || cancelled {
             return DeterministicRunResult(
-                drafts: [],
+                drafts: parsed.drafts,
                 timedOut: true,
                 warnings: [DeterministicWarning(message: "scanner_timeout")]
             )
@@ -86,12 +86,6 @@ public struct ScannerEngine: ScannerRunning {
                 ]
             )
         }
-        let allowed = Set(files.map { PathGlob.normalize($0.path) })
-        let parsed = Self.parseJSONL(
-            stdout: result.stdout,
-            workspace: workspace,
-            allowedPaths: allowed
-        )
         var warnings: [DeterministicWarning] = []
         if parsed.invalid > 0 {
             warnings.append(
