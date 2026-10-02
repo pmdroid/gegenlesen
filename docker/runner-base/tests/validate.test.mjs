@@ -32,3 +32,7 @@ assert.deepEqual(validateFindingsDocument(null), [{ path: "$", message: "expecte
 assert.deepEqual(validateJudgeDocument({ verdicts: "nope" }), [{ path: "$.verdicts", message: "required array" }]);
 
 console.log("validate.test.mjs: ok");
+
+assert.deepEqual(validateOutput("judge", JSON.stringify({ verdicts: Array.from({ length: 201 }, (_, i) => ({ finding_id: `fnd_${i}`, verdict: "keep", rationale: "confirmed" })) })), []);
+assert.ok(validateOutput("judge", JSON.stringify({ verdicts: [{ finding_id: "fnd_1", verdict: "keep", rationale: " " }] })).length > 0);
+assert.ok(validateOutput("judge", JSON.stringify({ verdicts: [{ finding_id: "fnd_1", verdict: "keep", rationale: "yes" }, { finding_id: "fnd_1", verdict: "drop", rationale: "no" }] })).length > 0);

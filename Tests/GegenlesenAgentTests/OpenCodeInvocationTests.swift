@@ -414,8 +414,8 @@ struct OpenCodeInvocationTests {
         }
     }
 
-    @Test
-    func fakeJudgeRunWritesVerdicts() async throws {
+    @Test(arguments: [0, 1], [false, true])
+    func judgeAcceptsOnlySuccessfulCompletedRuns(exitCode: Int32, timedOut: Bool) async throws {
         try await withTempDir("judge-run") { root in
             try writeFile("Sources/A.swift", "print(2)\n", in: root)
             try writeFile(".gegenlesen/prompt-judge.md", "judge\n", in: root)
@@ -440,7 +440,7 @@ struct OpenCodeInvocationTests {
             try encoder.encode(input).write(
                 to: root.appendingPathComponent(".gegenlesen/judge-input.json")
             )
-            let docker = JudgeWritingDocker(workspace: root, findingID: findingID)
+            let docker = JudgeWritingDocker(workspace: root, findingID: findingID, exitCode: exitCode, timedOut: timedOut)
             let invocation = OpenCodeInvocation(
                 docker: docker,
                 image: "gegenlesen/opencode-runner:0.1.0",
@@ -450,6 +450,13 @@ struct OpenCodeInvocationTests {
                 JudgeRequest(job: job, workspace: Workspace(root: root))
             )
             #expect(await docker.wroteJudge)
+            if exitCode != 0 || timedOut {
+                guard case .containerFailed = result.outcome else {
+                    Issue.record("incomplete judge output was accepted")
+                    return
+                }
+                return
+            }
             guard case .verdicts(let file) = result.outcome else {
                 Issue.record("expected parsed verdicts")
                 return
@@ -490,7 +497,7 @@ struct OpenCodeInvocationTests {
             #expect(result.payloadJSON?.contains("docker not wired") == true)
             #expect(result.payloadJSON?.contains("provider_auth") != true)
             let requests = await docker.requests
-            #expect(requests.count == 4)
+            #expect(requests.count == 2)
         }
     }
 
@@ -767,11 +774,15 @@ actor SuggestionJudgeWritingDocker: DockerExecuting {
 actor JudgeWritingDocker: DockerExecuting {
     let workspace: URL
     let findingID: FindingID
+    let exitCode: Int32
+    let timedOut: Bool
     var wroteJudge = false
 
-    init(workspace: URL, findingID: FindingID) {
+    init(workspace: URL, findingID: FindingID, exitCode: Int32 = 0, timedOut: Bool = false) {
         self.workspace = workspace
         self.findingID = findingID
+        self.exitCode = exitCode
+        self.timedOut = timedOut
     }
 
     func run(_ request: DockerRequest) async throws -> DockerResult {
@@ -782,7 +793,7 @@ actor JudgeWritingDocker: DockerExecuting {
         try FileManager.default.createDirectory(at: gegenlesen, withIntermediateDirectories: true)
         try Data(payload.utf8).write(to: gegenlesen.appendingPathComponent("judge.json"))
         wroteJudge = true
-        return DockerResult(exitCode: 0, stdout: Data())
+        return DockerResult(exitCode: exitCode, stdout: Data(), timedOut: timedOut)
     }
 
     func kill(containerName: String) async {}

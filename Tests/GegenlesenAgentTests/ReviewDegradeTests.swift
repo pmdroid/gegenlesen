@@ -6,7 +6,7 @@ import Testing
 @Suite
 struct ReviewDegradeTests {
     @Test
-    func retryAfterGarbageThenAcceptsValidJSON() async throws {
+    func invalidOutputDoesNotRepeatInvestigation() async throws {
         try await withTempDir("review-degrade-retry") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
             let docker = RetryFindingsDocker(workspace: root)
@@ -28,10 +28,43 @@ struct ReviewDegradeTests {
                 )
             )
             #expect(result.failed == false)
-            #expect(result.findings.count == 1)
-            #expect(result.findings[0].title == "Retry finding")
+            #expect(result.reviewDegraded)
+            #expect(result.findings.isEmpty)
             let attempts = await docker.attempts
-            #expect(attempts["a"] == 2)
+            #expect(attempts["a"] == 1)
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func timedOutOutputsRemainPartialAndNeverRetry(validJSON: Bool) async throws {
+        try await withTempDir("review-timeout") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let docker = PartialReviewDocker(workspace: root, validJSON: validJSON)
+            let invocation = OpenCodeInvocation(docker: docker, image: "test", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let job = sampleJob()
+            let result = await invocation.run(AgentReviewRequest(job: job, workspace: Workspace(root: root),
+                files: [JobFile(jobID: job.id, path: "Sources/A.swift", status: .added)], rules: [], newWork: true))
+            #expect(result.failed)
+            #expect(result.errorMessage == "reviewer_timed_out")
+            #expect(result.validFileCount == 0)
+            #expect(await docker.calls == 2)
+            #expect(result.findings.count == (validJSON ? 2 : 0))
+            #expect(result.findings.allSatisfy { $0.judgeVerdict == .unavailable })
+        }
+    }
+
+    @Test
+    func sharedOutputCannotImpersonateBothReviewers() async throws {
+        try await withTempDir("review-shared") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            try writeFile(".gegenlesen/findings.json", #"{"findings":[]}"#, in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 0))
+            let invocation = OpenCodeInvocation(docker: docker, image: "test", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let job = sampleJob()
+            let result = await invocation.run(AgentReviewRequest(job: job, workspace: Workspace(root: root),
+                files: [JobFile(jobID: job.id, path: "Sources/A.swift", status: .added)], rules: [], newWork: true))
+            #expect(result.failed)
+            #expect(result.validFileCount == 0)
         }
     }
 
@@ -73,15 +106,14 @@ struct ReviewDegradeTests {
     }
 
     @Test
-    func rateLimitedFirstAttemptWaitsBeforeRetry() async throws {
+    func rateLimitDoesNotRepeatInvestigation() async throws {
         try await withTempDir("review-degrade-ratelimited") { root in
             try writeFile("Sources/A.swift", "let x = 1\n", in: root)
             let docker = RateLimitedThenValidDocker(workspace: root)
             let invocation = OpenCodeInvocation(
                 docker: docker,
                 image: "gegenlesen/opencode-runner:0.1.0",
-                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"),
-                slotRetryBackoff: .milliseconds(150)
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
             let job = sampleJob()
             let result = await invocation.run(
@@ -96,10 +128,11 @@ struct ReviewDegradeTests {
                 )
             )
             #expect(result.failed == false)
-            #expect(result.findings.count == 1)
+            #expect(result.reviewDegraded)
+            #expect(result.findings.isEmpty)
             let (attempts, gap) = await docker.stats()
-            #expect(attempts == 2)
-            #expect(gap != nil && gap! >= 0.1)
+            #expect(attempts == 1)
+            #expect(gap == nil)
             let prompt = try String(
                 contentsOf: root.appendingPathComponent(".gegenlesen/prompt-model_a.md"),
                 encoding: .utf8
@@ -116,8 +149,7 @@ struct ReviewDegradeTests {
             let invocation = OpenCodeInvocation(
                 docker: docker,
                 image: "gegenlesen/opencode-runner:0.1.0",
-                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"),
-                slotRetryBackoff: .milliseconds(10)
+                runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner")
             )
             let job = sampleJob()
             let result = await invocation.run(
@@ -307,6 +339,30 @@ actor OneSlotFailDocker: DockerExecuting {
             )
         }
         return DockerResult(exitCode: 0, stdout: Data())
+    }
+
+    func kill(containerName: String) async {}
+    func removeAll(prefix: String) async {}
+}
+
+private actor PartialReviewDocker: DockerExecuting {
+    let workspace: URL
+    let validJSON: Bool
+    var calls = 0
+
+    init(workspace: URL, validJSON: Bool) {
+        self.workspace = workspace
+        self.validJSON = validJSON
+    }
+
+    func run(_ request: DockerRequest) async throws -> DockerResult {
+        calls += 1
+        let slot = request.name.hasSuffix("-a") ? "a" : "b"
+        let output = validJSON
+            ? #"{"findings":[{"title":"Partial finding","message":"Needs verification","severity":"warning","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"let x = 1"}]}"#
+            : "unfinished json"
+        try writeFile(".gegenlesen/findings-model_\(slot).json", output, in: workspace)
+        return DockerResult(exitCode: 124, timedOut: true)
     }
 
     func kill(containerName: String) async {}
