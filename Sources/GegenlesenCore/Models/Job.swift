@@ -74,6 +74,7 @@ public struct Job: Sendable, Equatable {
     public var updatedAt: Date
     public var startedAt: Date?
     public var finishedAt: Date?
+    public var deadlineAt: Date?
     public var status: JobStatus
     public var scope: JobScope
     public var parentJobID: JobID?
@@ -108,6 +109,7 @@ public struct Job: Sendable, Equatable {
         updatedAt: Date,
         startedAt: Date? = nil,
         finishedAt: Date? = nil,
+        deadlineAt: Date? = nil,
         status: JobStatus,
         scope: JobScope,
         parentJobID: JobID? = nil,
@@ -141,6 +143,7 @@ public struct Job: Sendable, Equatable {
         self.updatedAt = updatedAt
         self.startedAt = startedAt
         self.finishedAt = finishedAt
+        self.deadlineAt = deadlineAt
         self.status = status
         self.scope = scope
         self.parentJobID = parentJobID

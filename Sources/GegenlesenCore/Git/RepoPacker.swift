@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 public enum RepoPackError: Error, CustomStringConvertible, Sendable {
     case gitFailed(String)
@@ -63,6 +68,7 @@ public enum RepoPacker: Sendable {
                     return ResolvedBase(sha: sha, source: "explicit_ref:\(ref)")
                 }
             }
+            throw RepoPackError.gitFailed("could not resolve explicit base ref: \(ref)")
         }
         for name in ["main", "master", "trunk"] {
             // A stale remote-tracking ref (or stale local main) in a throwaway
@@ -168,6 +174,10 @@ public enum RepoPacker: Sendable {
         let packRefs = "refs/gegenlesen/pack-\(UUID().uuidString)"
         let baseRef = "\(packRefs)/base"
         let headRef = "\(packRefs)/head"
+        defer {
+            removePackRef(baseRef, cwd: cwd)
+            removePackRef(headRef, cwd: cwd)
+        }
         do {
             try git(["update-ref", baseRef, base], cwd: cwd)
             try git(["update-ref", headRef, head], cwd: cwd)
@@ -181,8 +191,6 @@ public enum RepoPacker: Sendable {
         } catch {
             try? fm.removeItem(at: bundleURL)
         }
-        try? git(["update-ref", "-d", baseRef], cwd: cwd)
-        try? git(["update-ref", "-d", headRef], cwd: cwd)
 
         let diffSize = (try? fm.attributesOfItem(atPath: diffURL.path)[.size] as? NSNumber)?.intValue ?? 0
         let hasBundle = fm.fileExists(atPath: bundleURL.path)
@@ -214,6 +222,27 @@ public enum RepoPacker: Sendable {
             droppedBundle: droppedBundle,
             baseSource: baseSource
         )
+    }
+
+    private static func removePackRef(_ ref: String, cwd: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-c", "core.hooksPath=/nonexistent", "update-ref", "-d", ref]
+        process.currentDirectoryURL = cwd
+        process.environment = GitRunner.isolatedEnvironment()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return }
+        let deadline = ContinuousClock.now + .seconds(1)
+        while process.isRunning {
+            if ContinuousClock.now >= deadline {
+                kill(process.processIdentifier, SIGKILL)
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        process.waitUntilExit()
     }
 
     private static func git(
@@ -248,13 +277,14 @@ public enum RepoPacker: Sendable {
         return String(data: result.stdout, encoding: .utf8) ?? ""
     }
 
-    private static func run(
+    static func run(
         _ executable: String,
         _ arguments: [String],
         cwd: URL,
         stdoutFile: URL? = nil,
         extraEnv: [String: String] = [:]
     ) throws -> (stdout: Data, stderr: Data, status: Int32) {
+        try ReviewDeadline.check()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -264,25 +294,38 @@ public enum RepoPacker: Sendable {
         )
         extraEnv.forEach { env[$0.key] = $0.value }
         process.environment = env
-        let stderr = Pipe()
+        let capture = FileManager.default.temporaryDirectory.appendingPathComponent("gegenlesen-command-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: capture, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: capture) }
+        let stdoutURL = stdoutFile ?? capture.appendingPathComponent("stdout")
+        let stderrURL = capture.appendingPathComponent("stderr")
+        _ = FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stdout = try FileHandle(forWritingTo: stdoutURL)
+        let stderr = try FileHandle(forWritingTo: stderrURL)
+        defer {
+            try? stdout.close()
+            try? stderr.close()
+        }
+        process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = FileHandle.nullDevice
-        let stdoutPipe: Pipe?
-        if let stdoutFile {
-            FileManager.default.createFile(atPath: stdoutFile.path, contents: nil)
-            process.standardOutput = try FileHandle(forWritingTo: stdoutFile)
-            stdoutPipe = nil
-        } else {
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            stdoutPipe = pipe
-        }
         try process.run()
-        let stdout = stdoutPipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+        while process.isRunning {
+            do {
+                try ReviewDeadline.check()
+            } catch {
+                kill(process.processIdentifier, SIGKILL)
+                process.waitUntilExit()
+                throw error
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
         process.waitUntilExit()
+        try ReviewDeadline.check()
         return (
-            stdout,
-            stderr.fileHandleForReading.readDataToEndOfFile(),
+            stdoutFile == nil ? try Data(contentsOf: stdoutURL) : Data(),
+            try Data(contentsOf: stderrURL),
             process.terminationStatus
         )
     }

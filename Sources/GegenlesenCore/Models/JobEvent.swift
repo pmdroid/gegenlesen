@@ -41,6 +41,7 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
     case containerStartFailed = "container_start_failed"
     case noFindingsFile = "no_findings_file"
     case reviewerFailed = "reviewer_failed"
+    case reviewerTimedOut = "reviewer_timed_out"
 
     public static func classify(errorMessage: String?, payloadJSON: String?) -> ReviewFailureClass {
         if looksLikeProviderAuth(errorMessage) || looksLikeProviderAuth(payloadJSON) {
@@ -51,6 +52,9 @@ public enum ReviewFailureClass: String, Sendable, Equatable {
         }
         if containsToken("container_start_failed", errorMessage) || containsToken("container_start_failed", payloadJSON) {
             return .containerStartFailed
+        }
+        if containsToken("reviewer_timed_out", errorMessage) || containsToken("reviewer_timed_out", payloadJSON) {
+            return .reviewerTimedOut
         }
         if containsNoFindingsFile(errorMessage) || containsNoFindingsFile(payloadJSON) {
             return .noFindingsFile

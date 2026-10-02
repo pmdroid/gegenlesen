@@ -64,21 +64,21 @@ struct ScannerEngineTests {
         }
     }
 
-    @Test
-    func runWiresImageAndParsesStdout() async throws {
+    @Test(arguments: [false, true])
+    func runPreservesCapturedFindings(timedOut: Bool) async throws {
         try await withTempDir("scan-run") { root in
             try writeFile("a.swift", "print(1)\n", in: root)
             let jsonl = """
             {"title":"hit","message":"from image","severity":"warning","file_path":"a.swift","start_line":1,"end_line":1,"snippet":"print(1)","scanner":"gitleaks","requires_judge":false}
             """
-            let docker = RecordingDocker(result: DockerResult(exitCode: 0, stdout: Data(jsonl.utf8)))
+            let docker = RecordingDocker(result: DockerResult(exitCode: 0, stdout: Data(jsonl.utf8), timedOut: timedOut))
             let result = await ScannerEngine(docker: docker, image: "gegenlesen/scanner:0.1.0").run(
                 jobID: JobID("job-scan"),
                 files: [JobFile(jobID: JobID("job-scan"), path: "a.swift", status: .modified, language: .swift)],
                 workspace: Workspace(root: root),
                 timeout: .seconds(30)
             )
-            #expect(!result.timedOut)
+            #expect(result.timedOut == timedOut)
             #expect(result.drafts.count == 1)
             #expect(result.drafts[0].title == "hit")
             let request = try #require(await docker.requests.first)

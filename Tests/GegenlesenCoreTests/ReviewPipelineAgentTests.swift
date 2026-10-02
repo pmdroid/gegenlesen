@@ -74,6 +74,155 @@ struct ReviewPipelineAgentTests {
     }
 
     @Test
+    func expiredQueueBudgetSkipsAllStages() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            var job = queuedJob()
+            job.deadlineAt = Date().addingTimeInterval(-1)
+            try await store.insertJob(job)
+            try await ReviewPipeline(store: store).run(jobID: job.id)
+            let after = try #require(try await store.job(id: job.id))
+            #expect(after.status == .failed)
+            #expect(after.errorMessage == "review_deadline_exceeded")
+            #expect(after.risk?.verdict == .needsHuman)
+            #expect(after.timings == nil)
+            #expect(try await store.expireReview(id: job.id) == false)
+        }
+    }
+
+    @Test
+    func deadlinePreemptionKeepsItsFailureReason() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await store.write { db in
+                    try db.execute(sql: "CREATE TRIGGER expire_on_review BEFORE INSERT ON job_events WHEN NEW.message = 'reviewing' BEGIN UPDATE jobs SET deadline_at = '2000-01-01T00:00:00Z' WHERE id = NEW.job_id; END")
+                }
+                try await ReviewPipeline(store: store, skipAgent: false, reviewer: nil).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "review_deadline_exceeded")
+                #expect(after.risk?.reasons.map(\.code) == ["review_deadline_exceeded"])
+                #expect(try await !store.events(jobID: job.id).contains { $0.message == "review_failed" })
+            }
+        }
+    }
+
+    @Test
+    func deadlinePreemptionKeepsConfiguredRisk() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let job = queuedJob()
+            try await store.insertJob(job)
+            try await store.write { db in
+                try db.execute(sql: "CREATE TRIGGER expire_on_dequeue BEFORE INSERT ON job_events WHEN NEW.message = 'dequeued' BEGIN UPDATE jobs SET deadline_at = '2000-01-01T00:00:00Z' WHERE id = NEW.job_id; END")
+            }
+            var risk = RiskConfig.v1
+            risk.mode = .enforce
+            risk.appetite = 4
+            try await ReviewPipeline(store: store, risk: risk).run(jobID: job.id)
+            let after = try #require(try await store.job(id: job.id))
+            #expect(after.status == .failed)
+            #expect(after.risk?.reasons.map(\.code) == ["review_deadline_exceeded"])
+            #expect(after.risk?.mode == .enforce)
+            #expect(after.risk?.appetite == 4)
+        }
+    }
+
+    @Test
+    func incompleteScannerCannotApproveAReview() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(store: store, skipAgent: false, scanner: IncompleteScanner(), reviewer: EmptyValidReviewer()).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.risk?.verdict == .needsHuman)
+                #expect(after.errorMessage == "scanner_timeout")
+            }
+        }
+    }
+
+    @Test
+    func elapsedDeadlinePreventsSuccessfulCompletion() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            var job = queuedJob()
+            job.status = .judging
+            job.deadlineAt = Date().addingTimeInterval(-1)
+            try await store.insertJob(job)
+            let after = try await store.apply(jobID: job.id, event: .judgeFinished)
+            #expect(after.status == .failed)
+            #expect(after.errorMessage == "review_deadline_exceeded")
+            #expect(after.risk?.verdict == .needsHuman)
+        }
+    }
+
+    @Test
+    func failedRiskWriteCannotPublishSuccess() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            var job = queuedJob()
+            job.status = .judging
+            try await store.insertJob(job)
+            try await store.write { db in
+                try db.execute(sql: "CREATE TRIGGER reject_risk BEFORE UPDATE OF risk_json ON jobs BEGIN SELECT RAISE(ABORT, 'risk write failed'); END")
+            }
+            let assessment = RiskAssessment(verdict: .needsHuman, mode: .shadow, score: 5, appetite: 1, reasons: [])
+            do {
+                try await store.completeReview(id: job.id, event: .judgeFinished, assessment: assessment, risk: .v1)
+                Issue.record("risk write unexpectedly succeeded")
+            } catch {}
+            let after = try #require(try await store.job(id: job.id))
+            #expect(after.status == .judging)
+            #expect(after.risk == nil)
+            #expect(try await store.events(jobID: job.id).isEmpty)
+        }
+    }
+
+    @Test
+    func completedReviewCannotBeExpired() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            var job = queuedJob()
+            job.status = .succeeded
+            try await store.insertJob(job)
+            #expect(try await store.expireReview(id: job.id) == false)
+            #expect(try await store.job(id: job.id)?.status == .succeeded)
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func runningDeadlineRetainsPartialFindings(scanner: Bool) async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                var job = queuedJob()
+                job.deadlineAt = Date().addingTimeInterval(3)
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let started = ContinuousClock.now
+                try await ReviewPipeline(store: store, skipAgent: false,
+                    scanner: scanner ? CancelledPartialScanner() : nil,
+                    reviewer: CancelledPartialReviewer()).run(jobID: job.id)
+                #expect(ContinuousClock.now - started < .seconds(5))
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.errorMessage == "review_deadline_exceeded")
+                #expect(after.risk?.verdict == .needsHuman)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.count == 1)
+                #expect(findings.first?.judgeVerdict == .unavailable)
+            }
+        }
+    }
+
+    @Test
     func reviewUsesPreparedContextWithoutReindexing() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
@@ -738,5 +887,37 @@ private actor ReviewContextEmbedder: EmbeddingClient {
     func embed(_ texts: [String]) async throws -> [[Float]] {
         inputs.append(texts)
         return texts.map { _ in [1, 0] }
+    }
+}
+
+private struct CancelledPartialReviewer: ReviewerRunning {
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        try? await Task.sleep(for: .seconds(10))
+        let finding = Finding(
+            id: FindingID.generate(), jobID: request.job.id, phase: .agent,
+            severity: .warning, title: "Partial finding", message: "Needs verification",
+            filePath: "Sources/A.swift", startLine: 1, endLine: 1, snippet: "print(2)",
+            judgeVerdict: .unavailable, createdAt: Date()
+        )
+        return AgentReviewResult(findings: [finding], validFileCount: 0, failed: true,
+            containerNameA: "a", containerNameB: "b", containerName: "judge")
+    }
+}
+
+private struct IncompleteScanner: ScannerRunning {
+    func run(jobID: JobID, files: [JobFile], workspace: Workspace, timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)?) async -> DeterministicRunResult {
+        DeterministicRunResult(drafts: [], timedOut: true)
+    }
+}
+
+private struct CancelledPartialScanner: ScannerRunning {
+    func run(jobID: JobID, files: [JobFile], workspace: Workspace, timeout: Duration,
+        isCancelled: (@Sendable () async -> Bool)?) async -> DeterministicRunResult {
+        try? await Task.sleep(for: .seconds(10))
+        let draft = FindingDraft(phase: .deterministic, severity: .warning,
+            title: "Partial finding", message: "Needs verification", filePath: "Sources/A.swift",
+            startLine: 1, endLine: 1, snippet: "print(2)", requiresJudge: true, evidenceOK: true)
+        return DeterministicRunResult(drafts: [draft], timedOut: true)
     }
 }

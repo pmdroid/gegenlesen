@@ -38,6 +38,7 @@ public struct HTTPEmbeddingClient: EmbeddingClient {
 
     public func embed(_ texts: [String]) async throws -> [[Float]] {
         guard !texts.isEmpty else { return [] }
+        try ReviewDeadline.check()
         var request = URLRequest(url: endpoint, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -48,7 +49,10 @@ public struct HTTPEmbeddingClient: EmbeddingClient {
             "dimensions": dimensions,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let preparedRequest = request
+        let (data, response) = try await ReviewDeadline.run(timeout: .seconds(10)) {
+            try await URLSession.shared.data(for: preparedRequest)
+        }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw EmbeddingError.requestFailed
         }
