@@ -1,7 +1,7 @@
 import Foundation
 
 public enum JudgeDecision: String, Codable, Sendable, Equatable {
-    case keep, drop, downgrade
+    case keep, drop, downgrade, unverified
 
     public static func parse(_ raw: String) -> JudgeDecision? {
         JudgeDecision(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
@@ -248,6 +248,8 @@ public enum JudgeMerge: Sendable {
                   row.rationale.count <= 4000 else { return next }
 
             switch row.verdict {
+            case .unverified:
+                next.judgeRationale = row.rationale
             case .keep:
                 next.judgeVerdict = .keep
                 next.judgeSeverity = candidate.severity

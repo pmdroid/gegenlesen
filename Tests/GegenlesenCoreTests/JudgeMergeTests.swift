@@ -176,6 +176,17 @@ struct JudgeMergeTests {
     }
 
     @Test
+    func judgeCanExplicitlyReportUnverifiedEvidence() throws {
+        let finding = sampleFinding(evidenceOK: true)
+        let data = try JSONSerialization.data(withJSONObject: ["verdicts": [[
+            "finding_id": finding.id.rawValue, "verdict": "unverified", "rationale": "Caller contract could not be established",
+        ]]])
+        let merged = JudgeMerge.merge(candidates: [finding], judge: JudgeMerge.parse(data))
+        #expect(merged[0].judgeVerdict == .unavailable)
+        #expect(merged[0].judgeRationale == "Caller contract could not be established")
+    }
+
+    @Test
     func duplicateVerdictsAreUnavailable() {
         let finding = sampleFinding(evidenceOK: true)
         let merged = JudgeMerge.merge(

@@ -1,5 +1,5 @@
 const SEVERITIES = new Set(["info", "warning", "error"]);
-const JUDGE_VERDICTS = new Set(["keep", "drop", "downgrade"]);
+const JUDGE_VERDICTS = new Set(["keep", "drop", "downgrade", "unverified"]);
 
 const FINDINGS_STRING_LIMITS = {
   title: 200,

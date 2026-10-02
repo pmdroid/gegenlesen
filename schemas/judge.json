@@ -18,7 +18,7 @@
       "required": ["finding_id", "verdict", "rationale"],
       "properties": {
         "finding_id": { "type": "string", "minLength": 1 },
-        "verdict": { "enum": ["keep", "drop", "downgrade"] },
+        "verdict": { "enum": ["keep", "drop", "downgrade", "unverified"] },
         "severity": { "enum": ["info", "warning", "error"] },
         "rationale": { "type": "string", "minLength": 1, "maxLength": 4000, "pattern": "\\S" }
       }
