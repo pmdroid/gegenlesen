@@ -6,17 +6,18 @@ import Testing
 @Suite
 struct PromptRendererTests {
     @Test
-    func reviewPromptForbidsWritingBeforeInvestigation() {
+    func reviewPromptRequiresEvidenceAndSavesConfirmedFindings() {
         let prompt = PromptRenderer().prompt(
             job: sampleJob(),
             fileCount: 4,
             slot: .modelA
         )
-        #expect(prompt.contains("Do not Write findings until steps 1–4"))
+        #expect(prompt.contains("Complete these steps for each finding before writing it"))
+        #expect(prompt.contains("Save confirmed findings as you go"))
         #expect(prompt.contains(".gegenlesen/findings-model_a.json"))
         #expect(prompt.contains("You may use bash, LSP, grep, tests, and fetch"))
         #expect(!prompt.contains("Do not use bash except"))
-        #expect(prompt.contains("Open every source/config/test path in files.json"))
+        #expect(prompt.contains("Read changed hunks and their enclosing function or type"))
         #expect(prompt.contains("You MUST Write that file before you stop"))
         #expect(prompt.contains("Never write \"Called the Read tool\""))
         #expect(prompt.contains("Do not report placeholder credentials"))

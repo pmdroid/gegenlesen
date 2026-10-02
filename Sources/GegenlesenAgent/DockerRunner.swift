@@ -64,16 +64,20 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             }
         }
 
-        let deadline = ContinuousClock.now + request.timeout
+        let effectiveTimeout = ReviewDeadline.timeout(request.timeout)
+        guard !Task.isCancelled, effectiveTimeout > .zero else {
+            return DockerResult(exitCode: 124, timedOut: true)
+        }
+        let deadline = ContinuousClock.now + effectiveTimeout
         do {
             try process.run()
         } catch {
             return DockerResult(exitCode: 127, stderr: Data(String(describing: error).utf8))
         }
         while process.isRunning {
-            if ContinuousClock.now >= deadline {
+            if Task.isCancelled || ContinuousClock.now >= deadline {
                 Self.killSync(dockerPath: dockerPath, name: name)
-                process.terminate()
+                if process.isRunning { Self.forceStop(process) }
                 break
             }
             try? await Task.sleep(for: .milliseconds(50))
@@ -91,7 +95,7 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
         }
         capture.flushLive(force: true)
 
-        let timedOut = ContinuousClock.now >= deadline
+        let timedOut = Task.isCancelled || ContinuousClock.now >= deadline
         return DockerResult(
             exitCode: process.terminationStatus,
             stdout: capture.stdout,
@@ -169,6 +173,14 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             return
             #endif
         }
+        while process.isRunning {
+            do { try ReviewDeadline.check() } catch {
+                forceStop(process)
+                process.waitUntilExit()
+                throw error
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
         process.waitUntilExit()
         if process.terminationStatus != 0 {
             #if os(Linux)
@@ -179,6 +191,14 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
 
     public static func allocateLoopbackPort() throws -> LoopbackPortLease {
         try LoopbackPortLease.acquire()
+    }
+
+    private static func forceStop(_ process: Process) {
+        #if canImport(Darwin)
+        Darwin.kill(process.processIdentifier, SIGKILL)
+        #else
+        Glibc.kill(process.processIdentifier, SIGKILL)
+        #endif
     }
 
     private static func killSync(dockerPath: String, name: String) {
@@ -215,6 +235,14 @@ public final class DockerRunner: DockerExecuting, @unchecked Sendable {
             try process.run()
         } catch {
             return DockerResult(exitCode: 127)
+        }
+        let deadline = ContinuousClock.now + .seconds(2)
+        while process.isRunning {
+            if ContinuousClock.now >= deadline {
+                forceStop(process)
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.01)
         }
         process.waitUntilExit()
         return DockerResult(

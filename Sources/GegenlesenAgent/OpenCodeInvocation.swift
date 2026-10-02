@@ -11,9 +11,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
     public var nproc: String?
     public var agentTimeout: Duration
     public var judgeTimeout: Duration
-    /// Delay before the second reviewer attempt after a retriable provider
-    /// error (quota/throttle). Validation failures still retry immediately.
-    public var slotRetryBackoff: Duration
     public var providerEnv: [String: String]
     public var schemasDirectory: URL?
     public var transcriptWriter: (@Sendable (JobID, String, Data) -> Void)?
@@ -29,7 +26,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         nproc: String? = nil,
         agentTimeout: Duration = .seconds(900),
         judgeTimeout: Duration = .seconds(300),
-        slotRetryBackoff: Duration = .seconds(30),
         providerEnv: [String: String] = [:],
         schemasDirectory: URL? = nil,
         transcriptWriter: (@Sendable (JobID, String, Data) -> Void)? = nil,
@@ -44,7 +40,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         self.nproc = nproc
         self.agentTimeout = agentTimeout
         self.judgeTimeout = judgeTimeout
-        self.slotRetryBackoff = slotRetryBackoff
         self.providerEnv = providerEnv
         self.schemasDirectory = schemasDirectory
         self.transcriptWriter = transcriptWriter
@@ -104,7 +99,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             group.addTask {
                 (
                     .modelA,
-                    await self.runSlot(
+                    await self.executeSlotAttempt(
                         gated,
                         slot: .modelA,
                         engine: gated.job.reviewerAEngine,
@@ -116,7 +111,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             group.addTask {
                 (
                     .modelB,
-                    await self.runSlot(
+                    await self.executeSlotAttempt(
                         gated,
                         slot: .modelB,
                         engine: gated.job.reviewerBEngine,
@@ -172,11 +167,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             )
         }
 
-        let findings = resultA.valid && resultB.valid
-            ? resultA.findings + resultB.findings
-            : resultA.valid
-                ? resultA.findings
-                : resultB.findings
+        let findings = resultA.findings + resultB.findings
         let valid = (resultA.valid ? 1 : 0) + (resultB.valid ? 1 : 0)
 
         if request.newWork && valid == 0 {
@@ -185,7 +176,8 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             let startFailed = [resultA, resultB].contains {
                 $0.validationError == ReviewFailureClass.containerStartFailed.rawValue
             }
-            let errorMessage = startFailed
+            let timedOut = [resultA, resultB].contains { $0.validationError == "reviewer_timed_out" }
+            let errorMessage = timedOut ? "reviewer_timed_out" : startFailed
                 ? ReviewFailureClass.containerStartFailed.rawValue
                 : "reviewer_no_findings_file"
             return AgentReviewResult(
@@ -369,7 +361,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             outputPath: "/workspace/.gegenlesen/findings-\(slot.rawValue).json",
             promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
             message: "Investigate the change thoroughly, then write findings as instructed.",
-            timeout: agentTimeout,
+            timeout: ReviewDeadline.timeout(agentTimeout, reserving: .seconds(120)),
             jobID: jobID,
             livePhase: slot == .modelA ? "review_a" : "review_b"
         )
@@ -390,7 +382,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             outputPath: "/workspace/.gegenlesen/judge.json",
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
             message: "For each finding, Read the cited source and keep only claims the code supports, then write verdicts.",
-            timeout: judgeTimeout,
+            timeout: ReviewDeadline.timeout(judgeTimeout, reserving: .seconds(5)),
             jobID: jobID,
             livePhase: "judge"
         )
@@ -413,7 +405,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             outputPath: outputPath,
             promptFile: "/workspace/.gegenlesen/prompt.md",
             message: "Mine candidate rules as instructed.",
-            timeout: agentTimeout,
+            timeout: ReviewDeadline.timeout(agentTimeout, reserving: .seconds(120)),
             jobID: jobID,
             livePhase: "mine"
         )
@@ -434,7 +426,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             outputPath: "/workspace/.gegenlesen/suggestion-judge.json",
             promptFile: "/workspace/.gegenlesen/prompt-suggestion-judge.md",
             message: "Judge the suggestions as instructed.",
-            timeout: judgeTimeout,
+            timeout: ReviewDeadline.timeout(judgeTimeout, reserving: .seconds(5)),
             jobID: jobID,
             livePhase: "suggestion_judge"
         )
@@ -453,7 +445,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         jobID: JobID,
         livePhase: String
     ) throws -> DockerRequest {
-        let timeoutSec = max(1, Int(timeout.components.seconds))
+        let timeoutSec = max(0.001, timeout.timeInterval)
         let agentCommand = ACPEngines.agentCommand(engine: engine, model: model)
         guard !agentCommand.isEmpty else {
             throw AgentEngineError.unknownEngine(engine)
@@ -532,7 +524,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             workspace: workspace,
             model: model,
             defaultAgent: "reviewer",
-            timeout: agentTimeout,
+            timeout: ReviewDeadline.timeout(agentTimeout, reserving: .seconds(120)),
             promptFile: "/workspace/.gegenlesen/prompt-\(slot.rawValue).md",
             extraFiles: Self.reviewFilePaths(incremental: incremental),
             message: "Investigate the change thoroughly, then write findings as instructed.",
@@ -551,7 +543,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             workspace: workspace,
             model: model,
             defaultAgent: "judge",
-            timeout: judgeTimeout,
+            timeout: ReviewDeadline.timeout(judgeTimeout, reserving: .seconds(5)),
             promptFile: "/workspace/.gegenlesen/prompt-judge.md",
             extraFiles: [
                 "/workspace/.gegenlesen/judge-input.json",
@@ -574,7 +566,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             workspace: workspace,
             model: model,
             defaultAgent: "suggestion-judge",
-            timeout: judgeTimeout,
+            timeout: ReviewDeadline.timeout(judgeTimeout, reserving: .seconds(5)),
             promptFile: "/workspace/.gegenlesen/prompt-suggestion-judge.md",
             extraFiles: ["/workspace/.gegenlesen/suggestion-judge-input.json"],
             message: "Judge the suggestions as instructed.",
@@ -597,7 +589,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             workspace: workspace,
             model: model,
             defaultAgent: defaultAgent,
-            timeout: agentTimeout,
+            timeout: ReviewDeadline.timeout(agentTimeout, reserving: .seconds(120)),
             promptFile: "/workspace/.gegenlesen/prompt.md",
             extraFiles: extraFiles,
             message: "Mine candidate rules as instructed.",
@@ -636,9 +628,13 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             return JudgeRunResult(outcome: .containerFailed, containerName: name)
         }
         var transcript = Data()
-        if let result = try? await docker.run(dockerRequest) {
-            transcript.append(SecretRedactor().redact(result.stdout))
-            transcript.append(SecretRedactor().redact(result.stderr))
+        guard let result = try? await docker.run(dockerRequest) else {
+            return JudgeRunResult(outcome: .containerFailed, containerName: name)
+        }
+        transcript.append(SecretRedactor().redact(result.stdout))
+        transcript.append(SecretRedactor().redact(result.stderr))
+        guard result.exitCode == 0, !result.timedOut else {
+            return JudgeRunResult(outcome: .containerFailed, transcript: transcript, containerName: name)
         }
         let url = request.workspace.root.appendingPathComponent(".gegenlesen/judge.json")
         guard let data = try? Data(contentsOf: url) else {
@@ -891,77 +887,6 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var stderrLine: String?
     }
 
-    private func appendRetryNotice(workspace: Workspace, slot: ReviewerSlot, errors: String) throws {
-        let promptURL = workspace.root.appendingPathComponent(".gegenlesen/prompt-\(slot.rawValue).md")
-        let existing = (try? String(contentsOf: promptURL, encoding: .utf8)) ?? ""
-        let notice = """
-
-        ## Retry
-
-        Previous output failed validation: \(errors)
-        """
-        try (existing + notice).write(to: promptURL, atomically: true, encoding: .utf8)
-    }
-
-    private func runSlot(
-        _ request: AgentReviewRequest,
-        slot: ReviewerSlot,
-        engine: String,
-        model: String,
-        known: Set<RuleID>
-    ) async -> SlotOutcome {
-        var combinedTranscript = Data()
-        var lastOutcome = SlotOutcome(
-            findings: [],
-            valid: false,
-            transcript: Data(),
-            providerAuth: false,
-            validationError: "reviewer_no_findings_file",
-            stderrLine: nil
-        )
-        for attempt in 1...2 {
-            let outcome = await executeSlotAttempt(
-                request,
-                slot: slot,
-                engine: engine,
-                model: model,
-                known: known
-            )
-            combinedTranscript.append(outcome.transcript)
-            lastOutcome = SlotOutcome(
-                findings: outcome.findings,
-                valid: outcome.valid,
-                transcript: combinedTranscript,
-                providerAuth: outcome.providerAuth,
-                validationError: outcome.validationError,
-                stderrLine: outcome.stderrLine
-            )
-            if outcome.valid || outcome.providerAuth {
-                return lastOutcome
-            }
-            if await request.isCancelled?() == true {
-                return lastOutcome
-            }
-            if attempt == 1, let error = outcome.validationError {
-                // A throttled provider did not fail validation; wait for
-                // capacity instead of re-prompting with a failure notice.
-                if error == ReviewFailureClass.providerRateLimited.rawValue {
-                    if slotRetryBackoff > .zero {
-                        try? await Task.sleep(for: slotRetryBackoff)
-                    }
-                    if await request.isCancelled?() == true {
-                        return lastOutcome
-                    }
-                    continue
-                }
-                try? appendRetryNotice(workspace: request.workspace, slot: slot, errors: error)
-                continue
-            }
-            break
-        }
-        return lastOutcome
-    }
-
     private func executeSlotAttempt(
         _ request: AgentReviewRequest,
         slot: ReviewerSlot,
@@ -1012,10 +937,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         var transcript = Data()
         var providerAuth = false
         var startFailed = false
+        var timedOut = false
+        var completed = false
         var rateLimited = false
         var stderrLine: String?
         do {
             let result = try await docker.run(dockerRequest)
+            timedOut = result.timedOut || result.exitCode == 124
+            completed = result.exitCode == 0 && !timedOut
             let redactor = SecretRedactor()
             transcript.append(redactor.redact(Data(result.outputText.utf8)))
             let stderrText = redactor.redact(String(data: result.stderr, encoding: .utf8) ?? "")
@@ -1034,27 +963,20 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             providerAuth = Self.isProviderAuth(transcript)
             rateLimited = Self.isProviderRateLimited(transcript: transcript, stderr: nil)
         }
-        if await request.isCancelled?() == true {
-            return SlotOutcome(
-                findings: [],
-                valid: false,
-                transcript: transcript,
-                providerAuth: false,
-                validationError: "cancelled",
-                stderrLine: stderrLine
-            )
+        if await request.isCancelled?() == true || Task.isCancelled {
+            completed = false
+            timedOut = true
         }
 
         let url = FindingsParser.findingsURL(workspace: request.workspace, slot: slot)
-        let shared = request.workspace.root.appendingPathComponent(".gegenlesen/findings.json")
-        let data = (try? Data(contentsOf: url)) ?? (try? Data(contentsOf: shared))
+        let data = try? Data(contentsOf: url)
         guard let data else {
             return SlotOutcome(
                 findings: [],
                 valid: false,
                 transcript: transcript,
                 providerAuth: providerAuth,
-                validationError: rateLimited
+                validationError: timedOut ? "reviewer_timed_out" : rateLimited
                     ? ReviewFailureClass.providerRateLimited.rawValue
                     : startFailed
                         ? ReviewFailureClass.containerStartFailed.rawValue
@@ -1071,11 +993,17 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 slot: slot
             )
             return SlotOutcome(
-                findings: parsed.findings,
-                valid: true,
+                findings: parsed.findings.map { finding in
+                    guard !completed else { return finding }
+                    var copy = finding
+                    copy.judgeVerdict = .unavailable
+                    copy.judgeRationale = "Reviewer did not finish; verification incomplete"
+                    return copy
+                },
+                valid: completed,
                 transcript: transcript,
-                providerAuth: false,
-                validationError: nil,
+                providerAuth: providerAuth,
+                validationError: completed ? nil : timedOut ? "reviewer_timed_out" : "reviewer_failed",
                 stderrLine: stderrLine
             )
         } catch {
@@ -1084,7 +1012,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 valid: false,
                 transcript: transcript,
                 providerAuth: providerAuth,
-                validationError: String(describing: error),
+                validationError: timedOut ? "reviewer_timed_out" : String(describing: error),
                 stderrLine: stderrLine
             )
         }
