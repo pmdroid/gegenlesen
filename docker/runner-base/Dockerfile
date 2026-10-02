@@ -41,7 +41,7 @@ RUN set -eux; \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
-COPY acp-runner.mjs acp-models.mjs /opt/gegenlesen/acp-runner/
+COPY acp-runner.mjs acp-models.mjs submit-result.mjs /opt/gegenlesen/acp-runner/
 COPY lib/ /opt/gegenlesen/acp-runner/lib/
 COPY tests/ /opt/gegenlesen/acp-runner/tests/
 RUN chmod 0755 /opt/gegenlesen/acp-runner/acp-runner.mjs /opt/gegenlesen/acp-runner/acp-models.mjs \
@@ -50,7 +50,8 @@ RUN chmod 0755 /opt/gegenlesen/acp-runner/acp-runner.mjs /opt/gegenlesen/acp-run
     && node /opt/gegenlesen/acp-runner/tests/transcript.test.mjs \
     && node /opt/gegenlesen/acp-runner/tests/workspace-fs.test.mjs \
     && node /opt/gegenlesen/acp-runner/tests/workspace-terminal.test.mjs \
-    && node /opt/gegenlesen/acp-runner/tests/acp-contract.test.mjs
+    && node /opt/gegenlesen/acp-runner/tests/acp-contract.test.mjs \
+    && node --test /opt/gegenlesen/acp-runner/tests/submission.test.mjs
 
 RUN chown -R 1000:1000 /home/gegenlesen
 
