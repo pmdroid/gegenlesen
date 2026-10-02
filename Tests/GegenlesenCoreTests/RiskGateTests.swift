@@ -169,6 +169,17 @@ struct RiskGateTests {
     }
 
     @Test
+    func omittedInfoFindingBlocksEvenWithSuccessfulJudgeOutput() {
+        var input = baseInput()
+        let candidate = finding(severity: .info, verdict: .keep)
+        input.findings = JudgeMerge.merge(candidates: [candidate], judge: .verdicts(JudgeFile(verdicts: [])))
+        input.judgeUnavailable = false
+        let risk = RiskGate.evaluate(input)
+        #expect(risk.verdict == .needsHuman)
+        #expect(risk.reasons.contains { $0.code == "judge_unavailable" })
+    }
+
+    @Test
     func openapiBreakBlocks() {
         var input = baseInput()
         let ruleID = RuleID("openapi-break")

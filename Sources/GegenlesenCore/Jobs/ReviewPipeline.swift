@@ -217,34 +217,6 @@ public struct ReviewPipeline: Sendable {
         let files = try await store.jobFiles(id: jobID)
         let workspace = Workspace(root: workspaceURL)
         patchBytes = loadPatchText(jobID: jobID, workspace: workspace)
-        do {
-            let indexer = ArchitectureIndexJob(
-                store: store,
-                embedder: embedder,
-                maxChunks: maxChunks,
-                skipAgent: skipAgent,
-                miner: miner,
-                engine: learnEngine,
-                model: learnModel,
-                onWarning: { [store, jobID] message in
-                    try? await store.appendEvent(jobID: jobID, level: .warning, message: message)
-                },
-                onInfo: { [store, jobID] message in
-                    try? await store.appendEvent(jobID: jobID, level: .info, message: message)
-                }
-            )
-            try await indexer.run(workspace: workspace, jobID: jobID)
-            try await indexer.embedEnabledRules(try await store.listRules(RuleListFilter(enabled: true)))
-        } catch {
-            try await store.appendEvent(
-                jobID: jobID,
-                level: .warning,
-                message: "architecture_index_failed",
-                payloadJSON: JobEvent.payloadJSON(["message": String(describing: error)])
-            )
-        }
-        if try await stopped(jobID) { return }
-
         let rules: [Rule]
         do {
             rules = try await selectAndPack(
@@ -754,7 +726,8 @@ public struct ReviewPipeline: Sendable {
             files: files,
             workspace: workspace,
             title: job?.title,
-            patch: patch
+            patch: patch,
+            rules: deterministic + budgeted
         )
         return deterministic + budgeted
     }
@@ -764,7 +737,8 @@ public struct ReviewPipeline: Sendable {
         files: [JobFile],
         workspace: Workspace,
         title: String?,
-        patch: Data?
+        patch: Data?,
+        rules: [Rule]
     ) async throws {
         let job = try await store.job(id: jobID)
         let notes = try await store.listContextNotes(
@@ -805,10 +779,19 @@ public struct ReviewPipeline: Sendable {
         let visibleNotes = notes.filter { note in
             noteApplies(note, to: files.map(\.path))
         }
+        let ruleIDs = Set(rules.map { $0.id.rawValue })
+        var fileHashes: [String: String] = [:]
         let visibleHits = hits.filter { hit in
-            if hit.chunk.kind == .file { return true }
+            if hit.chunk.kind == .file {
+                if fileHashes[hit.chunk.ref] == nil {
+                    guard let url = workspace.resolveForRead(hit.chunk.ref),
+                          let data = try? Data(contentsOf: url) else { return false }
+                    fileHashes[hit.chunk.ref] = ContentHash.sha256(data)
+                }
+                return fileHashes[hit.chunk.ref] == hit.chunk.contentSHA256
+            }
             if hit.chunk.kind == .rule {
-                return true
+                return ruleIDs.contains(hit.chunk.ref)
             }
             guard let note = notes.first(where: { $0.id == hit.chunk.ref }) else { return false }
             return noteApplies(note, to: files.map(\.path))

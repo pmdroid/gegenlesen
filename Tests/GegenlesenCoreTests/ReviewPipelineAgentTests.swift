@@ -74,6 +74,44 @@ struct ReviewPipelineAgentTests {
     }
 
     @Test
+    func reviewUsesPreparedContextWithoutReindexing() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await store.insertContextNote(ContextNote(kind: .architecture, title: "Architecture", body: "Accepted architecture"))
+            try await store.insertContextNote(ContextNote(title: "Operator", body: "Accepted operator note"))
+            let chunks = [
+                ContextChunk(id: "current", kind: .file, ref: "Sources/A.swift", text: "Current source context", contentSHA256: ContentHash.sha256(Data("print(2)\n".utf8))),
+                ContextChunk(id: "stale", kind: .file, ref: "Sources/A.swift", text: "Stale source context", contentSHA256: "old"),
+                ContextChunk(id: "foreign", kind: .rule, ref: "foreign-rule", text: "Foreign rule context", contentSHA256: "other"),
+            ].map { chunk in
+                var copy = chunk
+                copy.embedding = EmbeddingVector.encode([1, 0])
+                return copy
+            }
+            try await store.upsertChunks(chunks)
+            let embedder = ReviewContextEmbedder()
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await ReviewPipeline(store: store, skipAgent: true, embedder: embedder).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                let context = store.blobs.workspaceURL(jobID: job.id.rawValue).appendingPathComponent(".gegenlesen/context.md")
+                let text = try String(contentsOf: context, encoding: .utf8)
+                #expect(text.contains("Accepted architecture"))
+                #expect(text.contains("Accepted operator note"))
+                #expect(text.contains("Current source context"))
+                #expect(!text.contains("Stale source context"))
+                #expect(!text.contains("Foreign rule context"))
+                #expect(await embedder.inputs.count == 1)
+                #expect(await embedder.inputs.first?.count == 1)
+                #expect(try await store.chunks(kind: .file).count == 2)
+            }
+        }
+    }
+
+    @Test
     func noValidFindingsFileFailsWhenNewWork() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
@@ -503,7 +541,9 @@ final class JudgeInputRecordingJudge: JudgeRunning, @unchecked Sendable {
             input = try? JSONDecoder().decode(JudgeInputFile.self, from: data)
         }
         return JudgeRunResult(
-            outcome: .verdicts(JudgeFile(verdicts: [])),
+            outcome: .verdicts(JudgeFile(verdicts: (input?.candidates ?? []).map {
+                JudgeVerdictRow(findingID: $0.id, verdict: .keep, rationale: "confirmed in source")
+            })),
             containerName: ReviewContainers.judge(request.job.id)
         )
     }
@@ -688,4 +728,15 @@ private func queuedJob() -> Job {
         reviewerBModelID: "openai/gpt-5.2",
         judgeModelID: "anthropic/claude-sonnet-4-5"
     )
+}
+
+private actor ReviewContextEmbedder: EmbeddingClient {
+    nonisolated let model = "test"
+    nonisolated let dimensions = 2
+    var inputs: [[String]] = []
+
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        inputs.append(texts)
+        return texts.map { _ in [1, 0] }
+    }
 }

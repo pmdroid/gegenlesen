@@ -26,7 +26,7 @@ struct JudgeMergeTests {
     }
 
     @Test
-    func emptyDropRationaleKeeps() {
+    func emptyDropRationaleIsUnavailable() {
         let finding = sampleFinding(evidenceOK: true)
         let merged = JudgeMerge.merge(
             candidates: [finding],
@@ -36,19 +36,19 @@ struct JudgeMergeTests {
                 ])
             )
         )
-        #expect(merged[0].judgeVerdict == .keep)
-        #expect(merged[0].judgeRationale == "host: empty drop rationale ignored")
+        #expect(merged[0].judgeVerdict == .unavailable)
+        #expect(merged[0].judgeRationale == "judge returned an invalid verdict; verification incomplete")
     }
 
     @Test
-    func missingIdDefaultsToKeep() {
+    func missingIdIsUnavailable() {
         let finding = sampleFinding(evidenceOK: true)
         let merged = JudgeMerge.merge(
             candidates: [finding],
             judge: .verdicts(JudgeFile(verdicts: []))
         )
-        #expect(merged[0].judgeVerdict == .keep)
-        #expect(merged[0].judgeRationale == "judge omitted id; default keep")
+        #expect(merged[0].judgeVerdict == .unavailable)
+        #expect(merged[0].judgeRationale == "judge omitted finding; verification incomplete")
     }
 
     @Test
@@ -57,7 +57,7 @@ struct JudgeMergeTests {
         for outcome: JudgeOutcome in [.containerFailed, .invalidFile] {
             let merged = JudgeMerge.merge(candidates: [finding], judge: outcome)
             #expect(merged[0].judgeVerdict == .unavailable)
-            #expect(merged[0].judgeRationale == "judge unavailable; default keep")
+            #expect(merged[0].judgeRationale == "judge unavailable; verification incomplete")
         }
     }
 
@@ -93,12 +93,12 @@ struct JudgeMergeTests {
                 ])
             )
         )
-        #expect(same[0].judgeVerdict == .keep)
-        #expect(same[0].judgeRationale == "host: downgrade not strictly lower; kept")
+        #expect(same[0].judgeVerdict == .unavailable)
+        #expect(same[0].judgeRationale == "judge returned an invalid verdict; verification incomplete")
     }
 
     @Test
-    func unknownFindingIdIsIgnored() {
+    func unknownFindingIdInvalidatesVerdicts() {
         let finding = sampleFinding(evidenceOK: true)
         let extra = FindingID.generate()
         let merged = JudgeMerge.merge(
@@ -111,7 +111,7 @@ struct JudgeMergeTests {
         )
         #expect(merged.count == 1)
         #expect(merged[0].id == finding.id)
-        #expect(merged[0].judgeVerdict == .keep)
+        #expect(merged[0].judgeVerdict == .unavailable)
     }
 
     @Test
@@ -162,17 +162,69 @@ struct JudgeMergeTests {
     }
 
     @Test
-    func parseRejectsExtraKeysAndAcceptsEmptyRationale() {
-        let invalid = Data(#"{"verdicts":[],"extra":true}"#.utf8)
-        #expect(JudgeMerge.parse(invalid) == .invalidFile)
-
-        let empty = Data(#"{"verdicts":[{"finding_id":"fnd_1","verdict":"drop","rationale":""}]}"#.utf8)
-        guard case .verdicts(let file) = JudgeMerge.parse(empty) else {
-            Issue.record("expected verdicts")
-            return
+    func parseRejectsInvalidRows() {
+        let invalid = [
+            #"{"verdicts":[],"extra":true}"#,
+            #"{"verdicts":[{"finding_id":"fnd_1","verdict":"drop","rationale":""}]}"#,
+            #"{"verdicts":[{"finding_id":"fnd_1","verdict":"keep","rationale":"  "}]}"#,
+            #"{"verdicts":[{"finding_id":" ","verdict":"keep","rationale":"verified"}]}"#,
+            #"{"verdicts":[{"finding_id":"fnd_1","verdict":"keep","rationale":"yes"},{"finding_id":"fnd_1","verdict":"drop","rationale":"no"}]}"#,
+        ]
+        for json in invalid {
+            #expect(JudgeMerge.parse(Data(json.utf8)) == .invalidFile)
         }
-        #expect(file.verdicts.count == 1)
-        #expect(file.verdicts[0].rationale.isEmpty)
+    }
+
+    @Test
+    func judgeCanExplicitlyReportUnverifiedEvidence() throws {
+        let finding = sampleFinding(evidenceOK: true)
+        let data = try JSONSerialization.data(withJSONObject: ["verdicts": [[
+            "finding_id": finding.id.rawValue, "verdict": "unverified", "rationale": "Caller contract could not be established",
+        ]]])
+        let merged = JudgeMerge.merge(candidates: [finding], judge: JudgeMerge.parse(data))
+        #expect(merged[0].judgeVerdict == .unavailable)
+        #expect(merged[0].judgeRationale == "Caller contract could not be established")
+    }
+
+    @Test
+    func duplicateVerdictsAreUnavailable() {
+        let finding = sampleFinding(evidenceOK: true)
+        let merged = JudgeMerge.merge(
+            candidates: [finding],
+            judge: .verdicts(JudgeFile(verdicts: [
+                JudgeVerdictRow(findingID: finding.id, verdict: .keep, rationale: "yes"),
+                JudgeVerdictRow(findingID: finding.id, verdict: .drop, rationale: "no"),
+            ]))
+        )
+        #expect(merged[0].judgeVerdict == .unavailable)
+    }
+
+    @Test
+    func invalidEvidenceDropsEvenWhenJudgeFails() {
+        let finding = sampleFinding(evidenceOK: false)
+        for outcome: JudgeOutcome in [.containerFailed, .invalidFile] {
+            let merged = JudgeMerge.merge(candidates: [finding], judge: outcome)
+            #expect(merged[0].judgeVerdict == .drop)
+            #expect(merged[0].judgeRationale == "host: snippet not present at file:lines")
+        }
+    }
+
+    @Test
+    func handoffAndParserPreserveEveryCandidate() throws {
+        try withTempDir("handoff-complete") { root in
+            let findings = (0..<201).map { _ in sampleFinding(evidenceOK: true) }
+            let input = JudgeHandoff.inputFile(from: findings, workspace: Workspace(root: root))
+            #expect(input.candidates.count == findings.count)
+            let rows = findings.map { ["finding_id": $0.id.rawValue, "verdict": "keep", "rationale": "verified"] }
+            let data = try JSONSerialization.data(withJSONObject: ["verdicts": rows])
+            guard case .verdicts(let file) = JudgeMerge.parse(data) else {
+                Issue.record("expected all verdicts")
+                return
+            }
+            #expect(file.verdicts.count == findings.count)
+            let merged = JudgeMerge.merge(candidates: findings, judge: .verdicts(file))
+            #expect(merged.allSatisfy { $0.judgeVerdict == .keep })
+        }
     }
 
     @Test
