@@ -23,10 +23,12 @@ input.on("line", (line) => {
     if (mode === "early-exit") process.exit(0);
     send({ protocolVersion: 1 });
   } else if (message.method === "session/new") {
-    send({ sessionId: "test", configOptions: mode === "legacy" ? [] : [{ [mode === "compat" ? "configId" : "id"]: "model", category: "model", currentValue: "default" }] });
+    send({ sessionId: "test", modes: mode === "hang-mode" ? { availableModes: [{ id: "default" }] } : undefined, configOptions: mode === "legacy" ? [] : [{ [mode === "compat" ? "configId" : "id"]: "model", category: "model", currentValue: "default", options: [{ value: "claude-opus-4-6-1m" }, { value: "claude-opus-4-6" }] }] });
+  } else if (message.method === "session/set_mode") {
+    if (mode !== "hang-mode") send({});
   } else if (message.method === "session/set_config_option") {
     if (mode === "rejected") reject();
-    else send({ configOptions: [{ id: "model", category: "model", currentValue: mode === "mismatch" ? "wrong-model" : message.params.value }] });
+    else send({ configOptions: [{ id: "model", category: "model", currentValue: mode === "mismatch" ? "wrong-model" : mode === "claude-alias" ? "claude-opus-4-6-1m" : mode === "claude-context-loss" ? "claude-opus-4-6" : message.params.value }] });
   } else if (message.method === "session/set_model") {
     if (mode === "legacy") send({});
     else reject();
@@ -47,7 +49,7 @@ function run(mode) {
     const result = spawnSync(process.execPath, [runner, "--timeout-sec", "2", "--setup-timeout-sec", "0.1", "--", process.execPath, join(root, "peer.mjs")], {
       encoding: "utf8",
       timeout: 4000,
-      env: { ...process.env, GEGENLESEN_WORKSPACE: root, CODEX_ACP_MODEL: "requested-model", TEST_MODE: mode, TEST_CALLS: callsPath },
+      env: { ...process.env, GEGENLESEN_WORKSPACE: root, CODEX_ACP_MODEL: mode === "hang-mode" || mode.startsWith("claude-") ? "" : "requested-model", ANTHROPIC_MODEL: mode.startsWith("claude-") ? "opus[1m]" : "", CURSOR_ACP_MODEL: "", CURSOR_MODEL: "", GROK_ACP_MODEL: "", GROK_MODEL: "", TEST_MODE: mode, TEST_CALLS: callsPath },
     });
     return { ...result, calls: readFileSync(callsPath, "utf8"), elapsed: performance.now() - started };
   } finally {
@@ -78,4 +80,23 @@ test("setup shares a short deadline", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /setup deadline/);
   assert.ok(result.elapsed < 1500, `elapsed ${result.elapsed}ms`);
+});
+
+test("mode timeout cannot start a prompt without explicit model selection", () => {
+  const result = run("hang-mode");
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.calls, /session\/prompt/);
+  assert.ok(result.elapsed < 1500);
+});
+
+test("Claude aliases retain requested and confirmed model identities", () => {
+  const result = run("claude-alias");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"modelId":"opus\[1m\]","effectiveModelId":"claude-opus-4-6-1m"/);
+});
+
+test("Claude alias normalization cannot silently drop requested context capacity", () => {
+  const result = run("claude-context-loss");
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.calls, /session\/prompt/);
 });

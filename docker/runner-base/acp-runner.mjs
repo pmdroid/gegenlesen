@@ -71,6 +71,7 @@ function redact(text) {
 function record(entry) {
   const line = redact(JSON.stringify({ ts: new Date().toISOString(), ...entry }));
   if (args.transcript) appendFileSync(args.transcript, line + "\n");
+  if (entry.dir === "job_log") process.stdout.write(line + "\n");
 }
 
 function status(text) {
@@ -133,7 +134,8 @@ const child = spawn(args.command[0], args.command.slice(1), {
 let nextId = 1;
 const pending = new Map();
 let settled = false;
-const setupDeadline = performance.now() + Math.min(args.setupTimeoutSec, args.timeoutSec) * 1000;
+const executionDeadline = performance.now() + args.timeoutSec * 1000;
+const setupDeadline = Math.min(executionDeadline, performance.now() + args.setupTimeoutSec * 1000);
 let sessionId = null;
 const terminals = new WorkspaceTerminalManager();
 
@@ -210,6 +212,7 @@ async function configureSession(session) {
       record({ dir: "job_log", event: "session_mode_set", modeId: match.id });
       break;
     } catch (error) {
+      if (error.message.includes("setup deadline")) throw error;
       status(`session/set_mode ${match.id} failed: ${error.message}`);
     }
   }
@@ -217,7 +220,8 @@ async function configureSession(session) {
   const codexModel = process.env.CODEX_ACP_MODEL?.trim();
   const cursorModel = process.env.CURSOR_ACP_MODEL?.trim() || process.env.CURSOR_MODEL?.trim();
   const grokModel = process.env.GROK_ACP_MODEL?.trim() || process.env.GROK_MODEL?.trim();
-  const modelId = codexModel || cursorModel || grokModel;
+  const claudeModel = process.env.ANTHROPIC_MODEL?.trim();
+  const modelId = codexModel || cursorModel || grokModel || claudeModel;
   if (!modelId) return;
 
   const modelOption = (session.configOptions ?? []).find(
@@ -233,6 +237,7 @@ async function configureSession(session) {
         value: modelId,
       });
     } catch (error) {
+      if (error.message.includes("setup deadline")) throw error;
       status(`session/set_config_option failed: ${error.message}`);
     }
   }
@@ -243,7 +248,12 @@ async function configureSession(session) {
     (entry) => entry?.category === "model" || (entry?.id ?? entry?.configId) === configId,
   );
   const effectiveModelId = confirmedOption?.currentValue ?? result?.models?.currentModelId ?? null;
-  if (effectiveModelId !== null && effectiveModelId !== modelId) {
+  const values = (modelOption?.options ?? []).flatMap((option) => option.options ?? [option]).map((option) => option.value);
+  const alias = claudeModel === modelId ? /^(opus|sonnet|haiku)(\[1m\])?$/.exec(modelId) : null;
+  const normalizedClaudeAlias = alias && !values.includes(modelId) && values.includes(effectiveModelId)
+    && effectiveModelId.startsWith(`claude-${alias[1]}-`)
+    && (!alias[2] || /(?:-1m|\[1m\])$/.test(effectiveModelId));
+  if (effectiveModelId !== null && effectiveModelId !== modelId && !normalizedClaudeAlias) {
     throw new Error(`requested model ${modelId}, agent confirmed ${effectiveModelId}`);
   }
   status(`session model acknowledged: ${modelId}${effectiveModelId ? ` (confirmed ${effectiveModelId})` : ""}`);
@@ -420,7 +430,8 @@ try {
   record({ dir: "job_log", event: "session_created", sessionId });
   await configureSession(session);
 
-  const prompt = [{ type: "text", text: args.message }];
+  const remainingSec = Math.max(1, Math.floor((executionDeadline - performance.now()) / 1000));
+  const prompt = [{ type: "text", text: `${args.message}\nYou have at most ${remainingSec} seconds remaining. Finish and save the required JSON within this time.` }];
   if (args.promptFile) {
     prompt.push({
       type: "resource",
@@ -431,6 +442,7 @@ try {
       },
     });
   }
+  if (performance.now() >= setupDeadline) throw new Error("setup deadline exceeded");
   const result = await request("session/prompt", { sessionId: session.sessionId, prompt });
   status(`prompt finished: stopReason=${result.stopReason}`);
   record({ dir: "job_log", event: "prompt_finished", stopReason: result.stopReason });
