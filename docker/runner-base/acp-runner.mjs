@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { liveTranscriptLine, mapSessionUpdate } from "./lib/transcript.mjs";
 import { validateOutput } from "./lib/validate.mjs";
 import { readWorkspaceTextFile, writeWorkspaceTextFile, WORKSPACE_ROOT } from "./lib/workspace-fs.mjs";
 import { WorkspaceTerminalManager } from "./lib/workspace-terminal.mjs";
+import { atomicWrite, judgeCandidateIDs, readSubmission } from "./lib/submission.mjs";
+import { preparedInputs } from "./lib/prepared-inputs.mjs";
 
 function parseArgs(argv) {
   const args = {
@@ -127,6 +130,21 @@ function validateResultFile() {
   return 0;
 }
 
+const submission = args.outputPath && ["findings", "judge"].includes(args.output) ? {
+  kind: args.output,
+  outputPath: args.outputPath,
+  runID: randomUUID(),
+  expectedIDs: judgeCandidateIDs(args.output, args.outputPath),
+} : null;
+if (submission) {
+  rmSync(`${args.outputPath}.submitted`, { force: true });
+  process.env.GEGENLESEN_OUTPUT_KIND = args.output;
+  process.env.GEGENLESEN_OUTPUT_PATH = args.outputPath;
+  process.env.GEGENLESEN_SUBMISSION_ID = submission.runID;
+}
+let acceptedResult = null;
+let submissionTimer;
+
 const child = spawn(args.command[0], args.command.slice(1), {
   stdio: ["pipe", "pipe", "pipe"],
 });
@@ -142,8 +160,21 @@ const terminals = new WorkspaceTerminalManager();
 function finish(code, reason) {
   if (settled) return;
   settled = true;
+  clearTimeout(timeout);
+  clearInterval(submissionTimer);
   status(`finished: ${reason}`);
   record({ dir: "client", event: "finish", code, reason });
+  if (acceptedResult !== null && sessionId && !child.stdin.destroyed) {
+    send({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId } });
+  }
+  const exitWithResult = () => {
+    if (acceptedResult !== null) atomicWrite(args.outputPath, acceptedResult);
+    process.exit(code === 0 ? validateResultFile() : code);
+  };
+  if (child.exitCode !== null || child.signalCode !== null) {
+    exitWithResult();
+    return;
+  }
   try {
     child.stdin.end();
   } catch {}
@@ -151,16 +182,10 @@ function finish(code, reason) {
     try {
       child.kill("SIGKILL");
     } catch {}
-  }, 5000);
+  }, acceptedResult !== null ? 250 : 5000);
   killer.unref();
-  child.once("exit", () => {
-    if (code !== 0) {
-      process.exit(code);
-      return;
-    }
-    process.exit(validateResultFile());
-  });
-  setTimeout(() => process.exit(code === 0 ? validateResultFile() : code), 7000).unref();
+  child.once("exit", exitWithResult);
+  setTimeout(exitWithResult, acceptedResult !== null ? 1000 : 7000).unref();
 }
 
 const timeout = setTimeout(() => {
@@ -172,7 +197,18 @@ const timeout = setTimeout(() => {
 }, args.timeoutSec * 1000);
 timeout.unref();
 
+function acceptSubmission() {
+  if (!submission || settled || performance.now() >= executionDeadline) return false;
+  const raw = readSubmission(submission);
+  if (raw === null) return false;
+  acceptedResult = raw;
+  record({ dir: "job_log", event: "result_submitted", output: args.output });
+  finish(0, "validated result submitted");
+  return true;
+}
+
 function send(message) {
+  if (child.stdin.destroyed || child.stdin.writableEnded) return;
   record({ dir: "send", message });
   child.stdin.write(JSON.stringify(message) + "\n");
 }
@@ -269,6 +305,7 @@ function respondError(id, message) {
 }
 
 function handleIncoming(message) {
+  if (settled) return;
   if (message.id !== undefined && message.method === undefined) {
     const entry = pending.get(message.id);
     if (!entry) return;
@@ -395,8 +432,13 @@ child.stderr.on("data", (chunk) => {
   record({ dir: "agent-stderr", text: chunk.toString("utf8") });
 });
 
+child.stdin.on("error", (error) => {
+  if (!settled) finish(3, `agent input failed: ${error.message}`);
+});
+
 child.on("exit", (code, signal) => {
   record({ dir: "client", event: "agent-exit", code, signal });
+  if (!settled && acceptSubmission()) return;
   for (const entry of pending.values()) {
     clearTimeout(entry.timer);
     entry.reject(new Error("agent exited before responding"));
@@ -433,20 +475,26 @@ try {
   const remainingSec = Math.max(1, Math.floor((executionDeadline - performance.now()) / 1000));
   const prompt = [{ type: "text", text: `${args.message}\nYou have at most ${remainingSec} seconds remaining. Finish and save the required JSON within this time.` }];
   if (args.promptFile) {
-    prompt.push({
-      type: "resource",
-      resource: {
-        uri: args.promptUri ?? `file://${args.promptFile}`,
-        mimeType: "text/markdown",
-        text: readFileSync(args.promptFile, "utf8"),
-      },
-    });
+    prompt.push({ type: "text", text: readFileSync(args.promptFile, "utf8") });
   }
+  const inputs = preparedInputs(args.output, args.outputPath);
+  if (inputs) prompt.push({ type: "text", text: inputs });
   if (performance.now() >= setupDeadline) throw new Error("setup deadline exceeded");
+  if (submission) {
+    prompt.push({ type: "text", text: "When investigation is complete, submit the final JSON with node /opt/gegenlesen/acp-runner/submit-result.mjs using the JSON as standard input. This command validates and saves your result and ends the session. Correct any reported errors and resubmit. A saved file alone is only a checkpoint. Do not install validators, write validation scripts, reread the saved result, or produce a closing explanation. The host checks the format and source evidence." });
+    submissionTimer = setInterval(acceptSubmission, 25);
+    submissionTimer.unref();
+  }
   const result = await request("session/prompt", { sessionId: session.sessionId, prompt });
-  status(`prompt finished: stopReason=${result.stopReason}`);
-  record({ dir: "job_log", event: "prompt_finished", stopReason: result.stopReason });
-  finish(result.stopReason === "end_turn" ? 0 : 2, `stopReason=${result.stopReason}`);
+  if (!settled && !acceptSubmission()) {
+    if (submission) {
+      finish(4, "model ended without submitting a complete result");
+    } else {
+      status(`prompt finished: stopReason=${result.stopReason}`);
+      record({ dir: "job_log", event: "prompt_finished", stopReason: result.stopReason });
+      finish(result.stopReason === "end_turn" ? 0 : 2, `stopReason=${result.stopReason}`);
+    }
+  }
 } catch (error) {
   record({ dir: "client", event: "protocol-error", error: String(error) });
   finish(3, String(error));
