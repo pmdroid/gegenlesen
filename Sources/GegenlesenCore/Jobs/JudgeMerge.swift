@@ -156,13 +156,7 @@ public enum JudgeMerge: Sendable {
     public static func merge(candidates: [Finding], judge: JudgeOutcome) -> [Finding] {
         switch judge {
         case .containerFailed, .invalidFile:
-            return candidates.map { finding in
-                var next = finding
-                next.judgeVerdict = .unavailable
-                next.judgeSeverity = finding.severity
-                next.judgeRationale = "judge unavailable; default keep"
-                return next
-            }
+            return merge(candidates: candidates, file: JudgeFile(verdicts: []), unavailable: true)
         case .verdicts(let file):
             return merge(candidates: candidates, file: file)
         }
@@ -180,19 +174,24 @@ public enum JudgeMerge: Sendable {
             return .invalidFile
         }
         var rows: [JudgeVerdictRow] = []
-        rows.reserveCapacity(min(raw.count, 200))
+        rows.reserveCapacity(raw.count)
+        var ids: Set<String> = []
         let allowedRow: Set<String> = ["finding_id", "verdict", "rationale", "severity"]
-        for item in raw.prefix(200) {
+        for item in raw {
             guard let object = item as? [String: Any] else {
                 return .invalidFile
             }
             if !Set(object.keys).isSubset(of: allowedRow) {
                 return .invalidFile
             }
-            guard let id = object["finding_id"] as? String, !id.isEmpty,
+            guard let id = object["finding_id"] as? String,
+                  !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  ids.insert(id).inserted,
                   let verdictRaw = object["verdict"] as? String,
                   let verdict = JudgeDecision.parse(verdictRaw),
-                  let rationale = object["rationale"] as? String
+                  let rationale = object["rationale"] as? String,
+                  !rationale.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  rationale.count <= 4000
             else {
                 return .invalidFile
             }
@@ -217,7 +216,10 @@ public enum JudgeMerge: Sendable {
         return .verdicts(JudgeFile(verdicts: rows))
     }
 
-    private static func merge(candidates: [Finding], file: JudgeFile) -> [Finding] {
+    private static func merge(candidates: [Finding], file: JudgeFile, unavailable: Bool = false) -> [Finding] {
+        let expectedIDs = Set(candidates.map(\.id))
+        let actualIDs = Set(file.verdicts.map(\.findingID))
+        let invalidIDs = actualIDs.count != file.verdicts.count || !actualIDs.isSubset(of: expectedIDs)
         var byID: [String: JudgeVerdictRow] = [:]
         for row in file.verdicts {
             byID[row.findingID.rawValue] = row
@@ -232,12 +234,18 @@ public enum JudgeMerge: Sendable {
                 return next
             }
 
+            next.judgeVerdict = .unavailable
+            next.judgeSeverity = candidate.severity
+            next.judgeRationale = "judge unavailable; verification incomplete"
+            if unavailable { return next }
+            next.judgeRationale = "judge returned an invalid verdict; verification incomplete"
+            if invalidIDs { return next }
             guard let row = byID[candidate.id.rawValue] else {
-                next.judgeVerdict = .keep
-                next.judgeSeverity = candidate.severity
-                next.judgeRationale = "judge omitted id; default keep"
+                next.judgeRationale = "judge omitted finding; verification incomplete"
                 return next
             }
+            guard !row.rationale.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  row.rationale.count <= 4000 else { return next }
 
             switch row.verdict {
             case .keep:
@@ -245,25 +253,14 @@ public enum JudgeMerge: Sendable {
                 next.judgeSeverity = candidate.severity
                 next.judgeRationale = row.rationale
             case .drop:
-                if !row.rationale.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    next.judgeVerdict = .drop
-                    next.judgeSeverity = candidate.severity
-                    next.judgeRationale = row.rationale
-                } else {
-                    next.judgeVerdict = .keep
-                    next.judgeSeverity = candidate.severity
-                    next.judgeRationale = "host: empty drop rationale ignored"
-                }
+                next.judgeVerdict = .drop
+                next.judgeRationale = row.rationale
             case .downgrade:
                 let newSev = row.severity ?? nextLower(candidate.severity)
                 if let newSev, newSev.rank < candidate.severity.rank {
                     next.judgeVerdict = .downgrade
                     next.judgeSeverity = newSev
                     next.judgeRationale = row.rationale
-                } else {
-                    next.judgeVerdict = .keep
-                    next.judgeSeverity = candidate.severity
-                    next.judgeRationale = "host: downgrade not strictly lower; kept"
                 }
             }
             return next

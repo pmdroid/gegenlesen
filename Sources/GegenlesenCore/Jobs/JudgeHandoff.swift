@@ -56,7 +56,7 @@ public enum JudgeHandoff: Sendable {
             detailByID[group.finding.id.rawValue] = group
         }
         return JudgeInputFile(
-            candidates: candidates.prefix(200).map { finding in
+            candidates: candidates.map { finding in
                 let path = finding.filePath ?? ""
                 let start = finding.startLine ?? 1
                 let end = finding.endLine ?? start

@@ -8,7 +8,6 @@
   "properties": {
     "verdicts": {
       "type": "array",
-      "maxItems": 200,
       "items": { "$ref": "#/$defs/JudgeVerdictRow" }
     }
   },
@@ -21,7 +20,7 @@
         "finding_id": { "type": "string", "minLength": 1 },
         "verdict": { "enum": ["keep", "drop", "downgrade"] },
         "severity": { "enum": ["info", "warning", "error"] },
-        "rationale": { "type": "string", "minLength": 1, "maxLength": 4000 }
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 4000, "pattern": "\\S" }
       }
     }
   }
