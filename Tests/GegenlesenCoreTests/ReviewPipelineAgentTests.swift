@@ -91,6 +91,48 @@ struct ReviewPipelineAgentTests {
     }
 
     @Test
+    func deadlinePreemptionKeepsItsFailureReason() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                try await store.write { db in
+                    try db.execute(sql: "CREATE TRIGGER expire_on_review BEFORE INSERT ON job_events WHEN NEW.message = 'reviewing' BEGIN UPDATE jobs SET deadline_at = '2000-01-01T00:00:00Z' WHERE id = NEW.job_id; END")
+                }
+                try await ReviewPipeline(store: store, skipAgent: false, reviewer: nil).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .failed)
+                #expect(after.errorMessage == "review_deadline_exceeded")
+                #expect(after.risk?.reasons.map(\.code) == ["review_deadline_exceeded"])
+                #expect(try await !store.events(jobID: job.id).contains { $0.message == "review_failed" })
+            }
+        }
+    }
+
+    @Test
+    func deadlinePreemptionKeepsConfiguredRisk() async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            let job = queuedJob()
+            try await store.insertJob(job)
+            try await store.write { db in
+                try db.execute(sql: "CREATE TRIGGER expire_on_dequeue BEFORE INSERT ON job_events WHEN NEW.message = 'dequeued' BEGIN UPDATE jobs SET deadline_at = '2000-01-01T00:00:00Z' WHERE id = NEW.job_id; END")
+            }
+            var risk = RiskConfig.v1
+            risk.mode = .enforce
+            risk.appetite = 4
+            try await ReviewPipeline(store: store, risk: risk).run(jobID: job.id)
+            let after = try #require(try await store.job(id: job.id))
+            #expect(after.status == .failed)
+            #expect(after.risk?.reasons.map(\.code) == ["review_deadline_exceeded"])
+            #expect(after.risk?.mode == .enforce)
+            #expect(after.risk?.appetite == 4)
+        }
+    }
+
+    @Test
     func incompleteScannerCannotApproveAReview() async throws {
         try await withTempDataDir { dir in
             let store = try Store.open(dataDir: dir)
