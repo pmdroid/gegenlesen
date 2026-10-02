@@ -541,7 +541,9 @@ final class JudgeInputRecordingJudge: JudgeRunning, @unchecked Sendable {
             input = try? JSONDecoder().decode(JudgeInputFile.self, from: data)
         }
         return JudgeRunResult(
-            outcome: .verdicts(JudgeFile(verdicts: [])),
+            outcome: .verdicts(JudgeFile(verdicts: (input?.candidates ?? []).map {
+                JudgeVerdictRow(findingID: $0.id, verdict: .keep, rationale: "confirmed in source")
+            })),
             containerName: ReviewContainers.judge(request.job.id)
         )
     }
