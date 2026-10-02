@@ -1,4 +1,5 @@
 import Foundation
+import GegenlesenCore
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -29,7 +30,16 @@ struct GegenlesenClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        let (data, response) = try await URLSession.shared.data(for: request)
+        if let deadline = ReviewDeadline.expiresAt {
+            try ReviewDeadline.check()
+            let remaining = (deadline - ContinuousClock.now).timeInterval
+            request.timeoutInterval = ceil(max(1, remaining))
+            request.setValue(String(Date().addingTimeInterval(remaining).timeIntervalSince1970), forHTTPHeaderField: "X-Gegenlesen-Deadline")
+        }
+        let preparedRequest = request
+        let (data, response) = try await ReviewDeadline.run(timeout: .seconds(ReviewDeadline.maximumSeconds)) {
+            try await URLSession.shared.data(for: preparedRequest)
+        }
         try throwIfNeeded(data: data, response: response, expected: 202)
         return try JSONDecoder().decode(AcceptedJSON.self, from: data)
     }
@@ -63,9 +73,13 @@ struct GegenlesenClient: Sendable {
     }
 
     func job(id: String) async throws -> JobJSON {
-        let (data, response) = try await URLSession.shared.data(
-            from: baseURL.appendingPathComponent("api/jobs/\(id)")
-        )
+        try ReviewDeadline.check()
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/jobs/\(id)"))
+        request.timeoutInterval = 30
+        let preparedRequest = request
+        let (data, response) = try await ReviewDeadline.run(timeout: .seconds(30)) {
+            try await URLSession.shared.data(for: preparedRequest)
+        }
         try throwIfNeeded(data: data, response: response, expected: 200)
         return try JSONDecoder().decode(JobJSON.self, from: data)
     }
@@ -78,16 +92,35 @@ struct GegenlesenClient: Sendable {
         return try JSONDecoder().decode(JobJSON.self, from: data)
     }
 
-    func poll(id: String, timeout: TimeInterval = 1800) async throws -> JobJSON {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let job = try await job(id: id)
-            if ["succeeded", "failed", "cancelled"].contains(job.status) {
-                return job
+    func poll(id: String, timeout: TimeInterval = 1800, progress: Bool = false) async throws -> JobJSON {
+        let started = ContinuousClock.now
+        let deadline = min(ReviewDeadline.expiresAt ?? started + .seconds(timeout), started + .seconds(timeout))
+        return try await ReviewDeadline.$expiresAt.withValue(deadline) {
+            var lastStatus: String?
+            var lastProgress = started - .seconds(10)
+            do {
+                while ContinuousClock.now < deadline {
+                    let job = try await job(id: id)
+                    if progress {
+                        if lastStatus == nil {
+                            let models = "A \(job.reviewerAEngine ?? "")/\(job.reviewerAModelID ?? "unknown"), B \(job.reviewerBEngine ?? "")/\(job.reviewerBModelID ?? "unknown"), judge \(job.judgeEngine ?? "")/\(job.judgeModelID ?? "unknown")"
+                            FileHandle.standardError.write(Data("models requested: \(models)\n".utf8))
+                        }
+                        if lastStatus != job.status || ContinuousClock.now - lastProgress >= .seconds(10) {
+                            let queue = job.queuePosition.map { " · queue \($0)" } ?? ""
+                            FileHandle.standardError.write(Data("\(job.status)\(queue) · \(Int((ContinuousClock.now - started).timeInterval))s waiting\n".utf8))
+                            lastProgress = ContinuousClock.now
+                        }
+                        lastStatus = job.status
+                    }
+                    if ["succeeded", "failed", "cancelled"].contains(job.status) { return job }
+                    try await Task.sleep(for: ReviewDeadline.timeout(.seconds(1)))
+                }
+            } catch {
+                if ContinuousClock.now < deadline { throw error }
             }
-            try await Task.sleep(for: .milliseconds(250))
+            throw CLIError("review_deadline_exceeded: job \(id) is incomplete; check its status with gegenlesen status \(id)")
         }
-        throw CLIError("timed out waiting for job \(id)")
     }
 
     private func throwIfNeeded(data: Data, response: URLResponse, expected: Int) throws {
@@ -125,6 +158,13 @@ struct JobJSON: Decodable {
     var repository: String?
     var errorMessage: String?
     var risk: RiskJSON?
+    var queuePosition: Int?
+    var reviewerAEngine: String?
+    var reviewerAModelID: String?
+    var reviewerBEngine: String?
+    var reviewerBModelID: String?
+    var judgeEngine: String?
+    var judgeModelID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, status
@@ -132,6 +172,13 @@ struct JobJSON: Decodable {
         case baseSHA = "base_sha"
         case repository
         case errorMessage = "error_message"
+        case queuePosition = "queue_position"
+        case reviewerAEngine = "reviewer_a_engine"
+        case reviewerAModelID = "reviewer_a_model_id"
+        case reviewerBEngine = "reviewer_b_engine"
+        case reviewerBModelID = "reviewer_b_model_id"
+        case judgeEngine = "judge_engine"
+        case judgeModelID = "judge_model_id"
         case risk
     }
 }
