@@ -5,6 +5,29 @@ import Testing
 
 @Suite
 struct OpenCodeInvocationTests {
+    @Test(arguments: [false, true])
+    func singleReviewerExperimentRunsOnlyA(strict: Bool) async throws {
+        try await withTempDir("invoke-single") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            try writeFile(".gegenlesen/findings-model_b.json", #"{"findings":[{"title":"stale B","message":"old","severity":"error","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"let x = 1"}]}"#, in: root)
+            let docker = FindingsWritingDocker(workspace: root)
+            let invocation = OpenCodeInvocation(docker: docker, image: "runner", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let job = sampleJob()
+            let result = await invocation.run(AgentReviewRequest(
+                job: job, workspace: Workspace(root: root),
+                files: [JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift)],
+                rules: [], newWork: true, reviewStrictMode: strict, singleReviewerExperiment: true
+            ))
+            #expect(!result.failed)
+            #expect(!result.reviewDegraded)
+            #expect(result.validFileCount == 1)
+            #expect(result.findings.isEmpty)
+            #expect(await docker.requests.map(\.name) == ["gegenlesen-review-\(job.id.rawValue)-a"])
+            let prompt = try String(contentsOf: root.appendingPathComponent(".gegenlesen/prompt-judge.md"), encoding: .utf8)
+            #expect(!prompt.contains("Degraded review"))
+        }
+    }
+
     @Test
     func incrementalReviewAttachesParentFindings() {
         let full = OpenCodeInvocation.reviewFilePaths(incremental: false)

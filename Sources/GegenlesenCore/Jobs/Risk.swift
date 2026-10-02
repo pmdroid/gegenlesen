@@ -199,6 +199,7 @@ public enum RiskGate: Sendable {
         public var changedLines: Int?
         public var reviewersInvoked: Bool
         public var validReviewerFiles: Int
+        public var singleReviewerExperiment: Bool
         public var judgeUnavailable: Bool
         public var config: RiskConfig
 
@@ -211,6 +212,7 @@ public enum RiskGate: Sendable {
             changedLines: Int?,
             reviewersInvoked: Bool,
             validReviewerFiles: Int,
+            singleReviewerExperiment: Bool = false,
             judgeUnavailable: Bool,
             config: RiskConfig
         ) {
@@ -222,6 +224,7 @@ public enum RiskGate: Sendable {
             self.changedLines = changedLines
             self.reviewersInvoked = reviewersInvoked
             self.validReviewerFiles = validReviewerFiles
+            self.singleReviewerExperiment = singleReviewerExperiment
             self.judgeUnavailable = judgeUnavailable
             self.config = config
         }

@@ -8,6 +8,7 @@ public struct AgentReviewRequest: Sendable {
     public var parentFindings: [Finding]
     public var newWork: Bool
     public var reviewStrictMode: Bool
+    public var singleReviewerExperiment: Bool
     public var isCancelled: (@Sendable () async -> Bool)?
 
     public init(
@@ -18,6 +19,7 @@ public struct AgentReviewRequest: Sendable {
         parentFindings: [Finding] = [],
         newWork: Bool,
         reviewStrictMode: Bool = false,
+        singleReviewerExperiment: Bool = false,
         isCancelled: (@Sendable () async -> Bool)? = nil
     ) {
         self.job = job
@@ -27,6 +29,7 @@ public struct AgentReviewRequest: Sendable {
         self.parentFindings = parentFindings
         self.newWork = newWork
         self.reviewStrictMode = reviewStrictMode
+        self.singleReviewerExperiment = singleReviewerExperiment
         self.isCancelled = isCancelled
     }
 }
