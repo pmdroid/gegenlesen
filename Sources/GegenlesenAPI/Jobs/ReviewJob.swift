@@ -38,6 +38,20 @@ private func writeJobTranscript(store: Store) -> @Sendable (JobID, String, Data)
 
 actor QueueHandles {
     private var map: [String: UUID] = [:]
+    private var expirations: [String: Task<Void, Never>] = [:]
+
+    func setExpiration(_ jobID: JobID, task: Task<Void, Never>) {
+        expirations[jobID.rawValue] = task
+    }
+
+    func removeExpiration(_ jobID: JobID) -> Task<Void, Never>? {
+        expirations.removeValue(forKey: jobID.rawValue)
+    }
+
+    func cancelExpirations() {
+        for task in expirations.values { task.cancel() }
+        expirations.removeAll()
+    }
 
     func set(_ jobID: JobID, handle: UUID) {
         map[jobID.rawValue] = handle
@@ -80,6 +94,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     let store: Store
     let live: LiveSettings
     let skipAgent: Bool
+    let docker: any DockerExecuting
     private var task: Task<Void, Never>?
 
     var config: GegenlesenConfig { live.snapshot().0 }
@@ -296,6 +311,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
         self.store = store
         self.live = live
         self.skipAgent = skipAgent
+        self.docker = docker
         runtimeRef.runtime = self
     }
 
@@ -313,6 +329,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     }
 
     func shutdown() async {
+        await handles.cancelExpirations()
         await memory.stop()
         task?.cancel()
         task = nil
@@ -321,6 +338,33 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     func pushReview(_ id: JobID) async throws {
         let handle = try await service.push(ReviewJobParameters(jobID: id))
         await handles.set(id, handle: handle)
+        if let job = try await store.job(id: id), let deadline = job.deadlineAt {
+            let expiration = Task { [self] in
+                do {
+                    try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+                    _ = await handles.removeExpiration(id)
+                    _ = try await store.expireReview(id: id, risk: config.risk)
+                    if try await store.job(id: id)?.errorMessage == "review_deadline_exceeded" {
+                        await cancel(id)
+                        await stopContainers(job)
+                    }
+                } catch {}
+            }
+            await handles.setExpiration(id, task: expiration)
+        }
+    }
+
+    func stopContainers(_ job: Job) async {
+        var names = Set(ReviewContainers.all(job.id))
+        if let name = job.containerName { names.insert(name) }
+        if let name = job.containerNameA { names.insert(name) }
+        if let name = job.containerNameB { names.insert(name) }
+        await withTaskGroup(of: Void.self) { group in
+            for name in names {
+                group.addTask { await self.docker.kill(containerName: name) }
+            }
+            group.addTask { await self.docker.removeAll(prefix: ReviewContainers.commandPrefix(job.id)) }
+        }
     }
 
     func pushMine(_ id: JobID) async throws {
@@ -383,6 +427,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
     }
 
     func cancel(_ id: JobID) async {
+        await handles.removeExpiration(id)?.cancel()
         if let handle = await handles.remove(id) {
             try? await service.cancelJob(jobID: handle)
         }

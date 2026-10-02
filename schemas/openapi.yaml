@@ -271,6 +271,12 @@ paths:
                 $ref: "#/components/schemas/JobListResponse"
     post:
       operationId: createJob
+      parameters:
+        - name: X-Gegenlesen-Deadline
+          in: header
+          required: false
+          description: Absolute Unix timestamp in seconds. The server caps the review at five minutes, including upload and queue time.
+          schema: { type: number }
       requestBody:
         required: true
         content:
@@ -298,6 +304,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/JobAccepted"
         "400": { $ref: "#/components/responses/Error" }
+        "408": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
@@ -934,6 +941,8 @@ components:
         - created_at
         - started_at
         - finished_at
+        - deadline_at
+        - timings
         - error_message
         - risk
       properties:
@@ -956,6 +965,16 @@ components:
         created_at: { type: string, format: date-time }
         started_at: { type: ["string", "null"], format: date-time }
         finished_at: { type: ["string", "null"], format: date-time }
+        deadline_at: { type: ["string", "null"], format: date-time }
+        timings:
+          type: ["object", "null"]
+          additionalProperties: false
+          properties:
+            unpack_ms: { type: integer, minimum: 0 }
+            identify_ms: { type: integer, minimum: 0 }
+            deterministic_ms: { type: integer, minimum: 0 }
+            review_ms: { type: integer, minimum: 0 }
+            judge_ms: { type: integer, minimum: 0 }
         error_message: { type: ["string", "null"] }
         risk:
           oneOf:

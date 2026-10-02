@@ -27,6 +27,34 @@ struct JobsRouteTests {
     }
 
     @Test
+    func expiredDeadlineDoesNotQueueWork() async throws {
+        try await withGegenlesenApp { app in
+            let res = try await postJob(app, archive: try tinyTarGz(), filename: "change.tar.gz",
+                meta: #"{"scope":"full"}"#, deadline: "1")
+            #expect(res.status == .badRequest)
+            #expect(try await app.gegenlesenStore.listJobs(limit: 10, offset: 0).total == 0)
+        }
+    }
+
+    @Test
+    func queuedReviewExpiresWithoutAClientPolling() async throws {
+        try await withGegenlesenApp { app in
+            let archive = try tinyTarGz()
+            let deadline = Date().addingTimeInterval(3)
+            let res = try await postJob(app, archive: archive, filename: "change.tar.gz",
+                meta: #"{"scope":"full"}"#, deadline: String(deadline.timeIntervalSince1970))
+            #expect(res.status == .accepted)
+            let accepted = try JSONDecoder().decode(JobAccepted.self, from: bodyData(res))
+            try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow) + 0.1))
+            let job = try #require(try await app.gegenlesenStore.job(id: accepted.id))
+            #expect(job.status == .failed)
+            #expect(job.errorMessage == "review_deadline_exceeded")
+            #expect(job.risk?.verdict == .needsHuman)
+            #expect(job.timings == nil)
+        }
+    }
+
+    @Test
     func zipFilenameIsRejected() async throws {
         try await withGegenlesenApp { app in
             let res = try await postJob(
@@ -566,7 +594,7 @@ private let jobListKeys: Set<String> = [
     "reviewer_b_engine", "reviewer_b_model_id",
     "judge_engine", "judge_model_id",
     "base_sha", "head_sha", "queue_position", "summary",
-    "created_at", "started_at", "finished_at", "error_message", "risk",
+    "created_at", "started_at", "finished_at", "deadline_at", "timings", "error_message", "risk",
     "review_degraded", "review_degraded_slot", "review_degraded_engine", "review_degraded_error",
 ]
 
@@ -574,13 +602,15 @@ private func postJob(
     _ app: Application,
     archive: Data,
     filename: String,
-    meta: String
+    meta: String,
+    deadline: String? = nil
 ) async throws -> TestingHTTPResponse {
     var captured: TestingHTTPResponse?
     try await app.testing().test(
         .POST,
         "/api/jobs",
         beforeRequest: { req in
+            if let deadline { req.headers.replaceOrAdd(name: "X-Gegenlesen-Deadline", value: deadline) }
             try req.content.encode(
                 JobPostBody(archive: File(data: .init(data: archive), filename: filename), meta: meta),
                 as: .formData
@@ -628,7 +658,7 @@ private func tinyTarGz() throws -> Data {
     let archive = FileManager.default.temporaryDirectory
         .appendingPathComponent("gegenlesen-empty-\(UUID().uuidString).tar.gz")
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/bsdtar")
+    process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["BSDTAR"] ?? "/usr/bin/bsdtar")
     process.arguments = ["-czf", archive.path, "-C", dir.path, "."]
     process.environment = ["PATH": "/usr/bin:/bin", "COPYFILE_DISABLE": "1"]
     try process.run()
