@@ -5,6 +5,73 @@ import Testing
 
 @Suite
 struct OpenCodeInvocationTests {
+    @Test(arguments: [false, true])
+    func singleReviewerExperimentRunsOnlyA(strict: Bool) async throws {
+        try await withTempDir("invoke-single") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            try writeFile(".gegenlesen/findings-model_b.json", #"{"findings":[{"title":"stale B","message":"old","severity":"error","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"let x = 1"}]}"#, in: root)
+            let docker = FindingsWritingDocker(workspace: root)
+            let invocation = OpenCodeInvocation(docker: docker, image: "runner", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let job = sampleJob()
+            let result = await invocation.run(AgentReviewRequest(
+                job: job, workspace: Workspace(root: root),
+                files: [JobFile(jobID: job.id, path: "Sources/A.swift", status: .added, language: .swift)],
+                rules: [], newWork: true, reviewStrictMode: strict, singleReviewerExperiment: true
+            ))
+            #expect(!result.failed)
+            #expect(!result.reviewDegraded)
+            #expect(result.validFileCount == 1)
+            #expect(result.containerNameB == nil)
+            #expect(result.findings.isEmpty)
+            #expect(await docker.requests.map(\.name) == ["gegenlesen-review-\(job.id.rawValue)-a"])
+            let prompt = try String(contentsOf: root.appendingPathComponent(".gegenlesen/prompt-judge.md"), encoding: .utf8)
+            #expect(!prompt.contains("Degraded review"))
+        }
+    }
+
+    @Test
+    func singleReviewerExperimentCannotPublishStaleBWhenAFails() async throws {
+        try await withTempDir("invoke-single-stale") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            try writeFile(".gegenlesen/findings-model_b.json", #"{"findings":[]}"#, in: root)
+            try writeFile(".gegenlesen/agent-findings.json", #"{"findings":[]}"#, in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 1, stdout: Data()))
+            let invocation = OpenCodeInvocation(docker: docker, image: "runner", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let result = await invocation.run(AgentReviewRequest(
+                job: sampleJob(), workspace: Workspace(root: root), files: [], rules: [],
+                newWork: true, singleReviewerExperiment: true
+            ))
+            #expect(result.failed)
+            #expect(result.validFileCount == 0)
+            #expect(result.findings.isEmpty)
+            #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(".gegenlesen/agent-findings.json").path))
+            #expect(await docker.requests.count == 1)
+        }
+    }
+
+    @Test
+    func singleReviewerExperimentTimeoutStaysIncomplete() async throws {
+        try await withTempDir("invoke-single-timeout") { root in
+            try writeFile("Sources/A.swift", "let x = 1\n", in: root)
+            let findings = #"{"findings":[{"title":"partial","message":"unfinished","severity":"warning","file_path":"Sources/A.swift","start_line":1,"end_line":1,"snippet":"let x = 1"}]}"#
+            try writeFile(".gegenlesen/findings-model_a.json", findings, in: root)
+            try writeFile(".gegenlesen/findings-model_b.json", findings, in: root)
+            let docker = RecordingDocker(result: DockerResult(exitCode: 124, stdout: Data(), timedOut: true))
+            let invocation = OpenCodeInvocation(docker: docker, image: "runner", runnerConfig: repoRootFromAgentTests().appendingPathComponent("docker/opencode-runner"))
+            let result = await invocation.run(AgentReviewRequest(
+                job: sampleJob(), workspace: Workspace(root: root), files: [], rules: [],
+                newWork: true, reviewStrictMode: true, singleReviewerExperiment: true
+            ))
+            #expect(result.failed)
+            #expect(!result.reviewDegraded)
+            #expect(result.validFileCount == 0)
+            #expect(result.errorMessage == "reviewer_timed_out")
+            #expect(result.findings.count == 1)
+            #expect(result.findings.first?.judgeVerdict == .unavailable)
+            #expect(await docker.requests.count == 1)
+        }
+    }
+
     @Test
     func incrementalReviewAttachesParentFindings() {
         let full = OpenCodeInvocation.reviewFilePaths(incremental: false)

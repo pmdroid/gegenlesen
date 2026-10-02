@@ -4,6 +4,18 @@ import Testing
 
 @Suite
 struct RiskGateTests {
+    @Test(arguments: [0, 1])
+    func singleReviewerExperimentRequiresHumanReview(valid: Int) {
+        var input = baseInput()
+        input.singleReviewerExperiment = true
+        input.validReviewerFiles = valid
+        input.config.appetite = 5
+        let report = RiskGate.evaluate(input)
+        #expect(report.verdict == .needsHuman)
+        #expect(report.reasons.contains { $0.code == "single_reviewer_experiment" })
+        #expect(report.reasons.contains { $0.code == "reviewer_file_missing" } == (valid == 0))
+    }
+
     @Test
     func cleanTinyChangeAutoApproves() {
         let report = RiskGate.evaluate(baseInput())

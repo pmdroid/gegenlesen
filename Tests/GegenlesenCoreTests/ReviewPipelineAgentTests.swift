@@ -5,6 +5,37 @@ import Testing
 
 @Suite
 struct ReviewPipelineAgentTests {
+    @Test(arguments: [false, true])
+    func singleReviewerExperimentPreservesJudgeAndRecordsPolicy(hasFinding: Bool) async throws {
+        try await withTempDataDir { dir in
+            let store = try Store.open(dataDir: dir)
+            try await withPackedRepo(dir: dir) { archive in
+                let job = queuedJob()
+                try await store.insertJob(job)
+                try FileManager.default.copyItem(at: archive, to: store.blobs.archiveURL(jobID: job.id.rawValue))
+                let judge = JudgeInputRecordingJudge()
+                try await ReviewPipeline(
+                    store: store, skipAgent: false,
+                    reviewer: SingleReviewerFixture(hasFinding: hasFinding), judge: judge,
+                    reviewStrictMode: true, singleReviewerExperiment: true
+                ).run(jobID: job.id)
+                let after = try #require(try await store.job(id: job.id))
+                #expect(after.status == .succeeded)
+                #expect(after.containerNameB == nil)
+                #expect(!after.reviewDegraded)
+                #expect(after.risk?.verdict == .needsHuman)
+                #expect(after.risk?.reasons.contains { $0.code == "single_reviewer_experiment" } == true)
+                #expect(after.risk?.reasons.contains { $0.code == "reviewer_file_missing" } == false)
+                #expect((judge.input != nil) == hasFinding)
+                let findings = try await store.findings(jobID: job.id)
+                #expect(findings.filter { $0.judgeVerdict == .keep }.count == (hasFinding ? 1 : 0))
+                let policy = try #require(try await store.events(jobID: job.id).first { $0.message == "review_policy" }?.payloadJSON)
+                let value = try #require(JSONSerialization.jsonObject(with: Data(policy.utf8)) as? [String: Any])
+                #expect(value["requested_slots"] as? [String] == ["model_a"])
+            }
+        }
+    }
+
     @Test
     func reviewFailureClassPrefersProviderAuth() {
         #expect(
@@ -841,6 +872,18 @@ struct FakeReviewer: ReviewerRunning {
             containerNameB: "gegenlesen-review-\(request.job.id.rawValue)-b",
             containerName: "gegenlesen-judge-\(request.job.id.rawValue)"
         )
+    }
+}
+
+struct SingleReviewerFixture: ReviewerRunning {
+    let hasFinding: Bool
+
+    func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
+        #expect(request.singleReviewerExperiment)
+        var result = await FakeReviewer().run(request)
+        result.findings = hasFinding ? result.findings : []
+        result.containerNameB = nil
+        return result
     }
 }
 
