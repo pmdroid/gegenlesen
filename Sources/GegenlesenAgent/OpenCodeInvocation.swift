@@ -56,8 +56,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
     public func run(_ request: AgentReviewRequest) async -> AgentReviewResult {
         let jobID = request.job.id
+        let requestedSlots: [ReviewerSlot] = request.singleReviewerExperiment ? [.modelA] : [.modelA, .modelB]
         let nameA = Self.containerName(jobID: jobID, slot: .modelA)
-        let nameB = Self.containerName(jobID: jobID, slot: .modelB)
+        let nameB = request.singleReviewerExperiment ? nil : Self.containerName(jobID: jobID, slot: .modelB)
         let judgeName = "gegenlesen-judge-\(jobID.rawValue)"
         do {
             try await prepareRunnerConfig?(request.job.id, request.job.repository)
@@ -108,17 +109,19 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                     )
                 )
             }
-            group.addTask {
-                (
-                    .modelB,
-                    await self.executeSlotAttempt(
-                        gated,
-                        slot: .modelB,
-                        engine: gated.job.reviewerBEngine,
-                        model: gated.job.reviewerBModelID,
-                        known: known
+            if !request.singleReviewerExperiment {
+                group.addTask {
+                    (
+                        .modelB,
+                        await self.executeSlotAttempt(
+                            gated,
+                            slot: .modelB,
+                            engine: gated.job.reviewerBEngine,
+                            model: gated.job.reviewerBModelID,
+                            known: known
+                        )
                     )
-                )
+                }
             }
             for await (slot, outcome) in group {
                 if slot == .modelA {
@@ -128,7 +131,9 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 }
                 if outcome.providerAuth {
                     stop.stop()
-                    await self.docker.kill(containerName: slot == .modelA ? nameB : nameA)
+                    if let sibling = slot == .modelA ? nameB : nameA {
+                        await self.docker.kill(containerName: sibling)
+                    }
                 }
             }
         }
@@ -150,7 +155,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         )
         if resultA.providerAuth || resultB.providerAuth {
             persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
-            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            persistAgentCopies(workspace: request.workspace, slots: requestedSlots)
             let errorMessage = ReviewFailureClass.providerAuth.rawValue
             return AgentReviewResult(
                 findings: resultA.findings + resultB.findings,
@@ -172,7 +177,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
 
         if request.newWork && valid == 0 {
             persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
-            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            persistAgentCopies(workspace: request.workspace, slots: requestedSlots)
             let startFailed = [resultA, resultB].contains {
                 $0.validationError == ReviewFailureClass.containerStartFailed.rawValue
             }
@@ -196,10 +201,10 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
             )
         }
 
-        if valid == 1, !resultA.valid || !resultB.valid {
+        if !request.singleReviewerExperiment, valid == 1, !resultA.valid || !resultB.valid {
             if request.reviewStrictMode {
                 persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
-                persistAgentCopies(workspace: request.workspace, jobID: jobID)
+                persistAgentCopies(workspace: request.workspace, slots: requestedSlots)
                 let failedResult = resultA.valid ? resultB : resultA
                 let errorMessage = failedResult.validationError ?? "reviewer_validation_failed"
                 return AgentReviewResult(
@@ -228,7 +233,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
                 singleReviewerSlot: survivingSlot
             )
             persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
-            persistAgentCopies(workspace: request.workspace, jobID: jobID)
+            persistAgentCopies(workspace: request.workspace, slots: requestedSlots)
             return AgentReviewResult(
                 findings: findings,
                 validFileCount: valid,
@@ -244,7 +249,7 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         }
 
         persistTranscripts(jobID: jobID, phase: "review", chunks: [resultA.transcript, resultB.transcript])
-        persistAgentCopies(workspace: request.workspace, jobID: jobID)
+        persistAgentCopies(workspace: request.workspace, slots: requestedSlots)
         return AgentReviewResult(
             findings: findings,
             validFileCount: valid,
@@ -1054,13 +1059,14 @@ public struct OpenCodeInvocation: ReviewerRunning, MinerRunning, JudgeRunning, S
         transcriptWriter?(jobID, phase, combined)
     }
 
-    private func persistAgentCopies(workspace: Workspace, jobID: JobID) {
+    private func persistAgentCopies(workspace: Workspace, slots: [ReviewerSlot]) {
         let fm = FileManager.default
         let dest = workspace.root.appendingPathComponent(".gegenlesen/agent-findings.json")
-        for name in ["findings-model_a.json", "findings-model_b.json", "findings.json"] {
+        try? fm.removeItem(at: dest)
+        let names = slots.map { "findings-\($0.rawValue).json" } + (slots.count == 2 ? ["findings.json"] : [])
+        for name in names {
             let source = workspace.root.appendingPathComponent(".gegenlesen/\(name)")
             if fm.fileExists(atPath: source.path) {
-                try? fm.removeItem(at: dest)
                 try? fm.copyItem(at: source, to: dest)
                 return
             }

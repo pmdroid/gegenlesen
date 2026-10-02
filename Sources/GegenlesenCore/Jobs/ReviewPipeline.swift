@@ -18,6 +18,7 @@ public struct ReviewPipeline: Sendable {
     public var learnEngine: String
     public var learnModel: String
     public var reviewStrictMode: Bool
+    public var singleReviewerExperiment: Bool
     public var risk: RiskConfig
     public var requireHarvest: Bool
 
@@ -39,6 +40,7 @@ public struct ReviewPipeline: Sendable {
         learnEngine: String = AgentEngineID.opencode,
         learnModel: String = "openrouter/openai/gpt-5.6-terra",
         reviewStrictMode: Bool = false,
+        singleReviewerExperiment: Bool = false,
         risk: RiskConfig = .v1,
         requireHarvest: Bool = false
     ) {
@@ -59,6 +61,7 @@ public struct ReviewPipeline: Sendable {
         self.learnEngine = learnEngine
         self.learnModel = learnModel
         self.reviewStrictMode = reviewStrictMode
+        self.singleReviewerExperiment = singleReviewerExperiment
         self.risk = risk
         self.requireHarvest = requireHarvest
     }
@@ -105,6 +108,21 @@ public struct ReviewPipeline: Sendable {
         guard let existing = try await store.job(id: jobID) else { return }
         if existing.status.isTerminal { return }
 
+        let requestedSlots: [ReviewerSlot] = singleReviewerExperiment ? [.modelA] : [.modelA, .modelB]
+        try await store.appendEvent(
+            jobID: jobID, level: .info, message: "review_policy",
+            payloadJSON: JobEvent.payloadJSON([
+                "single_reviewer_experiment": singleReviewerExperiment,
+                "requested_slots": requestedSlots.map(\.rawValue),
+                "reviewers": requestedSlots.map { slot in
+                    ["slot": slot.rawValue,
+                     "engine": slot == .modelA ? existing.reviewerAEngine : existing.reviewerBEngine,
+                     "model": slot == .modelA ? existing.reviewerAModelID : existing.reviewerBModelID]
+                },
+                "judge_engine": existing.judgeEngine,
+                "judge_model": existing.judgeModelID,
+            ])
+        )
         try await store.appendEvent(jobID: jobID, level: .info, message: "dequeued")
         _ = try await store.apply(jobID: jobID, event: .dequeued, risk: risk)
         if try await stopped(jobID) { return }
@@ -453,7 +471,7 @@ public struct ReviewPipeline: Sendable {
         }
 
         let nameA = ReviewContainers.slot(jobID, .modelA)
-        let nameB = ReviewContainers.slot(jobID, .modelB)
+        let nameB = singleReviewerExperiment ? nil : ReviewContainers.slot(jobID, .modelB)
         let judgeName = ReviewContainers.judge(jobID)
         try await store.updateJobContainers(
             jobID: jobID,
@@ -473,6 +491,7 @@ public struct ReviewPipeline: Sendable {
                 parentFindings: parentFindings,
                 newWork: newWork,
                 reviewStrictMode: reviewStrictMode,
+                singleReviewerExperiment: singleReviewerExperiment,
                 isCancelled: {
                     (try? await store.job(id: jobID))?.status.isTerminal ?? true
                 }
@@ -972,6 +991,7 @@ public struct ReviewPipeline: Sendable {
                 changedLines: RiskGate.changedLines(in: patch),
                 reviewersInvoked: reviewersInvoked,
                 validReviewerFiles: validReviewerFiles,
+                singleReviewerExperiment: singleReviewerExperiment,
                 judgeUnavailable: judgeUnavailable,
                 config: risk
             )

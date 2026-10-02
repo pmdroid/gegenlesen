@@ -115,6 +115,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
             options: .init(processor: .init(numWorkers: 1))
         )
         let identifyTimeout = Duration.seconds(config.limits.identifyTimeoutSec)
+        let singleReviewerExperiment = ProcessInfo.processInfo.environment["GEGENLESEN_EXPERIMENT_SINGLE_REVIEWER"] == "1"
         let handles = QueueHandles()
         let runnerConfig = (try? materializeRunnerConfig(
             workingDirectory: workingDirectory,
@@ -194,6 +195,7 @@ final class JobRuntime: ReviewJobQueuing, @unchecked Sendable {
                     learnEngine: config.engineProfiles.learn.engine,
                     learnModel: config.engineProfiles.learn.model,
                     reviewStrictMode: config.limits.reviewStrictMode,
+                    singleReviewerExperiment: singleReviewerExperiment,
                     risk: config.risk,
                     requireHarvest: true
                 ).run(jobID: params.jobID)

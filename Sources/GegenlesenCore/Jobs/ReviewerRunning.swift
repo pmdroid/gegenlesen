@@ -41,7 +41,7 @@ public struct AgentReviewResult: Sendable {
     public var errorMessage: String?
     public var payloadJSON: String?
     public var containerNameA: String
-    public var containerNameB: String
+    public var containerNameB: String?
     public var containerName: String
     public var reviewDegraded: Bool
     public var reviewDegradedSlot: String?
@@ -55,7 +55,7 @@ public struct AgentReviewResult: Sendable {
         errorMessage: String? = nil,
         payloadJSON: String? = nil,
         containerNameA: String,
-        containerNameB: String,
+        containerNameB: String?,
         containerName: String,
         reviewDegraded: Bool = false,
         reviewDegradedSlot: String? = nil,

@@ -252,10 +252,17 @@ public enum RiskGate: Sendable {
                 detail: "reviewers did not run on a non-empty change"
             ))
         }
-        if input.reviewersInvoked, input.validReviewerFiles < 2 {
+        let expectedReviewers = input.singleReviewerExperiment ? 1 : 2
+        if input.singleReviewerExperiment {
+            hard.append(RiskReason(
+                code: "single_reviewer_experiment",
+                detail: "single-reviewer experiments require human review"
+            ))
+        }
+        if input.reviewersInvoked, input.validReviewerFiles < expectedReviewers {
             hard.append(RiskReason(
                 code: "reviewer_file_missing",
-                detail: "\(input.validReviewerFiles) of 2 reviewer files were valid"
+                detail: "\(input.validReviewerFiles) of \(expectedReviewers) requested reviewer files were valid"
             ))
         }
         if input.judgeUnavailable {
