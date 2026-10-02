@@ -194,6 +194,7 @@ struct Job: Codable, Sendable, Equatable {
     var updatedAt: Date
     var startedAt: Date?
     var finishedAt: Date?
+    var deadlineAt: Date?
     var status: JobStatus
     var scope: JobScope
     var parentJobID: JobID?
@@ -220,6 +221,7 @@ struct Job: Codable, Sendable, Equatable {
         case updatedAt = "updated_at"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
+        case deadlineAt = "deadline_at"
         case status, scope
         case parentJobID = "parent_job_id"
         case title
@@ -659,6 +661,8 @@ struct JobListItem: Codable, Sendable, Equatable {
     var createdAt: Date
     var startedAt: Date?
     var finishedAt: Date?
+    var deadlineAt: Date?
+    var timings: JobTimings?
     var errorMessage: String?
     var risk: RiskAssessment?
 
@@ -679,6 +683,8 @@ struct JobListItem: Codable, Sendable, Equatable {
         case createdAt = "created_at"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
+        case deadlineAt = "deadline_at"
+        case timings
         case errorMessage = "error_message"
         case risk
     }
@@ -730,6 +736,8 @@ struct JobDetail: Codable, Sendable, Equatable {
     var createdAt: Date
     var startedAt: Date?
     var finishedAt: Date?
+    var deadlineAt: Date?
+    var timings: JobTimings?
     var errorMessage: String?
     var risk: RiskAssessment?
     var findings: [Finding]
@@ -752,6 +760,8 @@ struct JobDetail: Codable, Sendable, Equatable {
         case createdAt = "created_at"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
+        case deadlineAt = "deadline_at"
+        case timings
         case errorMessage = "error_message"
         case risk
         case findings, events
@@ -859,9 +869,13 @@ struct JudgeFile: Codable, Sendable, Equatable {
     var verdicts: [JudgeVerdictRow]
 }
 
+enum JudgeDecision: String, Codable, Sendable {
+    case keep, drop, downgrade, unverified
+}
+
 struct JudgeVerdictRow: Codable, Sendable, Equatable {
     var findingID: FindingID
-    var verdict: JudgeVerdict
+    var verdict: JudgeDecision
     var rationale: String
     var severity: Severity?
 

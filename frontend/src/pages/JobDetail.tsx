@@ -15,6 +15,7 @@ export function JobDetailPage() {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const [showDropped, setShowDropped] = useState(false);
+  const [transcriptsOpen, setTranscriptsOpen] = useState(false);
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: () => getJob(id ?? ""),
@@ -127,10 +128,12 @@ export function JobDetailPage() {
       {detail.status !== "failed" && detail.status !== "cancelled" ? (
         <PipelineRail status={detail.status} />
       ) : null}
+      <div className="logline">requested models</div>
       <SlotBadges slots={reviewSlots(detail)} />
       <div className="pipe">
         {detail.error_message ? `${detail.error_message} · ` : "det → A ∥ B → judge · "}
-        {duration ?? "—"}
+        {duration ?? "—"} total
+        {detail.queue_position != null ? ` · queue ${detail.queue_position}` : ""}
         {detail.repository ? ` · ${repoLabel(detail.repository)}` : ""}
         {` · ${shortSHA(detail.head_sha ?? detail.base_sha)}`}
         {detail.parent_job_id ? (
@@ -141,6 +144,14 @@ export function JobDetailPage() {
         ) : null}
       </div>
 
+      {detail.timings ? (
+        <div className="logline">
+          {(["unpack_ms", "identify_ms", "deterministic_ms", "review_ms", "judge_ms"] as const).flatMap((phase) => {
+            const ms = detail.timings?.[phase];
+            return ms == null ? [] : [`${phase.replace("_ms", "")} ${(ms / 1000).toFixed(1)}s`];
+          }).join(" · ")}
+        </div>
+      ) : null}
       <div className="pagehead">
         <h2>findings</h2>
         <label className="toggle">
@@ -209,9 +220,9 @@ export function JobDetailPage() {
           ))
         )}
       </details>
-      <details className="jobblock">
+      <details className="jobblock" onToggle={(event) => setTranscriptsOpen(event.currentTarget.open)}>
         <summary className="pipe">transcripts</summary>
-        <TranscriptViewer jobId={detail.id} live={live} title={detail.title} />
+        {transcriptsOpen ? <TranscriptViewer jobId={detail.id} live={live} title={detail.title} /> : null}
       </details>
     </div>
   );

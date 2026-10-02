@@ -15,7 +15,7 @@ function evidenceDir(instance) {
 async function withPage(fn) {
   const instance = loadInstance();
   const browser = await chromium.launch({
-    channel: "chrome",
+    channel: process.platform === "darwin" ? "chrome" : undefined,
     headless: process.env.VERIFY_HEADED === "1" ? false : true,
   });
   const context = await browser.newContext({
