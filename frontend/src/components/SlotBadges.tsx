@@ -10,7 +10,7 @@ export function SlotBadges({ slots, compact }: { slots: Slot[]; compact?: boolea
   return (
     <div className={compact ? "slot-badges compact" : "slot-badges"}>
       {slots.map((slot) => (
-        <span className="slot-badge" key={slot.label} title={`${slot.label}: ${slot.engine} ${slot.model}`}>
+        <span className="slot-badge" key={slot.label} title={`Requested ${slot.label}: ${slot.engine} ${slot.model}`}>
           <span className="slot-badge-label">{slot.label}</span>
           {formatSlotBadge(slot.engine, slot.model)}
         </span>

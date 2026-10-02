@@ -6,7 +6,7 @@ import { listJobs, listLearnings, listRepositories } from "../client";
 import { PipelineRail } from "../components/PipelineRail";
 import { reviewSlots, SlotBadges } from "../components/SlotBadges";
 import { usePullNumbers } from "../github";
-import { displayJobTitle, findingCounts, pullMapKey, shortSHA, statusClass } from "../pipeline";
+import { jobDuration, displayJobTitle, findingCounts, pullMapKey, shortSHA, statusClass } from "../pipeline";
 
 function statusChip(job: JobListItem): { className: string; label: string } {
   if (job.status === "failed" && job.error_message) {
@@ -34,7 +34,7 @@ function jobLine(job: JobListItem): string {
   }
   switch (job.status) {
     case "queued":
-      return "queued";
+      return `queued${job.queue_position != null ? ` · position ${job.queue_position}` : ""}`;
     case "unpacking":
     case "identifying":
     case "selecting_rules":
@@ -160,6 +160,7 @@ export function JobsPage() {
               <SlotBadges slots={reviewSlots(job)} compact />
               <div className="pipe" style={{ borderBottom: 0 }}>
                 {jobLine(job)}
+                {` · ${jobDuration(job) ?? "—"} total`}
                 {job.head_sha ? ` · ${shortSHA(job.head_sha)}` : ""}
               </div>
             </div>

@@ -295,6 +295,14 @@ export interface JobListItem {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  deadline_at?: string | null;
+  timings?: {
+    unpack_ms?: number;
+    identify_ms?: number;
+    deterministic_ms?: number;
+    review_ms?: number;
+    judge_ms?: number;
+  } | null;
   error_message: string | null;
   risk: RiskAssessment | null;
   review_degraded?: boolean;
@@ -567,7 +575,7 @@ export interface JudgeFile {
 
 export interface JudgeVerdictRow {
   finding_id: FindingId;
-  verdict: "keep" | "drop" | "downgrade";
+  verdict: "keep" | "drop" | "downgrade" | "unverified";
   rationale: string;
   severity?: Severity;
 }

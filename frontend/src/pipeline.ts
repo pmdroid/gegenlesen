@@ -25,7 +25,7 @@ export function activePipelineStep(status: JobStatus): PipelineStep {
 }
 
 export function jobDuration(job: Pick<JobListItem, "created_at" | "started_at" | "finished_at">): string | null {
-  const start = job.started_at ?? job.created_at;
+  const start = job.created_at;
   if (!start) return null;
   const t0 = Date.parse(start);
   const t1 = job.finished_at ? Date.parse(job.finished_at) : Date.now();

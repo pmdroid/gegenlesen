@@ -91,8 +91,8 @@ function FindingRow({
   const verdictName =
     finding.judge_verdict === "drop"
       ? "dropped"
-      : finding.judge_verdict === "unavailable"
-        ? "unavailable"
+      : finding.judge_verdict === "unavailable" || finding.judge_verdict == null
+        ? "unverified"
         : finding.judge_verdict === "downgrade"
           ? "downgrade"
           : "kept";
@@ -100,7 +100,7 @@ function FindingRow({
   return (
     <div className="finding">
       <div className="fh">
-        <span className={`verdict ${verdictName === "downgrade" ? "kept" : verdictName}`}>{verdictName}</span>
+        <span className={`verdict ${verdictName === "downgrade" ? "kept" : verdictName === "unverified" ? "unavailable" : verdictName}`}>{verdictName}</span>
         <span className={`st ${severity === "error" ? "fail" : severity === "warning" ? "run" : "ok"}`}>
           {severity}
         </span>
@@ -140,8 +140,11 @@ function FindingRow({
           </button>
         </div>
       </div>
+      {finding.judge_rationale ? (
+        <div className="src"><strong>Verification: </strong>{finding.judge_rationale}</div>
+      ) : null}
       <details className="finding-more">
-        <summary>description</summary>
+        <summary>reported evidence</summary>
         <div className="src">{loc(finding)}</div>
         {finding.message ? <div className="src">{finding.message}</div> : null}
         {finding.snippet ? <pre>{finding.snippet}</pre> : null}
